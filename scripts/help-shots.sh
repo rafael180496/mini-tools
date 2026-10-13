@@ -106,6 +106,16 @@ git-work-changes gitworkdiff 1280 540
 git-work-stash gitworkstash 1280 470
 git-work-switcher gitworkswitcher 1100 520
 git-work-narrow gitworknarrow 760 560
+ia-sessions-sidebar aisesssidebar 1400 860
+ia-sessions-reattach aisessreattach 1400 860
+ia-sessions-split aisesssplit 1400 860
+ia-sessions-approval aisessapproval 1400 860
+ia-sessions-toast aisesstoast 1400 860
+ia-sessions-new-menu aisessnewmenu 1400 800
+ia-sessions-utilities aisessutiltabs 1400 800
+ia-sessions-tab-menu aisessbgtabmenu 1400 560
+ia-sessions-background-toast aisessbgclosetoast 1400 560
+ia-sessions-background-list aisessbgmenu 1400 860
 '
 
 mkdir -p docs/screenshots/es
@@ -116,6 +126,11 @@ echo "$SHOTS" | while read -r name view w h; do
     [ -n "${1:-}" ] && [ "$1" != "$name" ] && continue
     section=''
     case "$view" in *:*) section="${view#*:}"; view="${view%%:*}" ;; esac
+    # Las vistas aisess* encadenan pasos (abrir una conversación, dividir, tocar
+    # «Revisar») y necesitan más tiempo virtual antes de la foto.
+    budget=''
+    case "$view" in aisess*) budget=9000 ;; esac
+    export UISHOT_BUDGET="$budget"
     UISHOT_LANG=en UISHOT_SECTION="$section" UISHOT_OUT="$PWD/docs/screenshots/$name.png" ./scripts/uishot.sh "$view" "$w" "$h" </dev/null >/dev/null
     UISHOT_LANG=es UISHOT_SECTION="$section" UISHOT_OUT="$PWD/docs/screenshots/es/$name.png" ./scripts/uishot.sh "$view" "$w" "$h" </dev/null >/dev/null
     echo "$name"

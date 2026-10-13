@@ -8,6 +8,17 @@ const en: Messages<typeof es> = {
         title: 'Utilities',
         openTool: (p) => `Open ${p.name} in a new tab`,
         alreadyOpen: 'Open',
+        aiChat: {
+            openCount: (p) => `${p.n} AI Chat tabs open`,
+            newTab: 'New chat in a new tab',
+            newTabTitle: (p) =>
+                `Opens ANOTHER AI Chat tab, with its own project, provider and conversation (${p.shortcut}). Clicking the name only goes to the one that is already open.`,
+            newSplit: 'New split chat (new tab)',
+            newSplitTitle: 'Opens a new AI Chat tab already split into two panes, to have two chats side by side.',
+            open: 'Go to AI Chat',
+            openTitle: 'Goes to the AI Chat tab that is already open, or opens one if there is none. Double-click: opens another chat tab.',
+            tabTitle: (p) => `Go to the «${p.title}» tab`,
+        },
         unavailable: 'Unavailable',
         recheck: 'Click to check again.',
         docker: {

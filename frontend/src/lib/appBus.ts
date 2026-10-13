@@ -75,3 +75,47 @@ export function onModelServersChanged(handler: () => void): () => void {
     window.addEventListener(MODEL_SERVERS_CHANGED, handler)
     return () => window.removeEventListener(MODEL_SERVERS_CHANGED, handler)
 }
+
+// Abrir una conversación del Chat de IA en una pestaña, o una ventana de chat
+// nueva.
+//
+// Lo piden la barra lateral «IA» (Abrir una sesión activa), el historial del
+// propio chat («Abrir en una pestaña nueva») y el atajo Cmd/Ctrl+Mayús+N; lo
+// atiende Workspace, que es quien sabe qué pestañas hay. Si la conversación ya
+// está a la vista en alguna pestaña se lleva al frente esa en vez de duplicarla.
+export interface OpenAiChatRequest {
+    // Conversación a abrir (id del historial). Sin ella, `newWindow` abre un
+    // chat vacío y, si tampoco está, se lleva al frente el Chat de IA.
+    chatId?: string
+    newWindow?: boolean
+    // Con `newWindow` y sin `chatId`: la pestaña nueva nace ya dividida en dos
+    // paneles («Nuevo chat dividido»).
+    split?: boolean
+}
+
+const OPEN_AI_CHAT = 'mini-tools:open-ai-chat'
+
+export function requestOpenAiChat(req: OpenAiChatRequest = {}): void {
+    window.dispatchEvent(new CustomEvent<OpenAiChatRequest>(OPEN_AI_CHAT, {detail: req}))
+}
+
+export function onOpenAiChatRequest(handler: (req: OpenAiChatRequest) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<OpenAiChatRequest>).detail)
+    window.addEventListener(OPEN_AI_CHAT, listener)
+    return () => window.removeEventListener(OPEN_AI_CHAT, listener)
+}
+
+// Mostrar el módulo «IA» de la barra lateral (con su lista «Activas»). Lo pide el
+// aviso «sigue trabajando en segundo plano» que sale al cerrar la pestaña de un
+// chat que no terminó; lo atiende Workspace, que es quien sabe qué módulo está a
+// la vista y si la barra está plegada.
+const SHOW_AI_MODULE = 'mini-tools:show-ai-module'
+
+export function requestShowAiModule(): void {
+    window.dispatchEvent(new Event(SHOW_AI_MODULE))
+}
+
+export function onShowAiModuleRequest(handler: () => void): () => void {
+    window.addEventListener(SHOW_AI_MODULE, handler)
+    return () => window.removeEventListener(SHOW_AI_MODULE, handler)
+}

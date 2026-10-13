@@ -33,6 +33,11 @@ import (
 const (
 	envHookActive = "MINITOOLS_HOOK_APPROVE"
 	envHookSocket = "MINITOOLS_HOOK_APPROVE_SOCKET"
+	// envHookSession es la sesión de chat dueña del proceso del CLI. El CLI
+	// lanza el hook como hijo y le pasa su entorno entero, así que lo que se
+	// pone en el entorno del turno llega solo — la misma herencia de la que ya
+	// depende el socket.
+	envHookSession = "MINITOOLS_HOOK_APPROVE_SESSION"
 )
 
 // IsHookInvocation informa si este proceso fue re-ejecutado como hook de
@@ -44,6 +49,17 @@ func IsHookInvocation() bool {
 // HookEnv son las variables con las que se lanza el re-exec como hook.
 func HookEnv(socketPath string) []string {
 	return []string{envHookActive + "=1", envHookSocket + "=" + socketPath}
+}
+
+// HookEnvFor es HookEnv más la sesión de chat a la que pertenece el CLI que se
+// lanza: así la pregunta del hook llega rotulada con su chat (Request.SessionID)
+// y el diálogo global puede decir de quién es aunque la pestaña esté cerrada.
+func HookEnvFor(socketPath, sessionID string) []string {
+	env := HookEnv(socketPath)
+	if sessionID != "" {
+		env = append(env, envHookSession+"="+sessionID)
+	}
+	return env
 }
 
 // hookInput es lo que el CLI manda por stdin. Se leen solo los campos que
@@ -79,10 +95,11 @@ func HookMain() {
 	summary, detail := Describe(input)
 
 	d := Ask(socket, Request{
-		Tool:    in.ToolName,
-		Input:   input,
-		Summary: summary,
-		Detail:  detail,
+		Tool:      in.ToolName,
+		Input:     input,
+		Summary:   summary,
+		Detail:    detail,
+		SessionID: os.Getenv(envHookSession),
 	})
 
 	reason := d.Reason

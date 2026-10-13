@@ -36,6 +36,12 @@ export default {
         tabLanguage: 'Lenguaje de la pestaña',
         newTitle: 'Abre una pestaña nueva en blanco para escribir un query sin guardarlo todavía',
         new: 'Nueva',
+        newMenu: 'Más opciones para abrir una pestaña nueva',
+        newMenuTitle: 'Elegí qué abrir en una pestaña nueva: una consulta SQL en blanco o un Chat de IA.',
+        newQuery: 'Consulta SQL',
+        newAiChat: 'Chat de IA',
+        newAiChatTitle: (p: {shortcut: string}) =>
+            `Abre una pestaña de Chat de IA nueva, con su propio proyecto, proveedor y conversación (${p.shortcut}). Las conversaciones que ya corren en otras pestañas siguen donde están.`,
         openTitle: 'Abre un archivo .sql desde tu disco en una nueva pestaña del editor',
         open: 'Abrir',
     },

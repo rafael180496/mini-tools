@@ -53,28 +53,59 @@ var llmApprovalSeq atomic.Uint64
 // dos últimas DENIEGAN: el silencio no es un sí, y la goroutine del turno no
 // puede quedar esperando un clic que ya no va a llegar.
 func (a *App) askApprovalCtx(ctx context.Context, req agentapprove.Request) agentapprove.Decision {
-	emit := a.approvalEmit
-	if emit == nil {
-		emit = func(event string, data any) { runtime.EventsEmit(a.ctx, event, data) }
+	return a.askApprovalWith(ctx, req, agentapprove.Timeout, a.approvalEmitter())
+}
+
+// approvalEmitter es el publicador de los eventos de permiso: el runtime de
+// Wails, o el que inyectan los tests.
+func (a *App) approvalEmitter() func(event string, data any) {
+	if a.approvalEmit != nil {
+		return a.approvalEmit
 	}
-	return a.askApprovalWith(ctx, req, agentapprove.Timeout, emit)
+	return func(event string, data any) { runtime.EventsEmit(a.ctx, event, data) }
 }
 
 // askApprovalWith es la lógica con el emisor y el plazo inyectados: separado
 // para probarlo sin el contexto de Wails (ver runCollection).
+//
+// La pregunta se rotula con su sesión —la del ctx del turno, o la que ya traía
+// (hook de un CLI)— y con el título y el agente que el registro conoce, y
+// queda anotada en approveReqs mientras espera: es lo que lista
+// ListPendingApprovals para una interfaz que se monta después. Mientras
+// espera, la sesión figura como awaiting_approval.
 func (a *App) askApprovalWith(ctx context.Context, req agentapprove.Request, timeout time.Duration, emit func(event string, data any)) agentapprove.Decision {
-	req.ID = fmt.Sprintf("llm-approve-%d", llmApprovalSeq.Add(1))
+	// El canal de los CLIs ya asigna su id (approve-N); las preguntas de los
+	// servidores de modelos lo reciben acá.
+	if req.ID == "" {
+		req.ID = fmt.Sprintf("llm-approve-%d", llmApprovalSeq.Add(1))
+	}
+	if req.SessionID == "" {
+		req.SessionID = agentchat.SessionIDFromContext(ctx)
+	}
+	if a.agentChats != nil && req.SessionID != "" {
+		if title, label, ok := a.agentChats.SessionMeta(req.SessionID); ok {
+			req.Title, req.AgentLabel = title, label
+		}
+		a.agentChats.BeginApproval(req.SessionID, req.ID)
+		defer a.agentChats.EndApproval(req.SessionID, req.ID)
+	}
+	req.CreatedAt = time.Now().UnixMilli()
 	reply := make(chan agentapprove.Decision, 1)
 
 	a.approveMu.Lock()
 	if a.approvePending == nil {
 		a.approvePending = map[string]chan agentapprove.Decision{}
 	}
+	if a.approveReqs == nil {
+		a.approveReqs = map[string]agentapprove.Request{}
+	}
 	a.approvePending[req.ID] = reply
+	a.approveReqs[req.ID] = req
 	a.approveMu.Unlock()
 	defer func() {
 		a.approveMu.Lock()
 		delete(a.approvePending, req.ID)
+		delete(a.approveReqs, req.ID)
 		a.approveMu.Unlock()
 	}()
 

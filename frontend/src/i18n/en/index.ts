@@ -20,6 +20,7 @@ import notes from './notes'
 import agent from './agent'
 import utilities from './utilities'
 import models from './models'
+import aiSessions from './aiSessions'
 
 const en: Messages<typeof es> = {
     common,
@@ -42,5 +43,6 @@ const en: Messages<typeof es> = {
     agent,
     utilities,
     models,
+    aiSessions,
 }
 export default en

@@ -16,7 +16,7 @@ import ExportMenu from './results/ExportMenu'
 import {useSqlTarget} from './results/useSqlTarget'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
-import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
+import EditorTabs, {EditorTab, TabLanguage, type AgentTabStatus} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
 import NotesTree from './notes/NotesTree'
@@ -34,6 +34,7 @@ import type {PaneHost} from './sftp/types'
 import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
 import AgentChatHost, {AgentChatButton, type AgentDock} from './agent/AgentChatHost'
+import AgentSessionsHost from './agent/AgentSessionsHost'
 import LocalTerminalTab from './terminal/LocalTerminalTab'
 import {NO_CONTEXT, UTILITIES_CHAT_OWNER, type WorkContext} from './agent/workContext'
 import GitRepoTree from './git/GitRepoTree'
@@ -46,6 +47,7 @@ import {
     CancelMongoQuery,
     CancelQuery,
     CancelRedisCommand,
+    CloseAgentSession,
     CommitTransaction,
     CreateFolder,
     DeleteConnection,
@@ -114,6 +116,7 @@ import type {ParamDraftMap} from './editor/QueryParamsDialog'
 import Sidebar from './sidebar/Sidebar'
 import type {SidebarModuleId} from './sidebar/SidebarMasterMenu'
 import UtilitiesTree from './utilities/UtilitiesTree'
+import AiSessionsTree from './sidebar/AiSessionsTree'
 import type {UtilityId} from './utilities/utilities'
 import type {DockerSection} from './utilities/docker/sections'
 import {DEFAULT_EDITOR_APPEARANCE, editorAppearanceFromSettings, type EditorAppearance} from '../codemirror/editorAppearance'
@@ -122,7 +125,9 @@ import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
-import {onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, type SettingsSectionRequest} from '../lib/appBus'
+import {onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiModuleRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
+import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatPanes} from '../lib/aiChatTabs'
+import {announceBackgroundChats, attentionCount, isLive, sessionsOfChats, useAgentSessions, useHiddenSessions, type AgentSessionInfo} from '../lib/agentSessions'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
 import {errorCode, formatNumber, t as tr, useT} from '../i18n'
@@ -512,6 +517,32 @@ export default function Workspace({
     const [gitMatches, setGitMatches] = useState<number | null>(null)
     const [notesMatches, setNotesMatches] = useState<number | null>(null)
     const [utilitiesMatches, setUtilitiesMatches] = useState<number | null>(null)
+    const [aiMatches, setAiMatches] = useState<number | null>(null)
+    // Las sesiones de IA que siguen vivas. La insignia del módulo «IA» cuenta las
+    // que trabajan y las que esperan un permiso: es lo que dice, desde cualquier
+    // otro módulo, que hay algo que atender.
+    const agentSessions = useAgentSessions()
+    const hiddenAgentSessions = useHiddenSessions()
+    const aiAttention = useMemo(() => attentionCount(agentSessions, hiddenAgentSessions), [agentSessions, hiddenAgentSessions])
+    // Por pestaña de Chat de IA: si alguna de sus conversaciones trabaja, espera
+    // un permiso o terminó sin leer. Se cruza lo que declara cada panel (qué
+    // conversaciones tiene) con el estado que informa el backend.
+    const aiPanes = useAiChatPanes()
+    const agentTabStatus = useMemo(() => {
+        const rank: Record<AgentTabStatus, number> = {approval: 3, running: 2, unread: 1}
+        const out: Record<string, AgentTabStatus> = {}
+        for (const [paneId, ids] of Object.entries(aiPanes)) {
+            const tabId = tabOfPane(paneId)
+            for (const id of ids) {
+                const sess = agentSessions.find((x) => x.sessionId === id || x.chatId === id)
+                if (!sess) continue
+                const st: AgentTabStatus | null =
+                    sess.status === 'awaiting_approval' ? 'approval' : sess.status === 'running' ? 'running' : sess.unread ? 'unread' : null
+                if (st && rank[st] > (out[tabId] ? rank[out[tabId]] : 0)) out[tabId] = st
+            }
+        }
+        return out
+    }, [aiPanes, agentSessions])
 
     const clearSidebarFilter = useCallback(() => setSidebarFilter(''), [])
 
@@ -573,8 +604,22 @@ export default function Workspace({
                 hint: t.workspace.modules.utilitiesHint,
                 matchCount: utilitiesMatches,
             },
+            {
+                id: 'ai' as const,
+                icon: 'smart_toy',
+                label: t.aiSessions.module.label,
+                hint: t.aiSessions.module.hint,
+                matchCount: aiMatches,
+                badge: {
+                    count: aiAttention.running + aiAttention.approval,
+                    title: t.aiSessions.module.badgeTitle(aiAttention),
+                    // Ámbar si algo espera una decisión tuya; el color de
+                    // marca si sólo está trabajando.
+                    tone: aiAttention.approval > 0 ? ('tertiary' as const) : ('primary' as const),
+                },
+            },
         ],
-        [connectionsMatches, sshMatches, gitMatches, notesMatches, utilitiesMatches, t],
+        [connectionsMatches, sshMatches, gitMatches, notesMatches, utilitiesMatches, aiMatches, aiAttention, t],
     )
 
     // Schema metadata cached per connection id — shared by the sidebar tree
@@ -1120,6 +1165,24 @@ export default function Workspace({
             }),
         [],
     )
+    // Abrir una conversación del Chat de IA, o una ventana nueva (la barra
+    // lateral «IA», el historial, Cmd/Ctrl+Mayús+N).
+    useEffect(() => onOpenAiChatRequest((req) => openAiChatRef.current(req)), [])
+    // «Ver» del aviso «sigue trabajando en segundo plano»: muestra el módulo «IA»
+    // (con su lista «Activas»), desplegando la barra si estaba plegada.
+    const sidebarCollapsedRef = useRef(false)
+    useEffect(
+        () =>
+            onShowAiModuleRequest(() => {
+                setActiveModule('ai')
+                void SetSidebarModule('ai')
+                if (sidebarCollapsedRef.current) {
+                    setSidebarCollapsed(false)
+                    void SetSidebarCollapsed(false)
+                }
+            }),
+        [],
+    )
     // La sección pedida vale para UNA apertura: la próxima vez que se abra
     // Configuración con el engranaje vuelve a la de siempre.
     useEffect(() => {
@@ -1201,6 +1264,7 @@ export default function Workspace({
     const [pageSize, setPageSize] = useState(500)
     const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    sidebarCollapsedRef.current = sidebarCollapsed
     // Ancho arrastrado de la barra, mismo trato que el alto del editor: se
     // persiste una vez al soltar, no en cada movimiento del puntero.
     const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
@@ -2770,8 +2834,90 @@ export default function Workspace({
         openUtility('docker')
     }
 
+    // --- Chat de IA: varias pestañas, cada una con sus conversaciones ---------
+    //
+    // A diferencia del resto de las utilidades (una sola pestaña por
+    // herramienta), el Chat de IA admite varias: cada una con su proyecto,
+    // proveedor y sesión, y varias pueden estar trabajando a la vez. Cerrar una
+    // NO corta sus turnos: la sesión vive en el backend y sigue en el módulo «IA»
+    // de la barra lateral, desde donde se retoma.
+    //
+    // Una conversación no se abre dos veces: si ya está a la vista en algún
+    // panel, se lleva al frente ese en lugar de duplicarla.
+    const aiChatTokenRef = useRef(0)
+    const openAiChatRef = useRef<(req: OpenAiChatRequest) => void>(() => {})
+    openAiChatRef.current = openAiChat
+    function openAiChat(req: OpenAiChatRequest = {}) {
+        const aiTabs = tabsRef.current.filter((t) => t.kind === 'utility' && t.utilityId === 'aiChat')
+        if (req.chatId) {
+            const token = ++aiChatTokenRef.current
+            const owner = paneOwningChat(req.chatId)
+            if (owner) {
+                const tabId = tabOfPane(owner)
+                const pane = owner.endsWith('#b') ? 2 : 1
+                setTabs((prev) =>
+                    prev.map((t) => (t.id === tabId ? {...t, aiChat: {...t.aiChat, openRequest: {chatId: req.chatId!, token, pane}}} : t)),
+                )
+                setActiveTabId(tabId)
+                return
+            }
+            // Sin pestaña que la tenga: va a una vacía-nueva si se pidió ventana
+            // nueva o no hay ninguna; si no, a la primera que ya existe.
+            const target = req.newWindow ? null : aiTabs[0]
+            if (target) {
+                setTabs((prev) =>
+                    prev.map((t) => (t.id === target.id ? {...t, aiChat: {...t.aiChat, openRequest: {chatId: req.chatId!, token, pane: 1}}} : t)),
+                )
+                setActiveTabId(target.id)
+                return
+            }
+            newAiChatTab({chatId: req.chatId, token, pane: 1})
+            return
+        }
+        if (req.newWindow || aiTabs.length === 0) {
+            newAiChatTab(undefined, req.split)
+            return
+        }
+        const active = aiTabs.find((t) => t.id === activeTabIdRef.current) ?? aiTabs[0]
+        setActiveTabId(active.id)
+    }
+    function newAiChatTab(openRequest?: {chatId: string; token: number; pane: 1 | 2}, split?: boolean) {
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: tr().utilities.tools.aiChat.name,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: null,
+            language: 'sql',
+            kind: 'utility',
+            utilityId: 'aiChat',
+            aiChat: openRequest || split ? {openRequest, split: split || undefined} : undefined,
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+    function setAiChatTabTitle(tabId: string, title: string) {
+        const next = title.trim() || tr().utilities.tools.aiChat.name
+        setTabs((prev) => (prev.some((t) => t.id === tabId && t.title !== next) ? prev.map((t) => (t.id === tabId ? {...t, title: next} : t)) : prev))
+    }
+    function toggleAiChatSplit(tabId: string) {
+        // Cerrar el segundo panel tampoco cierra sus chats: se avisa como al
+        // cerrar una pestaña.
+        const tab = tabsRef.current.find((x) => x.id === tabId)
+        if (tab?.aiChat?.split) announceBackgroundChats(chatsOfTab(tabId, true))
+        setTabs((prev) => prev.map((t) => (t.id === tabId ? {...t, aiChat: {...t.aiChat, split: !t.aiChat?.split}} : t)))
+    }
+    // El panel del Chat de IA donde está el foco, por pestaña. En una pestaña
+    // dividida los dos paneles escuchan el teclado y sólo uno debe responder.
+    const [aiFocusedPane, setAiFocusedPane] = useState<Record<string, 1 | 2>>({})
+
     openUtilityRef.current = openUtility
     function openUtility(id: UtilityId) {
+        if (id === 'aiChat') {
+            openAiChat()
+            return
+        }
         const existing = tabs.find((t) => t.kind === 'utility' && t.utilityId === id)
         if (existing) {
             setActiveTabId(existing.id)
@@ -3161,7 +3307,33 @@ export default function Workspace({
 
     const closeTabRef = useRef<(id: string) => void>(() => {})
     closeTabRef.current = closeTab
-    function closeTab(id: string) {
+    // «Cerrar y detener el chat» en una pestaña de Chat de IA: cierra de verdad
+    // todas las conversaciones que muestra (corta lo que corra, las saca de
+    // «Activas» y suelta la memoria del modelo; el historial guardado queda) y
+    // después la pestaña. Con algo corriendo pide confirmación.
+    const [closeForReal, setCloseForReal] = useState<{tabId: string; chatIds: string[]; running: AgentSessionInfo[]} | null>(null)
+    async function finishCloseForReal(tabId: string, chatIds: string[]) {
+        await Promise.allSettled(chatIds.map((cid) => CloseAgentSession(cid)))
+        closeTab(tabId, {silent: true})
+    }
+    function requestCloseAiTabForReal(tabId: string) {
+        const chatIds = chatsOfTab(tabId)
+        const running = sessionsOfChats(chatIds).filter(isLive)
+        if (running.length > 0) setCloseForReal({tabId, chatIds, running})
+        else void finishCloseForReal(tabId, chatIds)
+    }
+    function closeTab(id: string, opts?: {silent?: boolean}) {
+        // Cerrar la pestaña de un Chat de IA NO cierra el chat: sus turnos siguen
+        // en el backend y la conversación queda abierta en segundo plano (en
+        // IA → Activas) hasta que alguien la cierre de verdad. Nada se cancela
+        // acá ni se pide confirmación; si algo seguía trabajando, un aviso dice
+        // dónde encontrarlo y ofrece verlo o detenerlo. El aviso de que la
+        // pestaña ya no lo muestra (DetachAgentSession) sale solo del registro
+        // de paneles (lib/aiChatTabs) cuando la pestaña se desmonta.
+        const closingTab = tabsRef.current.find((x) => x.id === id)
+        if (!opts?.silent && closingTab?.kind === 'utility' && closingTab.utilityId === 'aiChat') {
+            announceBackgroundChats(chatsOfTab(id))
+        }
         // Cerrar una pestaña con una consulta corriendo la CANCELA. Ahora que
         // una ejecución sobrevive a irse a otra pestaña, cerrar la suya es la
         // única acción que la deja sin ningún lado donde mostrarse: seguiría
@@ -3225,6 +3397,12 @@ export default function Workspace({
             // una petición HTTP o una nota abría «Guardar .sql», y un
             // Ctrl+Enter corría la línea del editor escondido. Las otras
             // pestañas tienen sus propios atajos.
+            // Cmd/Ctrl+Mayús+N: otra ventana de Chat de IA, desde donde sea.
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+                e.preventDefault()
+                openAiChatRef.current({newWindow: true})
+                return
+            }
             const kind = tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.kind
             const onEditor = kind === 'editor' || kind === 'remote-file'
             if ((e.metaKey || e.ctrlKey) && !e.altKey && ['enter', 's', 'i'].includes(e.key.toLowerCase())) {
@@ -3378,6 +3556,7 @@ export default function Workspace({
                 onToggleTheme={onToggleTheme}
                 onOpenSettings={() => setShowSettingsDialog(true)}
                 bodies={{
+                    ai: <AiSessionsTree filter={sidebarFilter} onMatchCount={setAiMatches} visible={activeModule === 'ai' && !sidebarCollapsed} />,
                     utilities: (
                         <UtilitiesTree
                             openIds={new Set(tabs.filter((t) => t.kind === 'utility' && t.utilityId).map((t) => t.utilityId as UtilityId))}
@@ -3386,6 +3565,13 @@ export default function Workspace({
                             docker={{section: dockerSection, counts: dockerOpen ? dockerCounts : null}}
                             onOpenDockerSection={(s) => void openDockerSection(s)}
                             unavailable={unavailableUtilities}
+                            aiChat={{
+                                tabs: tabs.filter((t) => t.kind === 'utility' && t.utilityId === 'aiChat').map((t) => ({id: t.id, title: t.title})),
+                                activeTabId: activeTabData?.kind === 'utility' && activeTabData.utilityId === 'aiChat' ? activeTabData.id : null,
+                                onFocusTab: setActiveTabId,
+                                onNewTab: () => openAiChat({newWindow: true}),
+                                onNewSplit: () => openAiChat({newWindow: true, split: true}),
+                            }}
                             filter={sidebarFilter}
                             onMatchCount={setUtilitiesMatches}
                         />
@@ -3646,13 +3832,16 @@ export default function Workspace({
                     connections={connections}
                     onSelect={setActiveTabId}
                     onClose={closeTab}
+                    onCloseAiChatForReal={requestCloseAiTabForReal}
                     onNew={newTab}
+                    onNewAiChat={() => openAiChat({newWindow: true})}
                     onReorder={reorderTabs}
                     onChangeTabConnection={changeTabConnection}
                     onChangeTabLanguage={changeTabLanguage}
                     onOpenFile={() => void openFileDialog()}
                     onOpenRecentFile={(path) => void openRecentFile(path)}
                     runningIds={runningTabIds}
+                    agentStatus={agentTabStatus}
                 />
 
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
@@ -4297,7 +4486,40 @@ export default function Workspace({
                                 {t.utilityId === 'portKiller' && <PortKillerTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'activityMonitor' && <ActivityMonitorTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'docker' && <DockerTab visible={activeTabId === t.id} section={dockerSection} onCounts={setDockerCounts} />}
-                                {t.utilityId === 'aiChat' && <AiChatTab visible={activeTabId === t.id} />}
+                                {t.utilityId === 'aiChat' && (
+                                    <>
+                                        <div
+                                            className="flex min-w-0 flex-1"
+                                            onFocusCapture={() => setAiFocusedPane((p) => (p[t.id] === 1 ? p : {...p, [t.id]: 1}))}
+                                        >
+                                            <AiChatTab
+                                                visible={activeTabId === t.id}
+                                                paneId={t.id}
+                                                openRequest={t.aiChat?.openRequest?.pane === 2 ? null : (t.aiChat?.openRequest ?? null)}
+                                                onTitleChange={(title) => setAiChatTabTitle(t.id, title)}
+                                                split={!!t.aiChat?.split}
+                                                onToggleSplit={() => toggleAiChatSplit(t.id)}
+                                                shortcutsEnabled={!t.aiChat?.split || (aiFocusedPane[t.id] ?? 1) === 1}
+                                            />
+                                        </div>
+                                        {t.aiChat?.split && (
+                                            <div
+                                                className="flex min-w-0 flex-1 border-l border-outline-variant"
+                                                onFocusCapture={() => setAiFocusedPane((p) => (p[t.id] === 2 ? p : {...p, [t.id]: 2}))}
+                                            >
+                                                <AiChatTab
+                                                    visible={activeTabId === t.id}
+                                                    paneId={secondPaneId(t.id)}
+                                                    openRequest={t.aiChat?.openRequest?.pane === 2 ? t.aiChat.openRequest : null}
+                                                    split
+                                                    secondary
+                                                    onToggleSplit={() => toggleAiChatSplit(t.id)}
+                                                    shortcutsEnabled={(aiFocusedPane[t.id] ?? 1) === 2}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                                 {t.utilityId === 'modelManager' && <ModelManagerTab visible={activeTabId === t.id} />}
                             </Suspense>
                         </div>
@@ -4705,6 +4927,11 @@ export default function Workspace({
                 )}
             </AgentChatHost>
 
+            {/* Permisos y avisos de las sesiones de IA, de TODAS las conversaciones:
+                el permiso de un agente que trabaja en una pestaña cerrada o en
+                otro módulo tiene que poder contestarse desde acá. */}
+            <AgentSessionsHost />
+
             {connectionDialog && (
                 <Suspense fallback={null}>
                     <ConnectionDialog
@@ -4790,6 +5017,19 @@ export default function Workspace({
                 <RestoreVaultDialog onRestored={onLocked} onClose={() => setShowRestoreDialog(false)} />
             )}
 
+            {closeForReal && (
+                <ConfirmDialog
+                    title={t.aiSessions.tabs.closeForRealConfirm.title}
+                    description={t.aiSessions.tabs.closeForRealConfirm.description({
+                        n: closeForReal.running.length,
+                        title: closeForReal.running[0]?.title || t.aiSessions.sidebar.untitled,
+                    })}
+                    confirmLabel={t.aiSessions.tabs.closeForRealConfirm.confirm}
+                    danger
+                    onConfirm={() => void finishCloseForReal(closeForReal.tabId, closeForReal.chatIds)}
+                    onClose={() => setCloseForReal(null)}
+                />
+            )}
             {pendingRedisCommandRun && activeTabConnection && (
                 <ConfirmDialog
                     title={t.workspace.dialogs.destructiveTitle}

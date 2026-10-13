@@ -135,6 +135,14 @@ type Event struct {
 	MCPServers []string `json:"mcpServers,omitempty"`
 	// Error acompaña a KindError.
 	Error string `json:"error,omitempty"`
+	// Seq numera los eventos que el Manager publica: crece de a uno por
+	// evento, es único en todo el proceso y por lo tanto monótono dentro de
+	// cada sesión (con saltos si otra sesión emite en el medio). Lo asigna el
+	// Manager, no los adaptadores. Es lo que deja re-engancharse a una sesión
+	// que siguió corriendo sin su pestaña: AgentSessionReplay devuelve los
+	// eventos del turno hasta un seq, y los eventos en vivo con seq <= ese se
+	// ignoran. Ver registry.go.
+	Seq int64 `json:"seq"`
 }
 
 // EmitFunc publica un evento hacia el frontend. Mismo tipo de indirección que

@@ -36,6 +36,12 @@ const en: Messages<typeof es> = {
         tabLanguage: 'Tab language',
         newTitle: 'Opens a new blank tab to write a query without saving it yet',
         new: 'New',
+        newMenu: 'More ways to open a new tab',
+        newMenuTitle: 'Pick what to open in a new tab: a blank SQL query or an AI Chat.',
+        newQuery: 'SQL query',
+        newAiChat: 'AI Chat',
+        newAiChatTitle: (p) =>
+            `Opens a new AI Chat tab, with its own project, provider and conversation (${p.shortcut}). Conversations already running in other tabs stay where they are.`,
         openTitle: 'Opens a .sql file from your disk in a new editor tab',
         open: 'Open',
     },

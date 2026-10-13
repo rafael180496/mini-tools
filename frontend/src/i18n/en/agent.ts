@@ -152,6 +152,7 @@ const en: Messages<typeof es> = {
             `${p.agent} will create and edit files in the working project without asking you again, for this whole chat session. Every command it wants to run will still ask you first. In a git repository changes stay in the working tree: you see them in Changes and discard them from there; in a folder without git there is no automatic way back.`,
         allowAutoDescriptionLlm: (p) =>
             `${p.agent} will edit and create files and run commands in the working project without asking you, for this whole chat session. Only risky commands (rm -rf, git push, git reset --hard, sudo…) ask for your permission. Files are confined to the project, but a command runs with your permissions and can affect things outside it. If the project is a folder without git there is no automatic way back. You're asked this time; after that it's remembered for this project.`,
+        replayTrimmed: 'You picked up a turn in progress: the beginning of this answer is no longer available (start trimmed).',
         approval: {
             title: (p) => `Allow ${p.tool}?`,
             titleRisky: (p) => `Risky command (${p.tool})`,
@@ -166,6 +167,12 @@ const en: Messages<typeof es> = {
             allowTitle: 'Lets the agent run this action, once',
             allowRisky: 'Allow anyway',
             allowRiskyTitle: 'Runs this risky command at your own risk. It only applies this once.',
+            // When the request comes from a conversation you are NOT looking at.
+            origin: (p: {title: string}) => `Requested by the conversation «${p.title}», which is not in view.`,
+            originUntitled: 'Requested by a conversation that is not in view.',
+            openConversation: 'Open conversation',
+            openConversationTitle: 'Goes to the conversation that asks, so you can see the context before deciding. The request keeps waiting for your answer.',
+            queue: (p: {n: number}) => (p.n === 1 ? '1 more request is waiting' : `${p.n} more requests are waiting`),
         },
         toolCard: {
             openNote: 'Open note',
@@ -233,6 +240,7 @@ const en: Messages<typeof es> = {
             enqueue: 'Queue the message',
             search: 'Search the conversation',
             reset: 'Reset the conversation',
+            closeChat: 'Close the chat',
             jumpLatest: 'Jump to the latest message',
             copyMessage: 'Copy the message',
         },
@@ -295,7 +303,8 @@ const en: Messages<typeof es> = {
         busyPlaceholder: (p) => `${p.agent} is working — type and Enter queues it for when it finishes`,
         placeholder: (p) => `Ask ${p.agent}… (Enter sends, Shift+Enter adds a line)`,
         enqueueTitle: 'Queues this message: it goes out on its own when the current turn ends',
-        stopTitle: "Stops the current turn. Anything queued doesn't go out on its own: it waits, with a button to send it.",
+        stopTitle: "Stop: cuts the current turn and keeps the chat open. Anything queued doesn't go out on its own: it waits, with a button to send it. To end the chat for good, use «Close chat».",
+        closeChatTitle: 'Close chat: stops whatever is running, removes it from AI → Active and frees its memory. The conversation stays in the history and can be opened again. Closing the tab, on the other hand, does NOT close the chat.',
         sendTitle: 'Send the message (Enter)',
     },
     host: {

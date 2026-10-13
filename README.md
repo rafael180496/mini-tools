@@ -1,18 +1,18 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.9.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
-![Binario](https://img.shields.io/badge/binario-50MB-success)
+![Binario](https://img.shields.io/badge/binario-78MB-success)
 ![Sin telemetría](https://img.shields.io/badge/telemetr%C3%ADa-ninguna-informational)
 [![Documentación](https://img.shields.io/badge/documentaci%C3%B3n-leer%20online-6750A4)](https://rafael180496.github.io/mini-tools/)
 
-### Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.
+### Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de menos de 80 MB.
 
 Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en tu máquina y nada saliendo a ningún lado.
 
-**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · HTTP · SSH · SFTP · Git · Claude Code · Codex · Antigravity**
+**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · HTTP · SSH · SFTP · Git · Claude Code · Codex · Antigravity · Ollama · Anthropic**
 
 📖 **[Documentación completa →](https://rafael180496.github.io/mini-tools/)** — qué hace cada módulo,
 ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nunca la usaste
@@ -23,6 +23,43 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 </p>
 
 ---
+
+## Novedades — 2.10.0
+
+**La versión de los modelos propios y los chats que no se detienen.** Ollama,
+cualquier servidor compatible con OpenAI y las APIs en la nube se administran en
+un solo lugar, conversan con herramientas sobre tus archivos y notas, y varios
+chats pueden trabajar a la vez en segundo plano.
+
+- **Proveedores de IA.** Ollama (local o en otra máquina), LM Studio, vLLM,
+  llama.cpp y APIs en la nube —OpenRouter, OpenAI, **Anthropic con su SDK
+  oficial**, Groq, DeepSeek, Mistral, Together, xAI, Gemini— en una utilidad que
+  los agrupa en Locales, Remotos y Nube: se activan, se ordenan, tienen modelo por
+  defecto y su propio consumo. Tokens y cabeceras cifrados, certificados
+  autofirmados, punto de estado y ventana de contexto por servidor.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-modelos)
+- **Agente de código local.** Un modelo propio lee y edita archivos y corre
+  comandos en un **proyecto** (un repositorio o cualquier carpeta) con los modos
+  de permiso que elijas; los comandos de riesgo preguntan siempre. Carga solo el
+  `AGENTS.md`/`CLAUDE.md` y las skills del proyecto, y puede escribir notas en tu
+  **cerebro** si se lo permitís.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-agente-local)
+- **Chat de IA a pantalla completa, con historial cifrado y buscable** para
+  cualquier proveedor, **adjuntos** (imágenes, PDF, texto y código) y descargar
+  o borrar modelos de un Ollama sin abrir una terminal.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#utilidades-chat-ia)
+- **Varios chats a la vez, en segundo plano.** Cerrar la pestaña no corta un
+  turno; el módulo **IA** de la barra lateral muestra cuáles trabajan o esperan
+  tu aprobación, y los permisos llegan como una tarjeta que nombra la
+  conversación que los pide.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-sesiones)
+- **Git rehecho.** Una sola barra con selector rápido de ramas, un panel de
+  trabajo (Historial, Cambios, Stash, Archivos), un diff compacto y las ramas,
+  remotos, tags y stashes en un único árbol en la barra lateral.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#git-trabajo)
+
+El vault suma migraciones aditivas (57 a 64): una instalación de la 2.9.0 abre y
+migra sola. Todo el detalle en el [CHANGELOG](CHANGELOG.md).
 
 ## Novedades — 2.9.0
 
@@ -641,8 +678,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.9.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.9.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Esta versión todavía no se probó en una Windows real, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.10.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Probada en Windows 10 y 11, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -672,6 +709,11 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **Consumo y plan desde el chat**, no solo desde Git: lo de esta conversación arriba, y debajo cada CLI de los últimos 30 días con su reparto por modelo.
 - **Elegir el proveedor para un análisis puntual** (plan de ejecución, error de terminal) sin cambiar el agente activo de la app.
 - **Contexto del módulo en cada conversación**: la del editor SQL lleva adjunta la consulta que estás escribiendo; la de una terminal, sus últimas líneas.
+- **Servidores de modelos y APIs en la nube** como agentes más: Ollama, LM Studio, vLLM, llama.cpp, OpenRouter, OpenAI, Anthropic (SDK oficial)… con token o API key cifrados, cabeceras propias, certificado autofirmado, punto de estado y ventana de contexto; se administran juntos en **Utilidades → Proveedores de IA**.
+- **Agente de código local** sobre un proyecto (repositorio o carpeta): `read_file`, `search`, `glob`, `write_file`, `edit_file`, `run_command` y skills, con modos de permiso y confirmación siempre para los comandos de riesgo; las herramientas corren en tu máquina aunque el modelo esté en otra.
+- **Cerebro**: con tu permiso, el agente anota lo que vale conservar en tus notas, enlazado y etiquetado, sin tocar lo que escribiste vos.
+- **Adjuntos** (imágenes, PDF, texto y código) por clip, arrastre o pegado, con aviso si el modelo elegido no los lee; el historial guarda solo nombre, tipo y tamaño, cifrados.
+- **Varios chats a la vez en segundo plano**, con el módulo **IA** para seguirlos y aprobar permisos sin perder el hilo.
 
 ### Peticiones HTTP
 
@@ -787,7 +829,7 @@ cd mini-tools
 ```bash
 ./scripts/install.sh      # toolchain (Wails CLI si falta) + deps de Go y frontend
 ./scripts/start-dev.sh    # wails dev — backend Go + frontend Vite con hot reload
-./scripts/build.sh        # wails build -clean — build de producción, binario objetivo <80MB
+./scripts/build.sh        # wails build -clean — build de producción, binario objetivo <100MB
 ./scripts/start.sh        # corre el binario ya compilado en build/bin/, sin recompilar
 ./scripts/clean.sh        # borra build/bin + frontend/dist (--all también node_modules y cache de Go)
 ```
@@ -817,11 +859,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.9.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.9.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.10.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.10.0-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.9.0"
-git tag v2.9.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.10.0"
+git tag v2.10.0 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -876,11 +918,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.9.0 |
+| Versión | 2.10.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.9.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0.dmg)** |
-| SHA-256 | `810bebffbcc4add7246a81185ee7f95b04af121a15e3dd0dca3b2fde7b1c040c` |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0.dmg)** |
+| SHA-256 | `bffed948de2049e07e2c91a0617a4720c9c3f04289723c44a4e25dbdcf1967ef` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -892,7 +934,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.9.0 no se corrió todavía en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. La 2.7.0 sí se probó en Windows 10 y 11. Esta versión no trae migraciones del vault, pero sí código específico de Windows nuevo (el módulo **Utilidades**: Liberador de puertos, Monitor de actividad y Docker). Lo que conviene probar primero está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.10.0 se corrió en Windows 10 y Windows 11 reales.** Esta versión suma migraciones aditivas del vault (57 a 64) y código que toca el sistema: el selector nativo de carpeta, arrastrar archivos al chat, el `run_command` del agente de código local (cmd/PowerShell y cierre del grupo de procesos) y los servidores de modelos remotos. Lo que conviene mirar primero si algo falla está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -900,10 +942,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.9.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **no verificado todavía en Windows real** |
-| Archivo | **[⬇ Descargar mini-tools-v2.9.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0-windows-amd64.exe)** |
-| SHA-256 | `565c7ac2169a13972bdc4a4c9252bd2f30c64d4827437184412acd1c5a3c282b` |
+| Versión | 2.10.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **verificado en Windows 10 y 11** |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0-windows-amd64.exe)** |
+| SHA-256 | `792db28b89e185b8c11b4af4de03ee767d37b250c716153713b200865326e17e` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

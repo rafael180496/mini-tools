@@ -144,6 +144,16 @@ func (s *Store) AgentChatExists(id string) (bool, error) {
 	return n > 0, nil
 }
 
+// AgentChatTitle devuelve el título guardado de un chat ("" si no hay fila, no
+// tiene título o no se puede descifrar: es solo un rótulo).
+func (s *Store) AgentChatTitle(id string) string {
+	var enc, nonce []byte
+	if err := s.db.QueryRow(`SELECT encrypted_title, title_nonce FROM agent_chats WHERE id = ?`, id).Scan(&enc, &nonce); err != nil {
+		return ""
+	}
+	return s.decryptOptional(enc, nonce)
+}
+
 // AgentChatIDByConversation devuelve el id del chat que apunta a esa
 // conversación del CLI, o "" si ninguno. Es el puente entre
 // AgentChatHistory(agentID, conversationID) y los mensajes guardados por chat.

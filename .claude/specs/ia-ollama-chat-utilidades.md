@@ -386,6 +386,44 @@ Archivos, imágenes pegadas o arrastradas, texto/código y PDF en **todos** los 
 
 **Costo conocido.** Un seguimiento sobre una imagen («¿y el botón de la esquina?») ya no la ve: hay que volver a adjuntarla. Es la contracara de no reenviar megabytes en cada mensaje.
 
+### Sesiones múltiples y en segundo plano
+
+Varios chats corriendo a la vez (otros proyectos, otros proveedores) y, al cerrar la pestaña de uno, **el turno sigue**: un panel lateral lista las sesiones vivas, permite volver a ver el progreso, detenerlas o dejarlas terminar. Código: `backend/agentchat/registry.go` (registro, búfer de reenganche, difusión), `app_agentsessions.go` (bindings), `app_llmtools.go` / `app_localterm.go` (aprobaciones).
+
+**Nada se cancela al cerrar la pestaña.** El turno vive en una goroutine del `Manager` con un `context.Background()` propio; ningún hook de desmontaje del frontend llama a `CancelAgentChat` (solo lo hacen «Detener», «Nueva conversación» y borrar el chat). Los CLIs siguen como subprocesos, `recordChatEvent` graba el turno al terminar aunque nadie mire, y la memoria de un `llm:` se guarda igual. **Cerrar la app** sí corta todo: `App.shutdown` llama primero a `Manager.Shutdown(3 s)` —cancela cada turno y espera a sus goroutines— **antes** de cerrar el vault, así el error «turno cancelado» de cada uno se graba en su historial y ningún CLI queda huérfano.
+
+**Registro (en memoria, no es otra fuente de verdad).** Por sesión: `sessionId`, `chatId` (hoy `== sessionId`), `agentId`, `agentLabel`, `model`, `mode`, `module`, `contextId`, `title`, `status`, `startedAt` (entrada al registro), `turnStartedAt`, `lastEventAt` (ms Unix), `usage` (tokens del turno cuando se conocen: llegan al terminar), `lastText` (últimos ~200 caracteres del asistente), `pendingApprovalId`, `unread`, `error`. Estados:
+
+| `status` | Cuándo |
+| --- | --- |
+| `running` | turno corriendo (arranca en `Send`) |
+| `awaiting_approval` | corre pero frenado por una o más preguntas de permiso sin contestar |
+| `idle` | terminó bien (`done`) → `unread = true` |
+| `error` | terminó con fallo (`error`, con `error` = mensaje) → `unread = true` |
+| `cancelled` | lo cortó la persona (`Cancel`/`Reset`/cierre de la app) → `unread = false`: lo hizo ella |
+
+Un turno que termina sin evento final (un CLI que se va callado) queda `idle` y sin leer por la red de `finish`. `Reset` (nueva conversación) saca la sesión del registro. El listado trae **turnos vivos + terminados sin leer**; una terminada y leída sigue en el registro 30 minutos (por si se reabre su pestaña y hace falta el replay) y después se descarta; las no leídas y las vivas no caducan.
+
+**Difusión.** Evento `agent-sessions` con el listado completo en cada cambio de estado, vista previa o uso, con tope de ~4 por segundo (la primera sale enseguida; lo que cambia dentro de la ventana se junta en una difusión final, así la última palabra siempre sale). Tras `Shutdown` no se difunde más.
+
+**`seq` y reenganche.** `agentchat.Event` gana `seq` (int64): lo asigna el `Manager` al emitir, crece de a uno por evento y es único en todo el proceso, por lo tanto monótono dentro de cada sesión (con saltos) y a través de turnos. `AgentSessionReplay` devuelve el búfer del turno actual o del último: máximo 3000 eventos / 2 MB aprox., lo que pase se descarta **del principio** (si `events[0]` no es `start`, se perdió el comienzo), y los deltas contiguos de `text` (o de `thinking`) se funden en un solo evento cuyo `seq` es el del último delta. Protocolo (el orden importa, un `Replay` previo a la suscripción pierde los eventos del medio):
+
+1. suscribirse al evento de la sesión (nombre = `sessionId`) y **encolar** lo que llegue;
+2. `AgentSessionReplay(sessionId)`, dibujar esos eventos; `last` = mayor `seq` del replay (0 si vacío);
+3. aplicar lo encolado y lo que siga llegando **ignorando `seq <= last`**.
+
+Una sesión que ya no está en el registro da lista vacía: el historial guardado (`AgentChatMessages`) es la fuente.
+
+**Aprobaciones globales.** `agentapprove.Request` gana `sessionId`, `title`, `agentLabel` (y `createdAt`, ms Unix). El diálogo deja de depender de una pestaña abierta: se monta una vez en la app, escucha `agent-approval` / `agent-approval-dismiss` y al montarse pide `ListPendingApprovals()` por las que ya estaban esperando.
+
+- **Servidor de modelos (`llm:`).** El `ctx` del turno lleva el id de la sesión (`agentchat.WithSessionID`); `askApprovalCtx` lo lee. Título y agente salen del registro.
+- **CLI (Claude Code, hook `PreToolUse`).** El hook es un re-exec que **hereda el entorno del CLI**, y el CLI hereda el del turno: `ApproveEnv` incluye `MINITOOLS_HOOK_APPROVE_SESSION=<sessionId>` (`agentapprove.HookEnvFor`) y `HookMain` lo vuelca en `Request.SessionID`. Si falta la variable (algo que no pasó por `SendAgentChat`) la pregunta se muestra igual con `sessionId` vacío y sin rótulo.
+- Mientras espera, la sesión es `awaiting_approval` con `pendingApprovalId` (la más vieja si hay varias). El plazo sigue siendo **5 minutos, fijo** (vencido se deniega). Corrección de paso: la pregunta de un CLI ahora también vence/se descarta (`agent-approval-dismiss`) por plazo o al cortar el turno; antes su goroutine quedaba esperando y la pregunta seguía en pantalla aunque el hook ya hubiera recibido el «no».
+
+**Abierta en segundo plano: cerrar la pestaña no es cerrar el chat.** Solo para conversaciones de IA (el resto de las pestañas conserva su comportamiento: cerrarlas detiene su trabajo). Tres bindings: `AttachAgentSession(id)` (una pestaña muestra el chat), `DetachAgentSession(id)` (ninguna lo muestra: queda abierto en segundo plano) y `CloseAgentSession(id)` (cierre explícito: `Cancel` + sale del registro + suelta `llmHistory`; el historial del vault no se toca). El frontend los llama solo desde `lib/aiChatTabs.ts`, que diffea la unión de chats de todos los paneles (en orden, encadenado) cada vez que un panel declara o limpia sus chats: así cubre cerrar la pestaña, cerrar el segundo panel y borrar el chat. `AgentSessionInfo` gana `attached` y `detached`. `tabShown` (en `registryState`) recuerda el último aviso aunque aún no exista la entrada (el chat se adjunta al primer mensaje, puede llegar antes que el turno). Un chat `detached` **se lista en cualquier estado** (running/idle/error/cancelled) y, junto con los `attached`, **no caduca** a los 30 min; solo `CloseSession` lo quita. Lo mismo no aplica a una sesión desconocida: `Detach` sin entrada es un no-op. Vocabulario de UI: **Detener** = corta el turno y deja el chat abierto (`CancelAgentChat`); **Cerrar chat** = corta y termina la sesión (`CloseAgentSession`). Entradas: menú del clic derecho de la pestaña de Chat de IA (`EditorTabs`: *Cerrar pestaña (el chat sigue en segundo plano)* / *Cerrar y detener el chat*, con `ConfirmDialog` si alguno corre), fila de IA → Activas (×, ⋯ y clic derecho) y botón en la cabecera de `AgentChat` (`onCloseChat`, solo en la pestaña de Chat de IA). Cerrar una pestaña (o el segundo panel) con un turno vivo muestra el aviso `background` («…sigue trabajando en segundo plano…», *Ver* / *Detener*) sin confirmar. No existe Cmd+W ni «cerrar otras/todas» en las pestañas del editor.
+
+**Lo que NO hace.** Sin notificación del sistema ni título de ventana: `unread` + el evento `agent-sessions` alcanzan para que el frontend muestre un aviso. Sin límite de sesiones concurrentes más allá de lo que aguanten los proveedores. El registro no sobrevive a un reinicio de la app.
+
 ## Contrato de bindings (Go ↔ TS)
 
 ```go

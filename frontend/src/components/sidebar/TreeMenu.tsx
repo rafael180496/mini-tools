@@ -37,10 +37,12 @@ export interface Anchor {
     y: number
 }
 
+const WIDTH = 236
+
 // useTreeMenu devuelve con qué abrir el menú y el elemento a dibujar. Los
 // ítems se arman al abrir, no al dibujar la fila: así una fila no construye
 // quince closures por render para un menú que casi nunca se abre.
-export function useTreeMenu() {
+export function useTreeMenu(width = WIDTH) {
     const [state, setState] = useState<{anchor: Anchor; items: TreeMenuEntry[]} | null>(null)
 
     const openAt = useCallback((e: ReactMouseEvent, items: TreeMenuEntry[]) => {
@@ -59,7 +61,7 @@ export function useTreeMenu() {
 
     const close = useCallback(() => setState(null), [])
 
-    const element = state ? <TreeMenu anchor={state.anchor} items={state.items} onClose={close} /> : null
+    const element = state ? <TreeMenu anchor={state.anchor} items={state.items} width={width} onClose={close} /> : null
     return {openAt, openAtPoint, close, element, isOpen: !!state}
 }
 
@@ -84,9 +86,7 @@ function tidy(entries: TreeMenuEntry[]): TreeMenuEntry[] {
     return out
 }
 
-const WIDTH = 236
-
-function TreeMenu({anchor, items, onClose}: {anchor: Anchor; items: TreeMenuEntry[]; onClose: () => void}) {
+function TreeMenu({anchor, items, width, onClose}: {anchor: Anchor; items: TreeMenuEntry[]; width: number; onClose: () => void}) {
     const t = useT()
     // Pila de niveles: el raíz y, si se entró, el submenú con su título.
     const [stack, setStack] = useState<{title?: string; items: TreeMenuEntry[]}[]>([{items}])
@@ -104,10 +104,10 @@ function TreeMenu({anchor, items, onClose}: {anchor: Anchor; items: TreeMenuEntr
         const el = panelRef.current
         if (!el) return
         const h = el.offsetHeight
-        const left = Math.max(8, Math.min(anchor.x, window.innerWidth - WIDTH - 8))
+        const left = Math.max(8, Math.min(anchor.x, window.innerWidth - width - 8))
         const top = anchor.y + h + 8 > window.innerHeight ? Math.max(8, anchor.y - h) : anchor.y
         setPos({left, top})
-    }, [anchor, stack])
+    }, [anchor, stack, width])
 
     useEffect(() => setFocus(-1), [stack])
 
@@ -164,7 +164,7 @@ function TreeMenu({anchor, items, onClose}: {anchor: Anchor; items: TreeMenuEntr
             <div
                 ref={panelRef}
                 role="menu"
-                style={{position: 'fixed', ...pos, width: WIDTH}}
+                style={{position: 'fixed', ...pos, width}}
                 className="z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-high p-1 text-ui-12 text-on-surface shadow-xl"
             >
                 {stack.length > 1 && (

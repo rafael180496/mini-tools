@@ -6,6 +6,17 @@ export default {
         title: 'Utilidades',
         openTool: (p: {name: string}) => `Abrir ${p.name} en una pestaña nueva`,
         alreadyOpen: 'Abierta',
+        aiChat: {
+            openCount: (p: {n: number}) => `${p.n} pestañas de Chat de IA abiertas`,
+            newTab: 'Nuevo chat en una pestaña nueva',
+            newTabTitle: (p: {shortcut: string}) =>
+                `Abre OTRA pestaña de Chat de IA, con su propio proyecto, proveedor y conversación (${p.shortcut}). Hacer clic en el nombre solo lleva a la que ya está abierta.`,
+            newSplit: 'Nuevo chat dividido (pestaña nueva)',
+            newSplitTitle: 'Abre una pestaña de Chat de IA nueva ya dividida en dos paneles, para tener dos chats lado a lado.',
+            open: 'Ir al Chat de IA',
+            openTitle: 'Lleva a la pestaña de Chat de IA que ya está abierta, o abre una si no hay ninguna. Doble clic: abre otra pestaña de chat.',
+            tabTitle: (p: {title: string}) => `Ir a la pestaña «${p.title}»`,
+        },
         unavailable: 'No disponible',
         recheck: 'Hacé clic para volver a comprobar.',
         docker: {

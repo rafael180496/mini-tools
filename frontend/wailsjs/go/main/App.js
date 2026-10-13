@@ -118,6 +118,10 @@ export function AgentResolveRefs(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentResolveRefs'](arg1, arg2, arg3);
 }
 
+export function AgentSessionReplay(arg1) {
+  return window['go']['main']['App']['AgentSessionReplay'](arg1);
+}
+
 export function AgentUsageAll(arg1) {
   return window['go']['main']['App']['AgentUsageAll'](arg1);
 }
@@ -156,6 +160,10 @@ export function ApplyRowEdits(arg1, arg2, arg3) {
 
 export function AskAgentOnce(arg1, arg2, arg3) {
   return window['go']['main']['App']['AskAgentOnce'](arg1, arg2, arg3);
+}
+
+export function AttachAgentSession(arg1) {
+  return window['go']['main']['App']['AttachAgentSession'](arg1);
 }
 
 export function BackupVault(arg1) {
@@ -240,6 +248,10 @@ export function ClearRecentFiles() {
 
 export function ClearSshHistory(arg1) {
   return window['go']['main']['App']['ClearSshHistory'](arg1);
+}
+
+export function CloseAgentSession(arg1) {
+  return window['go']['main']['App']['CloseAgentSession'](arg1);
 }
 
 export function CloseLocalTerminal(arg1) {
@@ -340,6 +352,10 @@ export function DeleteSftpPath(arg1, arg2) {
 
 export function DeleteSshSnippet(arg1) {
   return window['go']['main']['App']['DeleteSshSnippet'](arg1);
+}
+
+export function DetachAgentSession(arg1) {
+  return window['go']['main']['App']['DetachAgentSession'](arg1);
 }
 
 export function DetectLocalOllama() {
@@ -1182,6 +1198,10 @@ export function ListAgentChats(arg1) {
   return window['go']['main']['App']['ListAgentChats'](arg1);
 }
 
+export function ListAgentSessions() {
+  return window['go']['main']['App']['ListAgentSessions']();
+}
+
 export function ListAgentWorkspaces() {
   return window['go']['main']['App']['ListAgentWorkspaces']();
 }
@@ -1234,6 +1254,10 @@ export function ListNotes() {
   return window['go']['main']['App']['ListNotes']();
 }
 
+export function ListPendingApprovals() {
+  return window['go']['main']['App']['ListPendingApprovals']();
+}
+
 export function ListRecentFiles() {
   return window['go']['main']['App']['ListRecentFiles']();
 }
@@ -1284,6 +1308,10 @@ export function MCPServerStatus() {
 
 export function MakeSftpDir(arg1, arg2) {
   return window['go']['main']['App']['MakeSftpDir'](arg1, arg2);
+}
+
+export function MarkAgentSessionRead(arg1) {
+  return window['go']['main']['App']['MarkAgentSessionRead'](arg1);
 }
 
 export function MergeNotes(arg1, arg2) {

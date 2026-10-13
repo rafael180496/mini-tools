@@ -1,8 +1,8 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS**. **Esta versión NO se corrió todavía en una
-Windows real** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
+**cross-compilado desde macOS**. **Esta versión se corrió en Windows 10 y
+Windows 11 reales** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
 solo empaqueta el `.exe` para distribuirlo manualmente (GitHub Releases, USB,
 red interna, etc.).
 
@@ -10,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.9.0 |
-| Archivo | `mini-tools-v2.9.0-windows-amd64.exe` |
-| Tamaño | ~58 MB (57,9 MB) |
-| SHA-256 | `565c7ac2169a13972bdc4a4c9252bd2f30c64d4827437184412acd1c5a3c282b` |
-| Arquitectura | `amd64` (x86-64) — verificado con `file` |
+| Versión | 2.10.0 |
+| Archivo | `mini-tools-v2.10.0-windows-amd64.exe` |
+| Tamaño | ~78 MB (78,0 MB; 78 008 832 bytes) — es el binario suelto, bajo el techo de 100 MB |
+| SHA-256 | `792db28b89e185b8c11b4af4de03ee767d37b250c716153713b200865326e17e` |
+| Arquitectura | `amd64` (x86-64) — verificado con `file`: `PE32+ executable (GUI) x86-64, for MS Windows` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.9.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.10.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -34,34 +34,41 @@ Get-FileHash mini-tools-v2.9.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**La 2.9.0 NO se corrió en una Windows real.** Solo se confirmó que
-cross-compila limpio desde macOS y que el binario es un `PE32+ x86-64`. La
-2.7.0 sí se probó en Windows 10 y 11, pero eso no dice nada de esta versión:
-WebView2, DPI y los diálogos nativos se confirman únicamente corriéndola.
+**La 2.10.0 se corrió en Windows 10 y en Windows 11 reales** (confirmado por
+el usuario antes de publicar). Además cross-compila limpio desde macOS, el
+binario es un `PE32+ x86-64` y pasan `go build`, `go vet` y `go test` en el host
+de desarrollo.
 
-Esta versión **no trae migraciones del vault**: un `vault.db` de la 2.8.0 abre
-tal cual.
+Esta versión **actualiza el schema del vault** (migraciones 57 a 64, todas
+aditivas): un `vault.db` de la 2.9.0 abre y migra solo, y una versión anterior
+no usa lo nuevo. Hacer un backup del vault antes de actualizar es lo prudente.
 
-Lo nuevo de esta versión es el módulo **Utilidades** (Liberador de puertos,
-Monitor de actividad y Docker), y es donde hay que mirar primero si algo falla
-en Windows, porque es código específico de plataforma que **nunca se ejecutó**
-ahí:
+Lo nuevo de esta versión que toca el sistema operativo, y es donde conviene
+mirar primero si algo falla en Windows:
 
-- **Monitor de actividad**: lista los procesos con la API de Windows
-  (Toolhelp32, `GetProcessTimes`, `psapi`) y calcula la CPU % por diferencia
-  de tiempos. En Windows los procesos no traen dueño, así que no aparecen la
-  columna *Usuario* ni la pastilla *Míos* — es lo esperado, no un fallo.
-- **Liberador de puertos**: usa `netstat -ano` y `tasklist` sin abrir una
-  consola a la vista (`CREATE_NO_WINDOW`); terminar un proceso de otro usuario
-  pide el **UAC**.
-- **Docker**: habla con el comando `docker` del `PATH`; el botón **Abrir Docker
-  Desktop** lanza el ejecutable desde su ruta de instalación habitual. Exportar
-  logs usa el diálogo nativo de guardado.
+- **Selector nativo de carpeta** para elegir el proyecto o la carpeta de
+  trabajo del Chat de IA y del agente de código local.
+- **Arrastrar archivos desde el Explorador al chat** para adjuntarlos
+  (imágenes, PDF, texto o código): que el arrastre desde el Explorador llegue a
+  la caja del chat y que los archivos se lean con rutas de Windows.
+- **El agente de código local ejecuta `run_command`** a través del intérprete de
+  Windows (`cmd` o PowerShell): comillas, códigos de salida, salida estándar y
+  de error, y el cierre del **grupo de procesos** al detener un comando o
+  cancelar un turno (que no queden procesos hijos vivos).
+- **Lectura y escritura de archivos del repositorio** desde el agente (rutas con
+  `\` y unidad, saltos de línea CRLF).
+- **Servidores de modelos remotos y proveedores en la nube** (Ollama,
+  compatibles con OpenAI, Anthropic): conexión con TLS, certificados
+  autofirmados y cabeceras propias; usan el almacén de certificados de Windows.
+- **Chats de IA en segundo plano**: que un turno siga corriendo al cerrar la
+  pestaña y que el aviso de aprobación llegue desde el módulo «IA».
 - Lo que ya estaba pendiente de versiones anteriores sigue sin ejercitarse en
   Windows: el flujo OAuth 2.0 (aviso del Firewall), el servidor MCP por named
   pipe, lanzar los CLIs agénticos (`.cmd`/`.exe` del `PATH`), varias terminales
-  SSH contra el mismo servidor (ConPTY), abrir en VS Code / el explorador y
-  pegar imágenes en una nota.
+  SSH contra el mismo servidor (ConPTY), abrir en VS Code / el explorador, pegar
+  imágenes en una nota, y el módulo **Utilidades** (Monitor de actividad con
+  Toolhelp32/`psapi`, Liberador de puertos con `netstat`/`tasklist` y UAC,
+  Docker).
 
 **Esta sección se reescribe en cada release.** Si la versión siguiente sale sin
 que nadie la corra en una Windows real, va la advertencia explícita de "no
@@ -95,7 +102,7 @@ verificado" — nunca extrapolar de un release anterior.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.9.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.10.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

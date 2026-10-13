@@ -8,8 +8,10 @@ import {
     BrainStatus,
     CancelAgentChat,
     GitListWorkTree,
+    ListAgentSessions,
     ListModelServers,
-    RespondAgentApproval,
+    AgentSessionReplay,
+    MarkAgentSessionRead,
     AgentResolveRefs,
     SetAgentChatBrain,
     SetAgentChatSettings,
@@ -23,12 +25,11 @@ import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
-import AgentApprovalDialog, {type ApprovalRequest} from './AgentApprovalDialog'
 import ChatCodeBlock from './ChatCodeBlock'
 import ToolCallCard, {canonicalToolName, type ToolCall} from './ToolCallCard'
 import {CONTEXT_ICONS, contextNoun, describeContext, repoIdOf, workRepoIdOf, type WorkContext} from './workContext'
 import {rich} from './rich'
-import {errorText, formatDateTime, formatNumber, useT} from '../../i18n'
+import {errorText, formatDateTime, formatNumber, t as tr, useT} from '../../i18n'
 import {isModelServerAgent, MODEL_SERVER_PREFIX} from '../../lib/modelServers'
 import {useModelServerHealth} from '../../lib/modelServerHealth'
 import {HealthBanner} from './HealthIndicators'
@@ -39,6 +40,7 @@ import {ATTACH_ACCEPT, type SentAttachment} from '../../lib/chatAttachments'
 import {requestOpenSettings} from '../../lib/appBus'
 import {onModelsChangedFor} from '../../lib/modelsChanged'
 import {ackProjectMode, isProjectModeAcked, readProjectPrefs, writeProjectPrefs} from '../../lib/projectPrefs'
+import {registerVisibleChat, toMillis, useSessionFlag} from '../../lib/agentSessions'
 
 // Espeja ChatEvent / Usage (backend/agentchat/types.go); ToolCall vive en
 // ToolCallCard.tsx.
@@ -61,6 +63,10 @@ interface ChatUsage {
 
 interface ChatEvent {
     kind: 'start' | 'text' | 'thinking' | 'tool' | 'done' | 'error'
+    // Número de orden dentro de la sesión (creciente). Es lo que permite
+    // retomar un turno en curso sin duplicar: se pide el repaso, se dibuja y
+    // los eventos en vivo con seq <= al último repasado se ignoran.
+    seq?: number
     text: string
     tool?: ToolCall
     usage?: ChatUsage
@@ -325,6 +331,11 @@ interface AgentChatProps {
     // Abre OTRO chat, con otro agente, para que revise lo que este viene
     // haciendo. Es el caso de trabajar en paralelo: uno propone, otro valida.
     onValidateWithAnother?: (excludeAgentId: string) => void
+    // «Cerrar chat»: da la conversación por terminada (corta lo que corra y la
+    // saca de IA → Activas). Distinto de «Detener» (corta el turno y deja el
+    // chat abierto) y de cerrar la pestaña (no toca el chat). Solo lo ofrece el
+    // anfitrión que sabe cerrar un chat: sin esta prop no hay botón.
+    onCloseChat?: () => void
     // Avisa el id de conversación que devolvió el CLI. Es lo que se guarda
     // para poder retomar el chat después de cerrar la app — sin esto el
     // historial tendría entradas que no llevan a ningún lado.
@@ -354,10 +365,9 @@ interface AgentChatProps {
     // curso— y esconde con CSS las que no corresponden al módulo activo, así
     // que hay varias instancias vivas a la vez.
     //
-    // Lo único que no puede duplicarse entre ellas es la petición de
-    // aprobación: llega por un evento GLOBAL, sin id de sesión, así que si la
-    // atendieran todas aparecerían tres diálogos para un solo permiso. La
-    // atiende la visible, que es la que el usuario puede contestar.
+    // Con esto el chat se registra «a la vista» (lib/agentSessions): el
+    // anfitrión de avisos no te avisa de lo que estás mirando, y marca como
+    // leída la conversación cuando terminó mientras la tenías delante.
     active?: boolean
     // Ocupar TODO el ancho del contenedor. Pensado para el Chat de IA, que es una
     // pestaña entera: la respuesta del agente deja de ser una tarjeta que se
@@ -410,6 +420,7 @@ export default function AgentChat({
     onTurnFinished,
     onReviewChanges,
     onValidateWithAnother,
+    onCloseChat,
     onConversation,
     onSend,
     onBusyChange,
@@ -560,16 +571,11 @@ export default function AgentChat({
     // Cuántos archivos quedaron modificados después de un turno autónomo, o
     // null cuando no hay nada que revisar.
     const [touched, setTouched] = useState<number | null>(null)
-    // Acción esperando tu decisión. El proceso del agente está BLOQUEADO
-    // mientras esto está abierto, así que el diálogo no se puede descartar
-    // sin contestar: cerrarlo es denegar.
-    const [approval, setApproval] = useState<ApprovalRequest | null>(null)
-    // ConfirmDialog llama onConfirm y DESPUÉS onClose, así que confirmar
-    // dispararía las dos ramas: permitir y luego denegar. Este guard hace que
-    // la primera respuesta sea la única — y del otro lado hay un proceso
-    // bloqueado esperando, así que mandar dos veredictos contradictorios no es
-    // un detalle cosmético.
-    const answeredRef = useRef('')
+    // Los permisos que pide el agente ya NO se atienden acá: los muestra un
+    // anfitrión único (AgentSessionsHost) montado en el workspace. Dentro de
+    // cada chat se perdían si la conversación no estaba montada, y con varias
+    // conversaciones vivas a la vez cada una tendría que decidir si el permiso
+    // era suyo.
     // --- Servidor de modelos: remoto, sin repositorio ---------------------
     //
     // Un servidor remoto recibe todo lo que el agente lee: el contenido de los
@@ -773,67 +779,70 @@ export default function AgentChat({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workRepo, modes, modesFor])
 
-    // Suscripción ANTES de mandar nada: el primer evento puede llegar antes de
-    // que termine el await, misma carrera que resuelven la terminal y las
-    // queries suscribiéndose primero.
-    useEffect(() => {
-        const off = EventsOn(sessionId, (ev: ChatEvent) => {
-            // Se retiene apenas aparece y no al final del turno: si el turno se
-            // corta a la mitad, el chat igual queda retomable.
-            if (ev.conversationId) onConversationRef.current?.(ev.conversationId)
-            setTurns((prev) => {
-                const next = [...prev]
-                let last = next[next.length - 1]
-                if (!last || last.role !== 'agent') {
-                    last = {role: 'agent', text: '', tools: [], at: Date.now()}
-                    next.push(last)
-                } else {
-                    // Los turnos son inmutables para React: mutar el último en
-                    // el lugar no dispararía el re-render.
-                    last = {...last, tools: [...last.tools]}
-                    next[next.length - 1] = last
-                }
+    // Lo que pasa cuando llega un evento del agente, venga en vivo o de un
+    // repaso (ver el efecto de «retomar» más abajo). Es estable (sólo usa
+    // setters y refs) para poder llamarlo desde los dos caminos.
+    const applyEvent = useCallback((ev: ChatEvent) => {
+        // Se retiene apenas aparece y no al final del turno: si el turno se
+        // corta a la mitad, el chat igual queda retomable.
+        if (ev.conversationId) onConversationRef.current?.(ev.conversationId)
+        setTurns((prev) => {
+            const next = [...prev]
+            let last = next[next.length - 1]
+            if (!last || last.role !== 'agent') {
+                last = {role: 'agent', text: '', tools: [], at: Date.now()}
+                next.push(last)
+            } else {
+                // Los turnos son inmutables para React: mutar el último en
+                // el lugar no dispararía el re-render.
+                last = {...last, tools: [...last.tools]}
+                next[next.length - 1] = last
+            }
 
-                switch (ev.kind) {
-                    case 'start':
-                        setInfo({model: ev.model ?? '', tools: ev.tools?.length ?? 0, mcp: ev.mcpServers ?? []})
-                        break
-                    case 'text':
-                        // Se concatena: Antigravity manda deltas incrementales
-                        // y Claude bloques enteros; las dos cosas funcionan
-                        // igual concatenando.
-                        last.text += ev.text
-                        break
-                    case 'thinking':
-                        break
-                    case 'tool':
-                        if (ev.tool) last.tools.push(ev.tool)
-                        break
-                    case 'done':
-                        last.usage = ev.usage
-                        setBusy(false)
-                        // Solo tras un turno que PUDO tocar archivos: en modo
-                        // consulta no hay nada que revisar y el aviso sería
-                        // ruido en cada respuesta.
-                        if (PERMISSIVE.has(modeRef.current)) {
-                            void onTurnFinishedRef.current?.().then((n) => setTouched(n > 0 ? n : null))
-                        }
-                        break
-                    case 'error':
-                        last.error = ev.error
-                        setBusy(false)
-                        // Si el servidor dejó de contestar a mitad de turno, el
-                        // aviso de la caja tiene que enterarse ya.
-                        refreshHealthRef.current?.()
-                        break
-                }
-                return next
-            })
+            switch (ev.kind) {
+                case 'start':
+                    setInfo({model: ev.model ?? '', tools: ev.tools?.length ?? 0, mcp: ev.mcpServers ?? []})
+                    break
+                case 'text':
+                    // Se concatena: Antigravity manda deltas incrementales
+                    // y Claude bloques enteros; las dos cosas funcionan
+                    // igual concatenando.
+                    last.text += ev.text
+                    break
+                case 'thinking':
+                    break
+                case 'tool':
+                    if (ev.tool) last.tools.push(ev.tool)
+                    break
+                case 'done':
+                    last.usage = ev.usage
+                    setBusy(false)
+                    // Solo tras un turno que PUDO tocar archivos: en modo
+                    // consulta no hay nada que revisar y el aviso sería
+                    // ruido en cada respuesta.
+                    if (PERMISSIVE.has(modeRef.current)) {
+                        void onTurnFinishedRef.current?.().then((n) => setTouched(n > 0 ? n : null))
+                    }
+                    break
+                case 'error':
+                    last.error = ev.error
+                    setBusy(false)
+                    // Si el servidor dejó de contestar a mitad de turno, el
+                    // aviso de la caja tiene que enterarse ya.
+                    refreshHealthRef.current?.()
+                    break
+            }
+            return next
         })
-        return () => {
-            off()
-        }
-    }, [sessionId])
+    }, [])
+
+    // Último evento aplicado (por `seq`) y promesa de que el historial ya se
+    // dibujó. Lo primero deduplica el repaso contra lo que sigue llegando en
+    // vivo; lo segundo ordena el repaso DESPUÉS del historial: el historial sólo
+    // se aplica a un chat vacío, y si el turno repasado llegara primero lo
+    // dejaría sin la conversación anterior.
+    const lastSeqRef = useRef(0)
+    const historyReadyRef = useRef<Promise<unknown>>(Promise.resolve())
 
     // Restaurar los ajustes con los que venía el chat.
     //
@@ -899,35 +908,97 @@ export default function AgentChat({
                   .then((ok) => ok || fromCli())
             : fromCli()
         run.catch(() => {})
+        historyReadyRef.current = run.catch(() => {})
         return () => {
             cancelled = true
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [resumeConversationId, resumeChatId, agentId])
 
-    // Las peticiones de aprobación llegan por un evento GLOBAL y no por el de
-    // la sesión: el hook corre en otro proceso y no sabe de qué chat salió.
-    // Con una sola sesión pidiendo permiso a la vez —el agente está bloqueado
-    // esperando— alcanza con que las atienda el chat visible, que además es el
-    // único que puede contestar (ver `active`).
+    // Suscripción ANTES de mandar nada: el primer evento puede llegar antes de
+    // que termine el await, misma carrera que resuelven la terminal y las
+    // queries suscribiéndose primero.
+    //
+    // **Retomar un turno en curso.** Una sesión sigue trabajando en el backend
+    // aunque su pestaña se haya cerrado. Al montar se pregunta si la sesión está
+    // viva; si lo está, se pide el repaso de lo que ya pasó en el turno (texto,
+    // herramientas), se dibuja y se sigue en vivo. Mientras el repaso viaja los
+    // eventos en vivo se retienen, y los que ya vienen en el repaso (seq menor o
+    // igual al último dibujado) se descartan: sin eso el texto saldría repetido.
+    useEffect(() => {
+        let cancelled = false
+        let ready = false
+        const held: ChatEvent[] = []
+        const deliver = (ev: ChatEvent) => {
+            if (ev.seq) {
+                if (ev.seq <= lastSeqRef.current) return
+                lastSeqRef.current = ev.seq
+            }
+            applyEvent(ev)
+        }
+        const off = EventsOn(sessionId, (ev: ChatEvent) => {
+            if (ready) deliver(ev)
+            else held.push(ev)
+        })
+        const release = () => {
+            if (cancelled) return
+            ready = true
+            held.splice(0).forEach(deliver)
+        }
+        ListAgentSessions()
+            .then(async (list) => {
+                const mine = (list ?? []).find((x) => x.sessionId === sessionId)
+                if (!mine || (mine.status !== 'running' && mine.status !== 'awaiting_approval')) return
+                await historyReadyRef.current
+                if (cancelled) return
+                const events = await AgentSessionReplay(sessionId)
+                if (cancelled) return
+                // Ocupado y con el reloj en el segundo en que empezó de verdad.
+                setBusy(true)
+                const since = toMillis(mine.turnStartedAt)
+                if (since) setElapsed(Math.max(0, Math.floor((Date.now() - since) / 1000)))
+                const replay = (events ?? []) as unknown as ChatEvent[]
+                // Si el repaso no arranca en 'start' el búfer del backend soltó
+                // el principio del turno: se dice, en vez de mostrar una
+                // respuesta que parece empezar a mitad de frase.
+                if (replay.length > 0 && replay[0].kind !== 'start') {
+                    setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], notice: tr().agent.chat.replayTrimmed, at: Date.now()}])
+                }
+                for (const ev of replay) deliver(ev)
+            })
+            .catch(() => {})
+            .finally(release)
+        return () => {
+            cancelled = true
+            off()
+        }
+    }, [sessionId, applyEvent])
+
+    // --- A la vista y leído ---------------------------------------------------
+    //
+    // El chat se registra como «a la vista» mientras `active`: el anfitrión de
+    // avisos no te avisa de lo que estás mirando, y un permiso de ESTA
+    // conversación se presenta sin el rótulo de otra.
     useEffect(() => {
         if (!active) return
-        const off = EventsOn('agent-approval', (req: ApprovalRequest) => setApproval(req))
-        // Una pregunta que dejó de esperar respuesta (se cortó el turno o venció
-        // el plazo de 5 minutos): el diálogo se cierra solo. Contestar tarde se
-        // ignora del lado de Go, así que no hace falta responder nada.
-        const offDismiss = EventsOn('agent-approval-dismiss', (id: string) => {
-            setApproval((cur) => {
-                if (cur?.id !== id) return cur
-                answeredRef.current = id
-                return null
-            })
-        })
-        return () => {
-            off()
-            offDismiss()
-        }
-    }, [active])
+        return registerVisibleChat(sessionId)
+    }, [active, sessionId])
+
+    // Un turno que terminó mientras no mirabas queda «sin leer» en la barra
+    // lateral. Se marca leído en cuanto el chat está a la vista Y la ventana
+    // también: con la ventana oculta no lo viste, aunque el chat sea el activo.
+    const [windowSeen, setWindowSeen] = useState(() => document.visibilityState === 'visible')
+    useEffect(() => {
+        const on = () => setWindowSeen(document.visibilityState === 'visible')
+        document.addEventListener('visibilitychange', on)
+        return () => document.removeEventListener('visibilitychange', on)
+    }, [])
+    const sessionFlag = useSessionFlag(sessionId)
+    useEffect(() => {
+        if (!active || !windowSeen || sessionFlag === '' || !sessionFlag.endsWith(':unread')) return
+        if (sessionFlag.startsWith('running') || sessionFlag.startsWith('awaiting')) return
+        void MarkAgentSessionRead(sessionId).catch(() => {})
+    }, [active, windowSeen, sessionFlag, sessionId])
 
     // El estado del cerebro se relee al entrar al chat y al volver a la ventana:
     // el usuario enciende el servidor MCP o el permiso en Configuración y vuelve.
@@ -1332,6 +1403,17 @@ export default function AgentChat({
                 >
                     <Icon name="restart_alt" size={14} />
                 </button>
+                {onCloseChat && (
+                    <button
+                        onClick={onCloseChat}
+                        data-chat-close
+                        title={t.agent.chat.closeChatTitle}
+                        aria-label={t.agent.chat.a11y.closeChat}
+                        className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error ${FOCUS}`}
+                    >
+                        <Icon name="cancel_presentation" size={14} />
+                    </button>
+                )}
             </div>
 
             {search !== null && (
@@ -2093,28 +2175,6 @@ export default function AgentChat({
                         <Icon name="close" size={14} />
                     </button>
                 </div>
-            )}
-
-            {approval && (
-                <AgentApprovalDialog
-                    request={approval}
-                    agentLabel={agentLabel}
-                    onAllow={() => {
-                        answeredRef.current = approval.id
-                        void RespondAgentApproval(approval.id, true, '')
-                        setApproval(null)
-                    }}
-                    // Cerrar es DENEGAR, no descartar: del otro lado hay un
-                    // proceso bloqueado esperando, y no contestar lo colgaría
-                    // hasta que venza el tiempo.
-                    onDeny={() => {
-                        if (answeredRef.current !== approval.id) {
-                            answeredRef.current = approval.id
-                            void RespondAgentApproval(approval.id, false, t.agent.approvalDeniedReason)
-                        }
-                        setApproval(null)
-                    }}
-                />
             )}
 
             {pendingMode && (

@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.9.0. Lo que está acá existe en ese binario.">2.9.0 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.0. Lo que está acá existe en ese binario.">2.10.0 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -383,6 +383,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Agentes de IA</button>
   <ul>
     <li><a href="#ia-chat">El chat, en todos los módulos</a></li>
+    <li><a href="#ia-sesiones">Chats en segundo plano y el módulo IA</a></li>
     <li><a href="#ia-adjuntos">Adjuntos: imágenes, PDF y archivos</a></li>
     <li><a href="#ia-modelos">Proveedores de IA: servidores propios y APIs en la nube</a></li>
     <li><a href="#ia-agente-local">Agente de código local: archivos y comandos</a></li>
@@ -551,7 +552,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
 
 <article class="topic" id="la-ventana" data-title="La ventana: módulos y pestañas">
   <h1>La ventana: módulos y pestañas</h1>
-  <p class="lead">Una barra lateral con seis módulos —uno a la vez—, pestañas al centro y un panel abajo.
+  <p class="lead">Una barra lateral con siete módulos —uno a la vez—, pestañas al centro y un panel abajo.
   Todo lo que arrastres o pliegues se recuerda entre sesiones.</p>
 
   <figure>
@@ -559,7 +560,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <figcaption>Los contadores sobre cada ícono dicen en qué módulo está lo que buscás.</figcaption>
   </figure>
 
-  <h2 id="la-ventana--modulos">Los seis módulos</h2>
+  <h2 id="la-ventana--modulos">Los siete módulos</h2>
   <div class="tablewrap"><table>
     <tr><th>Módulo</th><th>Para qué</th></tr>
     <tr><td>Conexiones</td><td>Bases de datos: explorar el esquema y correr consultas</td></tr>
@@ -568,12 +569,13 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <tr><td>Notas</td><td>Tu base de conocimiento cifrada: runbooks y apuntes</td></tr>
     <tr><td>HTTP</td><td>Colecciones de peticiones: probar y guardar endpoints</td></tr>
     <tr><td>Utilidades</td><td>Herramientas del sistema, cada una en su pestaña: Liberador de puertos (quién ocupa un puerto), Monitor de actividad (procesos en vivo, CPU y memoria), Docker (contenedores, imágenes, volúmenes, redes, logs y Compose) y el Chat de IA (todas las conversaciones en un lugar, con buscador)</td></tr>
+    <tr><td>IA</td><td>Las conversaciones con la IA que están trabajando: verlas, retomarlas, detenerlas o dejarlas terminar (<a href="#ia-sesiones">chats en segundo plano</a>)</td></tr>
   </table></div>
   <p>Se ve <strong>uno a la vez</strong>, así que el que estás usando se queda con toda la altura en vez de
   la franja que le dejaban los otros apilados.</p>
 
   <h2 id="la-ventana--buscar">Una sola búsqueda para todos</h2>
-  <p>La caja de arriba filtra los seis módulos a la vez, y cada ícono muestra <strong>cuántas
+  <p>La caja de arriba filtra todos los módulos a la vez, y cada ícono muestra <strong>cuántas
   coincidencias</strong> tiene. Es lo que evita tener que decidir de antemano en cuál buscar algo que
   recordás nada más que por el nombre.</p>
 
@@ -1758,7 +1760,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   con el historial de todas las conversaciones a la izquierda y un buscador que mira dentro de los mensajes.</p>
 
   <p>Vive en el módulo <strong>Utilidades</strong>. Hacé clic en <em>Chat de IA</em> y se abre en <strong>una pestaña propia</strong>;
-  si ya está abierta, el clic te lleva a ella. Es el mismo chat del panel lateral
+  si ya está abierta, el clic te lleva a ella. Podés tener <strong>varias pestañas de Chat de IA</strong> —<kbd>⇧⌘N</kbd> / <kbd>Ctrl+Mayús+N</kbd>—, cada una con su proyecto y proveedor, y siguen trabajando aunque las cierres. Dónde se abre otra: el <strong>▾ de <em>Nuevo chat</em></strong> en la cabecera del chat, el <strong>+</strong> de la fila <em>Chat de IA</em> en Utilidades, <em>+ Nueva ▾ → Chat de IA</em> en la tira de pestañas y <em>Nueva conversación</em> en el módulo IA. Ver <a href="#ia-sesiones">Chats en segundo plano y el módulo IA</a>. Es el mismo chat del panel lateral
   (<kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd>), con lugar para elegir y retomar conversaciones. Mientras esta pestaña está a la vista el panel lateral se aparta:
   no hay un segundo chat sobre lo mismo.</p>
 
@@ -1771,7 +1773,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>Un chat nuevo abre con <strong>sugerencias</strong> para arrancar: hacé clic en una y se escribe en la caja de mensaje
   para que la edites antes de mandarla. <kbd>Enter</kbd> manda y <kbd>Shift+Enter</kbd> agrega una línea.
   <kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd> (o el botón <strong>Nuevo chat</strong>) empieza otra; si ya tenés una vacía abierta,
-  te lleva a ella en vez de apilar ventanas en blanco.</p>
+  te lleva a ella en vez de apilar chats en blanco. <strong>Nuevo chat</strong> abre la conversación en <em>esta</em> pestaña; para tener otra a la vez, usá <em>Nueva pestaña</em> o el <strong>▾</strong> de ese botón (ver <a href="#ia-sesiones--donde">dónde se abre otra pestaña de chat</a>). El estado vacío lo recuerda.</p>
   <figure>
     <div class="shot"><img src="../docs/screenshots/es/utilities-ai-chat.png" alt="Chat de IA con una conversación nueva: las cuatro sugerencias en el centro del área, la caja de mensaje abajo y el historial a la izquierda"></div>
     <figcaption>Una conversación vacía: cuatro sugerencias y la caja, con el historial a un clic.</figcaption>
@@ -2146,6 +2148,134 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>La solapa <strong>Consumo</strong> lee lo que cada CLI ya guarda de sus propias sesiones. Es una
   estimación de <em>ellos</em>, no una cuenta paralela de la app: inventar el número sería peor que no
   mostrarlo.</p>
+</article>
+
+<article class="topic" id="ia-sesiones" data-title="Chats en segundo plano y el módulo IA">
+  <h1>Chats en segundo plano y el módulo IA</h1>
+  <p class="lead">Corré varias conversaciones con la IA a la vez, cerrá sus pestañas sin detenerlas y seguí, detené o
+  retomá cada una desde el módulo <strong>IA</strong> de la barra lateral.</p>
+
+  <p>Una conversación no está atada a la pestaña que la muestra: sigue trabajando en la app mientras hacés otra cosa.
+  Cerrar la pestaña, irte a otro módulo o abrir un segundo chat <strong>nunca detiene un turno que está corriendo</strong>:
+  <strong>cerrar una pestaña no es cerrar el chat</strong>. Para detener un turno está el botón rojo <em>Detener</em>, y para terminar un chat del todo, <em>Cerrar chat</em>
+  (ver <a href="#ia-sesiones--cerrar">Cerrar la pestaña o cerrar el chat</a>).</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-sidebar.png" alt="Barra lateral en el módulo IA: en Activas, cinco conversaciones con su estado —una necesita aprobación en ámbar, dos trabajando con un spinner y un reloj, una fallida en rojo y una terminada sin leer en verde—, cada una con su proveedor, modelo, proyecto, último texto y sus acciones Abrir, Detener, Dejar terminar y Marcar leído; en Recientes, las últimas conversaciones. El ícono de IA lleva una insignia con un 3"></div>
+    <figcaption>El módulo IA: lo que trabaja, lo que te espera y lo que terminó sin que lo vieras.</figcaption>
+  </figure>
+
+  <h2 id="ia-sesiones--varias">Varios chats a la vez</h2>
+  <ul>
+    <li><strong>Nueva pestaña de chat</strong> (<kbd>⇧⌘N</kbd> / <kbd>Ctrl+Mayús+N</kbd>, o el botón <em>Nueva pestaña</em> de la cabecera del chat, o <em>Nueva conversación (pestaña nueva)</em> en el módulo IA) abre <em>otra</em> pestaña de Chat de IA, con su propio proyecto, proveedor y conversación. Cada pestaña lleva el nombre de su conversación (o del proyecto, mientras está vacía).</li>
+    <li><strong>Abrir en una pestaña nueva</strong> — en el historial de un Chat de IA, el botón de la flecha en la fila de una conversación la abre en su propia pestaña. Una conversación nunca se muestra dos veces: si ya está abierta en algún lado, te lleva a esa pestaña.</li>
+    <li><strong>Dividir</strong> — el botón <em>Dividir</em> (o <em>Dividir: dos chats lado a lado</em> en el menú ▾ de <em>Nuevo chat</em>) muestra <strong>dos chats lado a lado</strong> en la misma pestaña, cada uno con su proyecto, proveedor y sesión. Cerrar el segundo panel no detiene lo que corría en él.</li>
+    <li>La tira de pestañas dice cómo va cada chat: un spinner mientras una de sus conversaciones trabaja, un punto ámbar si espera tu aprobación, uno verde si terminó y no la leíste.</li>
+  </ul>
+
+  <h2 id="ia-sesiones--donde">Dónde se abre otra pestaña de chat</h2>
+  <p><strong>Nuevo chat</strong> (<kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd>) empieza una conversación en <em>esta</em> pestaña; para tener otra <em>a la vez</em> hace falta una pestaña nueva. Hay cuatro lugares, todos con el mismo resultado:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Dónde</th><th>Qué hacer</th></tr>
+    <tr><td>Cabecera del Chat de IA</td><td>El <strong>▾</strong> de <em>Nuevo chat</em>: <em>Nuevo chat en esta pestaña</em> (<kbd>⌘N</kbd>), <em>Nuevo chat en una pestaña nueva</em> (<kbd>⇧⌘N</kbd>) y <em>Dividir: dos chats lado a lado</em> (o <em>Quitar división</em>). Los botones <em>Nueva pestaña</em> y <em>Dividir</em> de al lado muestran su rótulo cuando la cabecera tiene lugar y quedan como íconos cuando es angosta</td></tr>
+    <tr><td>Utilidades</td><td>La fila <em>Chat de IA</em> tiene un <strong>+</strong> (y un <strong>⋯</strong> / clic derecho) con <em>Nuevo chat en una pestaña nueva</em> y <em>Nuevo chat dividido (pestaña nueva)</em>. <strong>Doble clic</strong> en el nombre abre otra pestaña de chat. Desde la primera pestaña abierta, la fila muestra su cantidad y las lista debajo: un clic lleva a cada una. Un clic simple en el nombre te lleva a la que ya está abierta (o abre la primera)</td></tr>
+    <tr><td>Tira de pestañas</td><td><em>+ Nueva ▾ → Chat de IA</em>. El clic en <em>+ Nueva</em> sigue abriendo una consulta SQL</td></tr>
+    <tr><td>Módulo IA</td><td><em>Nueva conversación (pestaña nueva)</em>, y en su ▾ <em>Nuevo chat dividido (pestaña nueva)</em></td></tr>
+  </table></div>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-new-menu.png" alt="Cabecera del Chat de IA con el botón Nuevo chat y su menú ▾ abierto: Nuevo chat en esta pestaña, Nuevo chat en una pestaña nueva y Dividir: dos chats lado a lado, cada uno con su atajo"></div>
+    <figcaption>El ▾ de «Nuevo chat» dice con texto cómo tener varios chats a la vez.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-utilities.png" alt="Barra lateral en Utilidades: la fila Chat de IA con una insignia de 3 y, debajo, las tres pestañas de chat abiertas; la activa resaltada"></div>
+    <figcaption>En Utilidades, las pestañas de Chat de IA abiertas cuelgan de la fila; un clic lleva a cada una.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-split.png" alt="Una pestaña de Chat de IA dividida en dos: a la izquierda una conversación en curso con la respuesta de la migración hasta ahora; a la derecha un chat vacío con sus sugerencias. La pestaña muestra un spinner"></div>
+    <figcaption>Dos chats en una pestaña: uno trabajando, el otro listo para otra pregunta.</figcaption>
+  </figure>
+
+  <h2 id="ia-sesiones--segundo-plano">Pestaña cerrada, turno en marcha</h2>
+  <p>Cuando abrís una conversación que sigue corriendo —desde el módulo IA, desde el historial o desde un aviso— el chat
+  <strong>se retoma</strong>: dibuja lo que la respuesta lleva dicho (texto y llamadas a herramientas), muestra cuánto hace que corre el turno y lo sigue en vivo.
+  Si el principio del turno ya no está disponible porque la respuesta fue muy larga, una nota dice <em>inicio recortado</em>.</p>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-reattach.png" alt="Una pestaña de Chat de IA abierta sobre una conversación que corría: la respuesta parcial con sus dos tarjetas de herramienta, el tiempo del turno abajo y el botón Detener en la caja de mensaje"></div>
+    <figcaption>Retomado: lo que se dijo mientras la pestaña estaba cerrada ya está, y la respuesta sigue llegando.</figcaption>
+  </figure>
+  <p>Un turno que termina mientras mirás esa conversación se marca leído solo. Uno que termina mientras estás en otro lado queda como <em>Terminó — sin leer</em> hasta que lo abrís.</p>
+
+  <h2 id="ia-sesiones--cerrar">Cerrar la pestaña o cerrar el chat</h2>
+  <p>Son dos cosas distintas, y la app nunca las confunde:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Acción</th><th>Qué pasa</th></tr>
+    <tr><td><strong>Cerrar la pestaña</strong> (la <strong>×</strong>, el clic central, o <em>Cerrar pestaña (el chat sigue en segundo plano)</em> en el menú del clic derecho)</td><td>Se va solo la pestaña, <strong>sin pedir confirmación</strong>. El chat queda abierto en segundo plano: sigue trabajando si estaba en un turno y queda listado en <em>IA → Activas</em> —también después de terminar— hasta que lo cierres. Si algo seguía trabajando, un aviso lo dice y ofrece <em>Ver</em> (abre el módulo IA) y <em>Detener</em></td></tr>
+    <tr><td><strong>Detener</strong> (botón rojo del chat, o <em>Detener</em> en el módulo IA)</td><td>Corta el <strong>turno en curso</strong> y <strong>deja el chat abierto</strong>: se le puede escribir de nuevo. Lo que el agente ya escribió queda</td></tr>
+    <tr><td><strong>Cerrar chat</strong> (el botón <em>Cerrar chat</em> del chat, la <strong>×</strong> o el <strong>⋯</strong> / clic derecho de su fila en <em>IA → Activas</em>, o <em>Cerrar y detener el chat</em> en el menú del clic derecho de la pestaña)</td><td>Corta lo que corra, saca la conversación de <em>Activas</em> y suelta su memoria. Pide confirmación solo si está trabajando. <strong>La conversación guardada queda en el historial</strong> (<em>Recientes</em>) y se puede abrir de nuevo</td></tr>
+  </table></div>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-tab-menu.png" alt="Menú del clic derecho sobre una pestaña de Chat de IA con dos opciones: Cerrar pestaña (el chat sigue en segundo plano) y, en rojo, Cerrar y detener el chat"></div>
+    <figcaption>Clic derecho en una pestaña de Chat de IA: cerrar solo la pestaña, o cerrar y detener el chat.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-background-toast.png" alt="Aviso en la esquina superior derecha tras cerrar la pestaña de una conversación que trabaja: Sigue trabajando en segundo plano, con el texto «Migrar el módulo de pagos a PL/SQL» sigue trabajando en segundo plano — la encontrás en IA → Activas, y los botones Ver y Detener"></div>
+    <figcaption>Cerrar la pestaña de un chat que trabaja no pregunta nada: el aviso dice dónde encontrarlo.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-background-list.png" alt="IA → Activas con un chat trabajando marcado «en segundo plano» y un chat terminado y leído, también «en segundo plano», con el menú de acciones de este último abierto: Abrir y Cerrar chat"></div>
+    <figcaption>Los chats cuya pestaña se cerró quedan en <em>Activas</em> marcados «en segundo plano»; solo <em>Cerrar chat</em> los saca.</figcaption>
+  </figure>
+  <div class="note tip"><span class="lbl">Consejo</span>
+  Si cerrás una pestaña sin querer no se pierde nada: la conversación sigue en <em>IA → Activas</em> (o en <em>Recientes</em>); un clic en <em>Abrir</em> la trae de vuelta a una pestaña.</div>
+  <p>Cerrar el segundo panel de una pestaña dividida funciona igual: su chat queda en segundo plano.</p>
+  <div class="note"><span class="lbl">Solo conversaciones de IA</span>
+  Así se comportan las <strong>conversaciones de IA</strong>. Las demás pestañas (consultas, terminales, peticiones HTTP, Docker…) siguen como siempre: al cerrarlas se detiene lo que hacían.</div>
+
+  <h2 id="ia-sesiones--modulo">El módulo IA</h2>
+  <p>Es el séptimo ícono de la barra lateral. Una insignia sobre él cuenta las conversaciones que están <strong>trabajando o esperándote</strong> (en ámbar si alguna necesita aprobación).</p>
+  <ul>
+    <li><strong>Activas</strong> — una entrada por conversación que trabaja, espera un permiso, falló, terminó sin leer o <strong>quedó abierta en segundo plano</strong> al cerrar su pestaña: estado, título, proveedor, modelo, proyecto, cuánto hace que corre y lo último que dijo. Cada fila tiene un menú <strong>⋯</strong> (también con clic derecho) y una <strong>×</strong> al pasar el mouse que es <em>Cerrar chat</em>.</li>
+    <li><strong>Abrir</strong> — te lleva a la pestaña que tiene la conversación (o abre una) y la retoma.</li>
+    <li><strong>Detener</strong> — corta el turno, con confirmación, y <em>deja el chat abierto</em>. Lo que el agente ya escribió queda; los cambios en archivos no se deshacen solos.</li>
+    <li><strong>Cerrar chat</strong> — lo detiene (con confirmación si está trabajando) y lo saca de la lista; la conversación queda en <em>Recientes</em>.</li>
+    <li><strong>Dejar terminar</strong> — la saca de la lista <em>sin</em> detenerla. Vuelve a aparecer cuando termina, falla o pide un permiso.</li>
+    <li><strong>Aprobar…</strong> — aparece cuando espera un permiso y abre esa petición.</li>
+    <li><strong>Marcar leído</strong> — saca de la lista una conversación terminada o fallida. Si su pestaña se cerró, el chat sigue listado como abierto hasta que lo cierres.</li>
+    <li><strong>Recientes</strong> — las últimas 20 conversaciones de cualquier módulo y proveedor; un clic la abre en una pestaña de Chat de IA. <em>Nueva conversación (pestaña nueva)</em> abre una pestaña de chat vacía.</li>
+  </ul>
+  <p>El buscador de arriba de la barra lateral también filtra estas listas por título, proveedor y proyecto.</p>
+
+  <h2 id="ia-sesiones--permisos">Permisos de otras conversaciones</h2>
+  <p>Un agente puede pedir permiso para correr un comando o editar un archivo mientras su chat no está delante tuyo. Esas peticiones ya no se pierden:</p>
+  <ul>
+    <li>Si viene de la conversación que estás mirando, el diálogo de siempre se abre en el acto.</li>
+    <li>Si viene de <strong>otra</strong> conversación, aparece una tarjeta en la esquina de arriba a la derecha con <em>Revisar</em> y <em>Abrir</em>. Un diálogo que salta mientras escribís otra cosa se contesta sin leerlo, y esto es una autorización. <em>Revisar</em> abre el mismo diálogo, nombrando la conversación que pide y con un botón <em>Abrir conversación</em> para ver el contexto antes.</li>
+    <li>Varias peticiones juntas se encolan: el diálogo dice cuántas más esperan.</li>
+    <li>Cerrar el diálogo <strong>deniega</strong>, y también el plazo de 5 minutos: el silencio nunca es un sí.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-approval.png" alt="Diálogo de permiso abierto desde otro módulo: nombra la conversación que lo pide, dice que no está a la vista, muestra el comando a ejecutar y ofrece Abrir conversación, Denegar y Permitir"></div>
+    <figcaption>Un permiso de una conversación que no está a la vista: dice de quién es antes de que decidas.</figcaption>
+  </figure>
+
+  <h2 id="ia-sesiones--avisos">Avisos</h2>
+  <p>Cuando una conversación que no estás mirando <strong>termina o falla</strong>, aparece un aviso en la esquina de arriba a la derecha con su título y lo último que dijo, y un botón <em>Abrir</em>. Se cierra solo a los pocos segundos; las tarjetas de permiso se quedan hasta que contestás.</p>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ia-sessions-toast.png" alt="Esquina superior derecha de la ventana mientras se edita una consulta: una tarjeta ámbar que pide aprobación y un aviso verde que dice que terminó la conversación Resumir los logs de la semana"></div>
+    <figcaption>Podés estar en una consulta y enterarte igual de que una respuesta está lista.</figcaption>
+  </figure>
+
+  <h2 id="ia-sesiones--ejemplo">Ejemplo: dos tareas en paralelo</h2>
+  <ol class="steps">
+    <li>En el <a href="#utilidades-chat-ia">Chat de IA</a>, elegí un proyecto, pedí la primera tarea y apretá <kbd>Enter</kbd>.</li>
+    <li>Apretá <kbd>⇧⌘N</kbd> / <kbd>Ctrl+Mayús+N</kbd>: se abre otra pestaña de Chat de IA. Elegí otro proyecto (u otro proveedor) y pedí la segunda.</li>
+    <li>Volvé a tus consultas. El ícono de IA muestra cuántas están trabajando, y un aviso te dice cuándo termina una.</li>
+    <li>Abrí el módulo IA, hacé clic en <em>Abrir</em> en la que terminó y leé la respuesta; <em>Marcar leído</em> la saca de la lista.</li>
+  </ol>
+
+  <div class="note warn"><span class="lbl">Al cerrar la app</span>
+  Los turnos viven mientras la app está abierta. Si la cerrás, los que seguían corriendo se cortan y los que esperaban un permiso se deniegan.</div>
 </article>
 
 <article class="topic" id="ia-adjuntos" data-title="Adjuntos: imágenes, PDF y archivos">
@@ -2912,6 +3042,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Asistente de consultas: pedir una consulta o corregir la que falló</td></tr>
     <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Abrir el chat sobre lo que estés mirando</td></tr>
     <tr><td><kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd></td><td>En la pestaña Chat de IA: empezar una conversación nueva</td></tr>
+    <tr><td><kbd>⇧⌘N</kbd> / <kbd>Ctrl+Mayús+N</kbd></td><td>Abrir otra pestaña de Chat de IA, con su propio proyecto, proveedor y conversación (<a href="#ia-sesiones">chats en segundo plano</a>)</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota, o una imagen o un archivo en el chat (<a href="#ia-adjuntos">adjuntos</a>)</td></tr>
     <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
@@ -2998,7 +3129,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.9.0; esta página no hace una sola petición externa.
+  v2.10.0; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

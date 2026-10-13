@@ -12,6 +12,12 @@ export interface ApprovalRequest {
     input: string
     summary: string
     detail: string
+    // Quién pregunta. Los agrega el backend desde que los permisos se atienden
+    // en un anfitrión global y no dentro de cada chat: sin ellos un permiso no
+    // diría de qué conversación sale.
+    sessionId?: string
+    title?: string
+    agentLabel?: string
 }
 
 // Un comando de riesgo (rm -rf, git push --force, sudo…) llega con el detalle
@@ -35,6 +41,12 @@ interface Props {
     onAllow: () => void
     // Cerrar es DENEGAR: del otro lado hay un proceso bloqueado esperando.
     onDeny: () => void
+    // Presentación para un permiso de una conversación que NO está a la vista:
+    // se rotula de cuál sale y se ofrece ir a verla. Sin esto es el diálogo de
+    // siempre, el de la conversación que el usuario tiene delante.
+    onOpenConversation?: () => void
+    // Cuántos permisos más esperan detrás de este.
+    queued?: number
 }
 
 // Diálogo de aprobación de una acción del agente.
@@ -44,7 +56,7 @@ interface Props {
 // monoespaciada y sin truncar, no metido en una frase. Y porque un comando de
 // riesgo no puede verse igual que una lectura: banner y botón de peligro, y el
 // foco empieza en «Denegar» para que un Enter distraído no lo autorice.
-export default function AgentApprovalDialog({request, agentLabel, onAllow, onDeny}: Props) {
+export default function AgentApprovalDialog({request, agentLabel, onAllow, onDeny, onOpenConversation, queued = 0}: Props) {
     const t = useT()
     const a = t.agent.chat.approval
     const risky = isRiskyApproval(request)
@@ -65,7 +77,7 @@ export default function AgentApprovalDialog({request, agentLabel, onAllow, onDen
     }, [onDeny])
 
     return (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60" role="presentation">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="presentation">
             <div
                 role="alertdialog"
                 aria-modal="true"
@@ -88,6 +100,16 @@ export default function AgentApprovalDialog({request, agentLabel, onAllow, onDen
                     </div>
                 )}
 
+                {onOpenConversation && (
+                    <p
+                        data-approval-origin
+                        className="flex items-start gap-1.5 rounded-lg border border-tertiary/40 bg-tertiary/10 px-2.5 py-1.5 text-ui-11 text-on-surface"
+                    >
+                        <Icon name="forum" size={14} className="mt-px shrink-0 text-tertiary" />
+                        <span className="min-w-0 flex-1 break-words">{request.title ? a.origin({title: request.title}) : a.originUntitled}</span>
+                    </p>
+                )}
+
                 <p className="text-xs text-on-surface-variant">{a.intro({agent: agentLabel, tool})}</p>
 
                 {request.summary && (
@@ -104,7 +126,24 @@ export default function AgentApprovalDialog({request, agentLabel, onAllow, onDen
 
                 <p className="text-ui-11 text-on-surface-variant/80">{risky ? a.riskyHint : a.waiting}</p>
 
-                <div className="mt-1 flex justify-end gap-2">
+                {queued > 0 && (
+                    <p data-approval-queue className="text-ui-11 font-medium text-tertiary">
+                        {a.queue({n: queued})}
+                    </p>
+                )}
+
+                <div className="mt-1 flex items-center justify-end gap-2">
+                    {onOpenConversation && (
+                        <button
+                            type="button"
+                            onClick={onOpenConversation}
+                            title={a.openConversationTitle}
+                            className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                        >
+                            <Icon name="open_in_new" size={14} />
+                            {a.openConversation}
+                        </button>
+                    )}
                     <button
                         ref={denyRef}
                         type="button"

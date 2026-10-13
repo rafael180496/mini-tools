@@ -41,7 +41,13 @@ type Manager struct {
 	// en qué sesiones ya se avisó. Ver llmrunner.go.
 	llmNoTools map[string]bool
 	llmNoticed map[string]bool
-	emit       EmitFunc
+	// out es a dónde van los eventos YA numerados y anotados en el registro:
+	// todo el código del paquete emite por el método emit (registry.go), que
+	// pasa por acá.
+	out EmitFunc
+
+	// El registro de sesiones y la difusión de su listado (registry.go).
+	registryState
 }
 
 func NewManager(emit EmitFunc) *Manager {
@@ -52,7 +58,7 @@ func NewManager(emit EmitFunc) *Manager {
 		cancels:         map[string]context.CancelFunc{},
 		llmNoTools:      map[string]bool{},
 		llmNoticed:      map[string]bool{},
-		emit:            emit,
+		out:             emit,
 	}
 }
 
@@ -173,6 +179,14 @@ type Turn struct {
 	// que sí existen. Si el id no vale, lo rechaza el CLI con su propio
 	// mensaje — que es más exacto que cualquiera que pudiéramos inventar.
 	Model string
+	// Title, AgentLabel, Module y ContextID rotulan la sesión en el registro
+	// (sidebar y diálogo de permisos): el título del chat, el nombre visible del
+	// agente y desde qué módulo se abrió. No influyen en cómo corre el turno;
+	// vacíos, la sesión se lista sin rótulo.
+	Title      string
+	AgentLabel string
+	Module     string
+	ContextID  string
 	// Effort es el esfuerzo de razonamiento ("low"/"medium"/"high"). Vacío usa
 	// el del CLI. No se valida contra una lista fija acá: los valores los
 	// define cada CLI y difieren entre ellos (Claude Code agrega "xhigh" y
@@ -272,7 +286,8 @@ func (m *Manager) Send(t Turn) error {
 		return err
 	}
 
-	go m.run(ctx, t, args, adapt)
+	m.beginTurn(ctx, t)
+	m.spawn(func() { m.run(ctx, t, args, adapt) })
 	return nil
 }
 
@@ -391,6 +406,9 @@ func (m *Manager) Cancel(sessionID string) {
 	cancel := m.cancels[sessionID]
 	m.mu.Unlock()
 	if cancel != nil {
+		// Antes de cortar: el error que llega después tiene que leerse como
+		// "lo cortó la persona" y no como un fallo.
+		m.markCancel(sessionID)
 		cancel()
 	}
 }
@@ -404,6 +422,7 @@ func (m *Manager) Reset(sessionID string) {
 	delete(m.llmHistory, sessionID)
 	delete(m.llmHistoryAgent, sessionID)
 	m.mu.Unlock()
+	m.forget(sessionID)
 }
 
 // Busy dice si la sesión está contestando un turno.
@@ -418,6 +437,7 @@ func (m *Manager) finish(sessionID string) {
 	m.mu.Lock()
 	delete(m.cancels, sessionID)
 	m.mu.Unlock()
+	m.sessionEnded(sessionID)
 }
 
 func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter) {

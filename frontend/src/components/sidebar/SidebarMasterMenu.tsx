@@ -17,7 +17,7 @@ import {useT} from '../../i18n'
 // cada ícono cuando hay una búsqueda activa — buscar sigue siendo global, y
 // el ícono es lo que dice en cuál de los cuatro cayó lo que se busca.
 
-export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http' | 'utilities'
+export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http' | 'utilities' | 'ai'
 
 export interface SidebarModuleDef {
     id: SidebarModuleId
@@ -33,6 +33,11 @@ export interface SidebarModuleDef {
     // null = no hay búsqueda, así que no se muestra nada (un "0" permanente
     // sobre cada ícono sería ruido, no información).
     matchCount: number | null
+    // Insignia de actividad sobre el ícono: cuántas cosas del módulo piden
+    // atención o siguen trabajando (hoy, las sesiones de IA). Distinta del
+    // contador de la búsqueda, que es una respuesta a lo que se escribió; ésta
+    // es un estado vivo y se muestra siempre que haya algo.
+    badge?: {count: number; title: string; tone: 'primary' | 'tertiary'}
 }
 
 interface SidebarMasterMenuProps {
@@ -70,11 +75,12 @@ export default function SidebarMasterMenu({modules, active, onSelect, orientatio
                         key={m.id}
                         onClick={() => onSelect(m.id)}
                         title={
-                            isActive
+                            (isActive
                                 ? t.shell.masterMenu.activeTitle({label: m.label, hint: m.hint})
                                 : m.matchCount != null
                                   ? t.shell.masterMenu.matchesTitle({label: m.label, hint: m.hint, count: m.matchCount})
-                                  : t.shell.masterMenu.title({label: m.label, hint: m.hint})
+                                  : t.shell.masterMenu.title({label: m.label, hint: m.hint})) +
+                            (m.badge && m.badge.count > 0 ? `. ${m.badge.title}` : '')
                         }
                         className={`relative flex h-8 items-center justify-center rounded-lg transition-colors ${vertical ? 'w-8' : 'flex-1'} ${
                             isActive
@@ -94,6 +100,17 @@ export default function SidebarMasterMenu({modules, active, onSelect, orientatio
                             </span>
                         )}
                         {m.matchCount === 0 && <span aria-hidden className="absolute inset-0 rounded-lg bg-surface-container-low/50" />}
+                        {m.badge && m.badge.count > 0 && !hasMatches && (
+                            <span
+                                data-module-badge={m.id}
+                                title={m.badge.title}
+                                className={`absolute -top-0.5 right-1 min-w-3 rounded-full px-1 text-center font-mono text-ui-9 font-bold leading-tight ${
+                                    m.badge.tone === 'tertiary' ? 'bg-tertiary text-on-tertiary' : 'bg-primary text-on-primary'
+                                }`}
+                            >
+                                {m.badge.count > 99 ? '99+' : m.badge.count}
+                            </span>
+                        )}
                     </button>
                 )
             })}

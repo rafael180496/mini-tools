@@ -66,6 +66,22 @@ type Request struct {
 	// backend/agentchat: qué archivo, de qué tamaño.
 	Summary string `json:"summary"`
 	Detail  string `json:"detail"`
+	// SessionID, Title y AgentLabel dicen A QUÉ CHAT pertenece la pregunta,
+	// para que el diálogo (global, montado fuera de cualquier pestaña) pueda
+	// rotularla aunque el chat esté cerrado y corriendo en segundo plano.
+	//
+	// SessionID viene de dos lados: del ctx del turno cuando pregunta un
+	// servidor de modelos, y de la variable de entorno que el re-exec del hook
+	// hereda del proceso del CLI (HookEnvFor) cuando pregunta Claude Code.
+	// Vacío = no se supo de qué sesión es (un hook sin la variable): el diálogo
+	// se muestra igual, sin rótulo. Title y AgentLabel los completa la app con
+	// lo que sabe del registro de sesiones; el hook nunca los manda.
+	SessionID  string `json:"sessionId"`
+	Title      string `json:"title"`
+	AgentLabel string `json:"agentLabel"`
+	// CreatedAt (ms Unix) lo pone la app al registrar la pregunta: ordena
+	// ListPendingApprovals y deja mostrar cuánto lleva esperando.
+	CreatedAt int64 `json:"createdAt,omitempty"`
 }
 
 // Decision es lo que contestó el usuario.
@@ -115,7 +131,7 @@ func Start(dataDir string, ask AskFunc) (*Channel, error) {
 	}
 
 	c := &Channel{listener: ln, path: path, ask: ask}
-	go c.accept()
+	go c.accept(ln)
 	return c, nil
 }
 
@@ -143,9 +159,11 @@ func (c *Channel) Close() error {
 	return err
 }
 
-func (c *Channel) accept() {
+// accept recibe el listener por parámetro: leerlo del campo competía con Close,
+// que lo pone en nil bajo el candado (carrera detectada con -race).
+func (c *Channel) accept(ln net.Listener) {
 	for {
-		conn, err := c.listener.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			// El listener cerrado es el camino normal de salida.
 			return

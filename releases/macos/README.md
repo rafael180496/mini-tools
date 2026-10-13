@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.9.0 |
-| Archivo | `mini-tools-v2.9.0.dmg` |
-| Tamaño | ~22 MB (21,8 MB) |
-| SHA-256 | `810bebffbcc4add7246a81185ee7f95b04af121a15e3dd0dca3b2fde7b1c040c` |
+| Versión | 2.10.0 |
+| Archivo | `mini-tools-v2.10.0.dmg` |
+| Tamaño | ~27 MB (26,9 MB; 26 905 148 bytes) — el binario suelto dentro del `.dmg` pesa 72,6 MB, bajo el techo de 100 MB |
+| SHA-256 | `bffed948de2049e07e2c91a0617a4720c9c3f04289723c44a4e25dbdcf1967ef` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v2.9.0.dmg
+shasum -a 256 mini-tools-v2.10.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -33,6 +33,12 @@ shasum -a 256 mini-tools-v2.9.0.dmg
 
 ## Compatibilidad del sistema
 
+- **Esta versión actualiza el schema del vault** (migraciones 57 a 64, todas
+  aditivas: servidores de modelos, mensajes de las conversaciones, cerebro,
+  carpetas de trabajo, adjuntos). Un `vault.db` de la 2.9.0 abre y migra solo,
+  sin perder nada. No hay migración hacia atrás: una versión anterior no
+  conoce esas tablas y no las usa, así que si pensás volver a la 2.9.0 conviene
+  hacer antes un backup del vault (Configuración → Backup del vault).
 - **Solo Apple Silicon (M1/M2/M3/M4 — arquitectura `arm64`).** Este build
   se compiló en un Mac `arm64` con `wails build` sin el flag de binario
   universal, así que **no corre en Mac Intel** (`x86_64`) ni bajo Rosetta —
@@ -54,7 +60,7 @@ shasum -a 256 mini-tools-v2.9.0.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v2.9.0.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v2.10.0.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:

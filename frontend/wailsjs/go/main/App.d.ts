@@ -22,6 +22,7 @@ import {git} from '../models';
 import {mcpconf} from '../models';
 import {agents} from '../models';
 import {portkill} from '../models';
+import {agentapprove} from '../models';
 import {localterm} from '../models';
 import {mcpserver} from '../models';
 import {llm} from '../models';
@@ -85,6 +86,8 @@ export function AgentRefPolicies():Promise<Array<agentctx.Policy>>;
 
 export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Array<agentctx.Resolved>>;
 
+export function AgentSessionReplay(arg1:string):Promise<Array<agentchat.Event>>;
+
 export function AgentUsageAll(arg1:number):Promise<agentusage.Usage>;
 
 export function AgentUsageLimits():Promise<Array<agentlimits.AgentLimits>>;
@@ -104,6 +107,8 @@ export function AppendSshHistory(arg1:string,arg2:string):Promise<boolean>;
 export function ApplyRowEdits(arg1:string,arg2:string,arg3:Array<main.CellEdit>):Promise<main.EditApplied>;
 
 export function AskAgentOnce(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function AttachAgentSession(arg1:string):Promise<void>;
 
 export function BackupVault(arg1:string):Promise<string>;
 
@@ -146,6 +151,8 @@ export function ClearLocalHistory(arg1:string):Promise<number>;
 export function ClearRecentFiles():Promise<void>;
 
 export function ClearSshHistory(arg1:string):Promise<number>;
+
+export function CloseAgentSession(arg1:string):Promise<void>;
 
 export function CloseLocalTerminal(arg1:string):Promise<void>;
 
@@ -196,6 +203,8 @@ export function DeleteSSHKey(arg1:string):Promise<void>;
 export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteSshSnippet(arg1:string):Promise<void>;
+
+export function DetachAgentSession(arg1:string):Promise<void>;
 
 export function DetectLocalOllama():Promise<boolean>;
 
@@ -617,6 +626,8 @@ export function KillProcessElevated(arg1:number,arg2:boolean):Promise<boolean>;
 
 export function ListAgentChats(arg1:string):Promise<Array<vault.AgentChat>>;
 
+export function ListAgentSessions():Promise<Array<agentchat.AgentSessionInfo>>;
+
 export function ListAgentWorkspaces():Promise<Array<main.AgentWorkspace>>;
 
 export function ListAgents():Promise<Array<agents.Agent>>;
@@ -643,6 +654,8 @@ export function ListMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:stri
 
 export function ListNotes():Promise<Array<vault.NoteSummary>>;
 
+export function ListPendingApprovals():Promise<Array<agentapprove.Request>>;
+
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 
 export function ListRedisKeys(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<db.RedisScanPage>;
@@ -668,6 +681,8 @@ export function LocalShellLabel(arg1:string):Promise<string>;
 export function MCPServerStatus():Promise<main.MCPStatus>;
 
 export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
+
+export function MarkAgentSessionRead(arg1:string):Promise<void>;
 
 export function MergeNotes(arg1:string,arg2:string):Promise<void>;
 

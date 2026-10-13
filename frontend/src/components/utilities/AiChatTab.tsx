@@ -4,6 +4,7 @@ import {
     AgentActive,
     AgentModelCatalog,
     CancelAgentChat,
+    CloseAgentSession,
     CreateAgentChat,
     DeleteAgentChat,
     GitListRepos,
@@ -33,7 +34,9 @@ import {isModelServerAgent} from '../../lib/modelServers'
 import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
 import {CONTEXT_ICONS, describeContext, repoIdOf, type WorkContext, type WorkContextKind} from '../agent/workContext'
 import {errorText, useT} from '../../i18n'
-import {onModelServersChanged} from '../../lib/appBus'
+import {onModelServersChanged, requestOpenAiChat} from '../../lib/appBus'
+import {aiChatShortcuts, clearPane, paneOwningChat, setPaneChats} from '../../lib/aiChatTabs'
+import {useTreeMenu} from '../sidebar/TreeMenu'
 import {useElementWidth} from '../../hooks/useElementWidth'
 import AiChatHistory from './aichat/AiChatHistory'
 import ProjectContextBar from './aichat/ProjectContextBar'
@@ -47,6 +50,8 @@ import {
     HISTORY_WIDTH_DEFAULT,
     HISTORY_WIDTH_MAX,
     HISTORY_WIDTH_MIN,
+    LABEL_NEW_TAB_FROM,
+    LABEL_SPLIT_FROM,
     NARROW_BELOW,
     readHistoryOpen,
     readHistoryWidth,
@@ -117,16 +122,43 @@ interface Session {
 
 const newSessionId = () => `agent-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
+// Pedido de abrir una conversación en este panel. El `token` hace que pedir dos
+// veces la misma vuelva a llevar a ella (igual que el seed del chat).
+export interface AiChatOpenRequest {
+    chatId: string
+    token: number
+}
+
 interface Props {
     // La pestaña está a la vista. Oculta sigue montada (para no perder las
     // conversaciones ni un turno en curso), pero no atiende atajos.
     visible: boolean
+    // Id de este panel (el de su pestaña, o ese con `#b` si es el segundo de una
+    // pestaña dividida). Es la clave con la que el panel declara qué
+    // conversaciones tiene abiertas (lib/aiChatTabs).
+    paneId: string
+    // Conversación que hay que abrir apenas se pueda (lo pide la barra lateral
+    // «IA», el historial de otra pestaña o el atajo de nueva ventana).
+    openRequest?: AiChatOpenRequest | null
+    // Cómo se llama lo que muestra el panel: el título de la conversación, o el
+    // proyecto. La pestaña lo usa de rótulo. Sólo lo informa el primer panel.
+    onTitleChange?: (title: string) => void
+    // Pestaña dividida en dos paneles: el primero ofrece dividir/juntar, el
+    // segundo se cierra a sí mismo.
+    split?: boolean
+    secondary?: boolean
+    onToggleSplit?: () => void
+    // Atiende los atajos de teclado (Cmd/Ctrl+N). En una pestaña dividida lo
+    // hace sólo el panel donde está el foco, no los dos a la vez.
+    shortcutsEnabled?: boolean
 }
 
-export default function AiChatTab({visible}: Props) {
+export default function AiChatTab({visible, paneId, openRequest, onTitleChange, split = false, secondary = false, onToggleSplit, shortcutsEnabled = true}: Props) {
     const t = useT()
     const ta = t.utilities.aiChat
     const rootRef = useRef<HTMLDivElement>(null)
+    const headerRef = useRef<HTMLElement>(null)
+    const newMenu = useTreeMenu(288)
 
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [agentsLoaded, setAgentsLoaded] = useState(false)
@@ -164,25 +196,50 @@ export default function AiChatTab({visible}: Props) {
     // Servidor recién guardado, a elegir apenas aparezca en el catálogo.
     const [pendingProvider, setPendingProvider] = useState('')
     const rootWidth = useElementWidth(rootRef)
+    // La cabecera se mide aparte: con el historial en columna le queda mucho menos
+    // que a la pestaña. Los rótulos de «Nueva pestaña» y «Dividir» aparecen sólo
+    // cuando caben sin partir el renglón; sin ellos quedan los íconos con su
+    // tooltip, y el menú de «Nuevo chat ▾» siempre dice las tres opciones con texto.
+    const headerWidth = useElementWidth(headerRef)
     // 0 = todavía sin medir: no se asume angosto.
     const narrow = rootWidth > 0 && rootWidth < NARROW_BELOW
     const compact = rootWidth > 0 && rootWidth < COMPACT_BELOW
+    const labelNewTab = !compact && headerWidth >= LABEL_NEW_TAB_FROM
+    const labelSplit = !compact && headerWidth >= LABEL_SPLIT_FROM
     const inlineHistory = historyOpen && !narrow
     // El historial nunca le deja al chat menos de CHAT_MIN.
     const historyMax = rootWidth > 0 ? Math.max(HISTORY_WIDTH_MIN, Math.min(HISTORY_WIDTH_MAX, rootWidth - CHAT_MIN)) : HISTORY_WIDTH_MAX
     const historyShown = Math.min(historyMax, Math.max(HISTORY_WIDTH_MIN, historyWidth))
     const [renaming, setRenaming] = useState<vault.AgentChat | null>(null)
     const [deleting, setDeleting] = useState<vault.AgentChat | null>(null)
+    // «Cerrar chat» pendiente de confirmar (solo se pregunta si está trabajando).
+    const [closingChat, setClosingChat] = useState<Session | null>(null)
     const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
     const [catalog, setCatalog] = useState<agentmodels.Catalog | null>(null)
     // Sube cuando cambian los modelos del servidor elegido: relee el catálogo.
     const [catalogTick, setCatalogTick] = useState(0)
 
+    // Sube cuando termina un pedido de apertura (con o sin resultado): reabre la
+    // decisión de crear el borrador inicial.
+    const [openSettled, setOpenSettled] = useState(0)
     const sessionsRef = useRef(sessions)
     sessionsRef.current = sessions
 
     const available = useMemo(() => agentList.filter((a) => a.available), [agentList])
     const current = useMemo(() => sessions.find((s) => s.id === currentId) ?? null, [sessions, currentId])
+
+    // Qué conversaciones tiene abiertas este panel, para que ninguna se abra
+    // también en otro y para que la barra de pestañas y la lateral sepan cuál de
+    // ellas está trabajando. Sólo cuentan las que ya tienen mensajes: un
+    // borrador no es una conversación de nadie.
+    const openIdsKey = sessions
+        .filter((s) => s.chatId)
+        .map((s) => s.id)
+        .join('|')
+    useEffect(() => {
+        setPaneChats(paneId, openIdsKey ? openIdsKey.split('|') : [])
+    }, [paneId, openIdsKey])
+    useEffect(() => () => clearPane(paneId), [paneId])
 
     // Salud de los servidores de modelos. El proveedor elegido se sondea cada
     // 60 s mientras la pestaña está a la vista; los demás solo se leen una vez
@@ -319,6 +376,15 @@ export default function AiChatTab({visible}: Props) {
         [repos, workspaces, resourceNames],
     )
 
+    // Rótulo de la pestaña: el título de la conversación a la vista o, si es un
+    // borrador, el proyecto elegido. Sin ninguno de los dos, el nombre de siempre.
+    const onTitleChangeRef = useRef(onTitleChange)
+    onTitleChangeRef.current = onTitleChange
+    const tabTitle = (current?.chatId ? history.find((c) => c.id === current.chatId)?.title : '') || current?.context.label || ''
+    useEffect(() => {
+        onTitleChangeRef.current?.(tabTitle)
+    }, [tabTitle])
+
     const utilitiesContext = useCallback(
         (projectId: string): WorkContext => ({kind: 'utilities', id: projectId, label: projectId ? projectName(projectId) : ''}),
         [projectName],
@@ -334,6 +400,9 @@ export default function AiChatTab({visible}: Props) {
     // primero disponible).
     useEffect(() => {
         if (!agentsLoaded || sessions.length > 0 || available.length === 0) return
+        // Si el panel nació para abrir una conversación, el borrador sobra: se
+        // crea recién si esa apertura no llegó a nada.
+        if (openRequest && (handledOpenRef.current !== openRequest.token || openingRef.current)) return
         const agent = available.find((a) => a.id === defaultAgentId) ?? available[0]
         const s: Session = {
             id: newSessionId(),
@@ -345,7 +414,8 @@ export default function AiChatTab({visible}: Props) {
         }
         setSessions([s])
         setCurrentId(s.id)
-    }, [agentsLoaded, sessions.length, available, defaultAgentId, utilitiesContext])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agentsLoaded, sessions.length, available, defaultAgentId, utilitiesContext, openSettled])
 
     // El borrador es la conversación sin entrada en el historial. Hay a lo sumo
     // una: «Nuevo chat» con un borrador a la vista no abre otro, vuelve a él.
@@ -375,7 +445,7 @@ export default function AiChatTab({visible}: Props) {
 
     // Cmd/Ctrl+N: chat nuevo, solo con esta pestaña a la vista.
     useEffect(() => {
-        if (!visible) return
+        if (!visible || !shortcutsEnabled) return
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
                 e.preventDefault()
@@ -384,14 +454,23 @@ export default function AiChatTab({visible}: Props) {
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-    }, [visible, newChat])
+    }, [visible, shortcutsEnabled, newChat])
 
+    // `force`: la conversación se pidió PARA este panel (llegó por un pedido de
+    // apertura), así que no se la manda a buscar a otro.
     const openChat = useCallback(
-        (c: vault.AgentChat) => {
+        (c: vault.AgentChat, force = false) => {
             const existing = sessionsRef.current.find((s) => s.id === c.id)
             if (existing) {
                 setCurrentId(existing.id)
                 focusComposer()
+                return
+            }
+            // Una conversación no se muestra en dos paneles a la vez: dos cajas
+            // de texto para un turno que sólo admite un mensaje a la vez. Si ya
+            // está en otra pestaña, se lleva al frente esa.
+            if (!force && paneOwningChat(c.id, paneId)) {
+                requestOpenAiChat({chatId: c.id})
                 return
             }
             const agent = agentList.find((a) => a.id === c.agentId)
@@ -423,8 +502,31 @@ export default function AiChatTab({visible}: Props) {
             setCurrentId(s.id)
             focusComposer()
         },
-        [agentList, focusComposer, lostLabel, resourceNames, utilitiesContext],
+        [agentList, focusComposer, lostLabel, paneId, resourceNames, utilitiesContext],
     )
+
+    // Pedido de apertura desde afuera. Se resuelve contra el historial FRESCO y no
+    // contra el estado: una conversación recién creada puede no estar todavía en
+    // la lista que ya tenía el panel. Espera a los agentes, que `openChat`
+    // necesita para saber qué proveedor es.
+    const handledOpenRef = useRef(0)
+    const openingRef = useRef(false)
+    useEffect(() => {
+        if (!openRequest || !agentsLoaded || openRequest.token === handledOpenRef.current) return
+        handledOpenRef.current = openRequest.token
+        openingRef.current = true
+        ListAllAgentChats()
+            .then((h) => {
+                setHistory(h ?? [])
+                const c = (h ?? []).find((x) => x.id === openRequest.chatId)
+                if (c) openChat(c, true)
+            })
+            .catch(() => {})
+            .finally(() => {
+                openingRef.current = false
+                setOpenSettled((n) => n + 1)
+            })
+    }, [openRequest, agentsLoaded, openChat])
 
     // Pasar una conversación de un proveedor de modelos a otro SIN abrir otra:
     // el hilo lo tiene la app (los mensajes guardados en el vault y la memoria de
@@ -642,6 +744,37 @@ export default function AiChatTab({visible}: Props) {
         [currentId, loadHistory],
     )
 
+    // «Cerrar chat»: la conversación se da por terminada. Corta lo que corra, la
+    // saca de IA → Activas y la quita de esta pestaña; la entrada del historial
+    // queda y se puede abrir de nuevo. NO es borrarla (eso es `removeChat`) ni
+    // detener el turno (el botón Detener, que la deja abierta).
+    const closeChat = useCallback(
+        (sessionId: string) => {
+            void CloseAgentSession(sessionId).catch(() => {})
+            setBusyIds((prev) => {
+                if (!prev.has(sessionId)) return prev
+                const next = new Set(prev)
+                next.delete(sessionId)
+                return next
+            })
+            const rest = sessionsRef.current.filter((s) => s.id !== sessionId)
+            setSessions(rest)
+            if (sessionId === currentId) {
+                const draft = rest.find((s) => !s.chatId)
+                setCurrentId(draft?.id ?? rest[rest.length - 1]?.id ?? '')
+            }
+            loadHistory()
+        },
+        [currentId, loadHistory],
+    )
+    const askCloseChat = useCallback(
+        (s: Session) => {
+            if (busyIds.has(s.id)) setClosingChat(s)
+            else closeChat(s.id)
+        },
+        [busyIds, closeChat],
+    )
+
     // --- Dibujo ------------------------------------------------------------
 
     const modelOptions = (catalog?.models ?? [{id: MODEL_DEFAULT, label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
@@ -692,7 +825,7 @@ export default function AiChatTab({visible}: Props) {
     }
     const currentFolder = workspaces.find((w) => WORKSPACE_PREFIX + w.id === currentProjectId)
 
-    const shortcut = navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'
+    const {newChat: shortcut, newTab: shortcutNewWindow} = aiChatShortcuts()
     const activeChatId = current?.chatId || null
     const hasModelServer = available.some((a) => isModelServerAgent(a.id))
     const ms = t.settings.modelServers
@@ -739,6 +872,15 @@ export default function AiChatTab({visible}: Props) {
         </div>
     ) : null
 
+    // Una línea en el estado vacío: quien nunca vio el botón de otra pestaña
+    // concluye que el chat es uno solo.
+    const multiTabHint = (
+        <p data-multi-chat-hint className="mt-1 flex max-w-sm items-start gap-1.5 text-left text-ui-11 text-on-surface-variant">
+            <Icon name="tab_new_right" size={14} className="mt-px shrink-0 text-primary" />
+            {t.aiSessions.tabs.emptyHint({shortcut: shortcutNewWindow})}
+        </p>
+    )
+
     const toggleHistory = () => {
         if (narrow) setDrawerOpen((v) => !v)
         else {
@@ -766,6 +908,10 @@ export default function AiChatTab({visible}: Props) {
             }}
             onRename={setRenaming}
             onDelete={setDeleting}
+            onOpenInNewTab={(c) => {
+                requestOpenAiChat({chatId: c.id, newWindow: true})
+                if (narrow) setDrawerOpen(false)
+            }}
         />
     )
     const historyHandle = (
@@ -789,7 +935,7 @@ export default function AiChatTab({visible}: Props) {
             data-layout={narrow ? 'narrow' : 'wide'}
             className="relative flex h-full w-full min-w-0 overflow-hidden bg-surface-container-lowest"
             role="region"
-            aria-label={t.utilities.tools.aiChat.name}
+            aria-label={secondary ? `${t.utilities.tools.aiChat.name} — ${t.aiSessions.tabs.paneLabel({n: 2})}` : t.utilities.tools.aiChat.name}
         >
             {inlineHistory && (
                 <aside data-aichat-history className="relative flex shrink-0 flex-col border-r border-outline-variant" style={{width: historyShown}}>
@@ -820,7 +966,7 @@ export default function AiChatTab({visible}: Props) {
             )}
 
             <section className="flex min-w-0 flex-1 flex-col">
-                <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-3 py-2">
+                <header ref={headerRef} className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-3 py-2">
                     <button
                         data-history-toggle
                         onClick={toggleHistory}
@@ -886,31 +1032,105 @@ export default function AiChatTab({visible}: Props) {
                         </>
                     )}
 
-                    <button
-                        type="button"
-                        data-usage-toggle
-                        onClick={() => setBody((b) => (b === 'usage' ? 'chat' : 'usage'))}
-                        title={body === 'usage' ? t.agent.host.backToChat : ta.usageTitle}
-                        aria-label={ta.usage}
-                        aria-pressed={body === 'usage'}
-                        className={`ml-auto shrink-0 rounded-md p-1.5 hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
-                            body === 'usage' ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
-                        }`}
-                    >
-                        <Icon name="monitoring" size={16} filled={body === 'usage'} />
-                    </button>
-                    <button
-                        onClick={newChat}
-                        disabled={available.length === 0}
-                        title={ta.newChatTitle({shortcut})}
-                        aria-label={ta.newChat}
-                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40"
-                    >
-                        <Icon name="add" size={15} />
-                        {!compact && ta.newChat}
-                        {!compact && <kbd className="rounded bg-on-primary/20 px-1 font-sans text-ui-10">{shortcut}</kbd>}
-                    </button>
+                    {/* Las acciones de la derecha viajan juntas: si no caben junto a los
+                        selectores, bajan al renglón de abajo como un bloque. */}
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                        {!secondary && (
+                            <button
+                                type="button"
+                                data-new-window
+                                onClick={() => requestOpenAiChat({newWindow: true})}
+                                title={t.aiSessions.tabs.newWindowTitle({shortcut: shortcutNewWindow})}
+                                aria-label={t.aiSessions.tabs.newWindow}
+                                className={`flex shrink-0 items-center gap-1.5 rounded-md text-on-surface-variant hover:bg-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-primary ${
+                                    labelNewTab ? 'border border-outline-variant px-2 py-1 text-xs' : 'p-1.5'
+                                }`}
+                            >
+                                <Icon name="open_in_new" size={16} />
+                                {labelNewTab && t.aiSessions.tabs.newWindowShort}
+                            </button>
+                        )}
+                        {onToggleSplit && (
+                            <button
+                                type="button"
+                                data-split-toggle
+                                onClick={onToggleSplit}
+                                title={secondary || split ? t.aiSessions.tabs.unsplitTitle : t.aiSessions.tabs.splitTitle}
+                                aria-label={secondary ? t.aiSessions.tabs.unsplit : split ? t.aiSessions.tabs.unsplitShort : t.aiSessions.tabs.split}
+                                aria-pressed={split}
+                                className={`flex shrink-0 items-center gap-1.5 rounded-md hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
+                                    labelSplit ? 'border border-outline-variant px-2 py-1 text-xs' : 'p-1.5'
+                                } ${split ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                            >
+                                <Icon name={secondary ? 'close' : 'vertical_split'} size={16} filled={split && !secondary} />
+                                {labelSplit && (secondary ? t.aiSessions.tabs.unsplit : split ? t.aiSessions.tabs.unsplitShort : t.aiSessions.tabs.split)}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            data-usage-toggle
+                            onClick={() => setBody((b) => (b === 'usage' ? 'chat' : 'usage'))}
+                            title={body === 'usage' ? t.agent.host.backToChat : ta.usageTitle}
+                            aria-label={ta.usage}
+                            aria-pressed={body === 'usage'}
+                            className={`shrink-0 rounded-md p-1.5 hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
+                                body === 'usage' ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                            }`}
+                        >
+                            <Icon name="monitoring" size={16} filled={body === 'usage'} />
+                        </button>
+                        {/* «Nuevo chat» con su menú: el clic principal abre la conversación
+                            en ESTA pestaña; la ▾ dice, con texto, las otras dos formas
+                            de tener varios chats a la vez. */}
+                        <div className={`flex shrink-0 items-stretch rounded-lg bg-primary text-on-primary ${available.length === 0 ? 'opacity-40' : ''}`}>
+                            <button
+                                onClick={newChat}
+                                disabled={available.length === 0}
+                                data-new-chat
+                                title={ta.newChatTitle({shortcut})}
+                                aria-label={ta.newChat}
+                                className="flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-xs font-medium hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                                <Icon name="add" size={15} />
+                                {!compact && ta.newChat}
+                                {!compact && <kbd className="rounded bg-on-primary/20 px-1 font-sans text-ui-10">{shortcut}</kbd>}
+                            </button>
+                            <button
+                                data-new-chat-menu
+                                disabled={available.length === 0}
+                                onClick={(e) =>
+                                    newMenu.openAt(e, [
+                                        {label: t.aiSessions.tabs.newInThisTab, icon: 'add', hint: shortcut, title: t.aiSessions.tabs.newInThisTabTitle({shortcut}), onSelect: newChat},
+                                        {
+                                            label: t.aiSessions.tabs.newInNewTab,
+                                            icon: 'open_in_new',
+                                            hint: shortcutNewWindow,
+                                            title: t.aiSessions.tabs.newWindowTitle({shortcut: shortcutNewWindow}),
+                                            onSelect: () => requestOpenAiChat({newWindow: true}),
+                                        },
+                                        ...(onToggleSplit
+                                            ? [
+                                                  {
+                                                      label: secondary ? t.aiSessions.tabs.unsplit : split ? t.aiSessions.tabs.unsplitShort : t.aiSessions.tabs.splitMenu,
+                                                      icon: secondary ? 'close' : 'vertical_split',
+                                                      title: secondary || split ? t.aiSessions.tabs.unsplitTitle : t.aiSessions.tabs.splitTitle,
+                                                      onSelect: onToggleSplit,
+                                                  },
+                                              ]
+                                            : []),
+                                    ])
+                                }
+                                title={t.aiSessions.tabs.newChatMenuTitle}
+                                aria-label={t.aiSessions.tabs.newChatMenu}
+                                aria-haspopup="menu"
+                                className="flex items-center rounded-r-lg border-l border-on-primary/25 px-0.5 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                                <Icon name="arrow_drop_down" size={18} />
+                            </button>
+                        </div>
+                    </div>
                 </header>
+                {newMenu.element}
 
                 {projectError && (
                     <div
@@ -1007,11 +1227,17 @@ export default function AiChatTab({visible}: Props) {
                                         onModelChange={(m) => changeModel(s.id, m)}
                                         working={isCurrent ? workingOf(s) : null}
                                         onSend={(text) => onFirstSend(s.id, text)}
+                                        onCloseChat={s.chatId ? () => askCloseChat(s) : undefined}
                                         onConversation={(cid) => onConversation(s.id, cid)}
                                         onBusyChange={(b) => onBusyChange(s.id, b)}
                                         fluid
                                         onSessionUsage={isCurrent && visible ? setSessionUsage : undefined}
-                                        emptyExtra={noServerHint}
+                                        emptyExtra={
+                                            <>
+                                                {multiTabHint}
+                                                {noServerHint}
+                                            </>
+                                        }
                                     />
                                 </div>
                             </div>
@@ -1052,6 +1278,19 @@ export default function AiChatTab({visible}: Props) {
                             .catch(() => {})
                     }}
                     onClose={() => setRenaming(null)}
+                />
+            )}
+
+            {closingChat && (
+                <ConfirmDialog
+                    title={t.aiSessions.sidebar.closeConfirm.title}
+                    description={t.aiSessions.sidebar.closeConfirm.description({
+                        title: history.find((c) => c.id === closingChat.chatId)?.title || ta.untitled,
+                    })}
+                    confirmLabel={t.aiSessions.sidebar.closeConfirm.confirm}
+                    danger
+                    onConfirm={() => closeChat(closingChat.id)}
+                    onClose={() => setClosingChat(null)}
                 />
             )}
 

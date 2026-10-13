@@ -3616,6 +3616,10 @@ export default function GitRepoTab({
                                 {s.kind === 'chat' ? (
                                     <AgentChat
                                         sessionId={s.id}
+                                        // A la vista sólo con la pestaña activa y
+                                        // esta conversación delante: el chat se
+                                        // registra como visto (avisos y leído).
+                                        active={active && panelTab === 'agents' && agentsView === 'chats' && activeChatId === s.id}
                                         context={gitContext}
                                         agentId={s.agentId ?? ''}
                                         agentLabel={agentList.find((a) => a.id === s.agentId)?.label ?? s.title}

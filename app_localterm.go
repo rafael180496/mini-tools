@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
 	"mini-tools/backend/agentctx"
@@ -546,12 +544,13 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 			return err
 		}
 		turn := agentchat.Turn{
-			SessionID: sessionID,
-			AgentID:   agentID,
-			Cwd:       cwd,
-			Prompt:    prompt,
-			Images:    prep.Images,
-			PDFs:      prep.PDFs,
+			SessionID:  sessionID,
+			AgentID:    agentID,
+			AgentLabel: agent.Label,
+			Cwd:        cwd,
+			Prompt:     prompt,
+			Images:     prep.Images,
+			PDFs:       prep.PDFs,
 			// Todos los adjuntos, también los de texto (ya pegados en Prompt):
 			// de acá salen sus nombres para el historial.
 			Attachments: atts,
@@ -597,6 +596,7 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		// hace depender del PATH que heredó la ventana, que abierta desde
 		// Finder no incluye ~/.local/bin ni el prefijo de npm.
 		Exec:            agents.Launcher(agent.Path),
+		AgentLabel:      agent.Label,
 		Cwd:             cwd,
 		Env:             env,
 		Prompt:          prompt,
@@ -608,7 +608,9 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		Effort:          effort,
 		Model:           model,
 		ApproveSettings: a.approveSettings,
-		ApproveEnv:      agentapprove.HookEnv(a.approve.Path()),
+		// El id de la sesión viaja en el entorno del CLI, que el hook hereda:
+		// así la pregunta de permiso llega rotulada con su chat.
+		ApproveEnv: agentapprove.HookEnvFor(a.approve.Path(), sessionID),
 	})
 }
 
@@ -820,26 +822,23 @@ func (a *App) LocalShellLabel(id string) (string, error) {
 
 // --- Aprobación por acción -----------------------------------------------
 
-// askApproval lleva la pregunta del agente a la ventana y espera la respuesta.
+// askApproval lleva la pregunta de un CLI (Claude Code, por el hook) a la
+// ventana y espera la respuesta.
 //
 // Corre en la goroutine del canal, no en la del turno: acá se bloquea hasta
-// que el usuario decide, y el timeout lo maneja el canal (que deniega si nadie
-// contesta — el silencio no es un sí).
+// que el usuario decide, el plazo vence (5 min: el silencio no es un sí) o
+// cortan el turno. Los dos últimos descartan la pregunta — antes la goroutine
+// quedaba esperando para siempre y la pregunta seguía en pantalla aunque el
+// hook ya hubiera recibido el "no".
+//
+// La sesión dueña (req.SessionID) viene del hook; sin ella la pregunta se
+// muestra igual, sin rótulo, y no frena el estado de ningún chat.
 func (a *App) askApproval(req agentapprove.Request) agentapprove.Decision {
-	reply := make(chan agentapprove.Decision, 1)
-
-	a.approveMu.Lock()
-	a.approvePending[req.ID] = reply
-	a.approveMu.Unlock()
-
-	defer func() {
-		a.approveMu.Lock()
-		delete(a.approvePending, req.ID)
-		a.approveMu.Unlock()
-	}()
-
-	runtime.EventsEmit(a.ctx, "agent-approval", req)
-	return <-reply
+	ctx := context.Background()
+	if a.agentChats != nil && req.SessionID != "" {
+		ctx = a.agentChats.TurnContext(req.SessionID)
+	}
+	return a.askApprovalWith(ctx, req, agentapprove.Timeout, a.approvalEmitter())
 }
 
 // RespondAgentApproval es la respuesta del usuario. La llama el diálogo.
@@ -954,7 +953,13 @@ func (a *App) RenameAgentChat(id, title string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.RenameAgentChat(id, title)
+	if err := a.vault.RenameAgentChat(id, title); err != nil {
+		return err
+	}
+	if a.agentChats != nil {
+		a.agentChats.SetTitle(id, title)
+	}
+	return nil
 }
 
 // DeleteAgentChat saca la conversación del historial. **No borra la

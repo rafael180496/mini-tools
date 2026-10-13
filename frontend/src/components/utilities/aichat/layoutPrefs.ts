@@ -19,6 +19,10 @@ export const NARROW_BELOW = 760
 // Por debajo de éste, la cabecera se compacta (botón «Nuevo chat» sin rótulo,
 // selectores que se reparten el renglón).
 export const COMPACT_BELOW = 560
+// Anchos de la CABECERA (no de la pestaña) desde los que «Nueva pestaña» y
+// «Dividir» llevan rótulo además del ícono. Por debajo, sólo el ícono.
+export const LABEL_NEW_TAB_FROM = 860
+export const LABEL_SPLIT_FROM = 980
 // Ancho mínimo que se le deja al chat al lado de un historial inline.
 export const CHAT_MIN = 420
 

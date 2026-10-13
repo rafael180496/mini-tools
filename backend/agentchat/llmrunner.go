@@ -95,11 +95,14 @@ func (m *Manager) sendLLM(t Turn) error {
 	if len(history) == 0 && len(t.History) > 0 {
 		history = append([]llm.Message{llmSystemMessage()}, t.History...)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	// El ctx lleva el id de la sesión: las herramientas que piden permiso desde
+	// adentro del turno (App.askApprovalCtx) lo leen para rotular la pregunta.
+	ctx, cancel := context.WithCancel(WithSessionID(context.Background(), t.SessionID))
 	m.cancels[t.SessionID] = cancel
 	m.mu.Unlock()
 
-	go m.runLLM(ctx, t, history)
+	m.beginTurn(ctx, t)
+	m.spawn(func() { m.runLLM(ctx, t, history) })
 	return nil
 }
 

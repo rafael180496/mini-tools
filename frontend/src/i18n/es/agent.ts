@@ -170,6 +170,7 @@ export default {
         allowAutoDescriptionLlm: (p: {agent: string}) =>
             `${p.agent} va a editar y crear archivos y correr comandos del proyecto de trabajo sin preguntarte, durante toda esta sesión de chat. Solo los comandos de riesgo (rm -rf, git push, git reset --hard, sudo…) piden tu permiso. Los archivos están confinados al proyecto, pero un comando corre con tus permisos y puede afectar cosas fuera de él. Si el proyecto es una carpeta sin git, no hay vuelta atrás automática. Se te pregunta esta vez; después queda recordado para este proyecto.`,
         // Diálogo de aprobación de UNA acción (herramienta) del agente.
+        replayTrimmed: 'Retomaste un turno en curso: el inicio de esta respuesta ya no está disponible (inicio recortado).',
         approval: {
             title: (p: {tool: string}) => `¿Permitir ${p.tool}?`,
             titleRisky: (p: {tool: string}) => `Comando de riesgo (${p.tool})`,
@@ -184,6 +185,12 @@ export default {
             allowTitle: 'Deja que el agente ejecute esta acción, una vez',
             allowRisky: 'Permitir de todos modos',
             allowRiskyTitle: 'Ejecuta este comando de riesgo bajo tu responsabilidad. Solo vale para esta vez.',
+            // Cuando el permiso lo pide una conversación que NO tenés delante.
+            origin: (p: {title: string}) => `Lo pide la conversación «${p.title}», que no tenés a la vista.`,
+            originUntitled: 'Lo pide una conversación que no tenés a la vista.',
+            openConversation: 'Abrir conversación',
+            openConversationTitle: 'Lleva a la conversación que lo pide, para ver el contexto antes de decidir. El permiso sigue esperando tu respuesta.',
+            queue: (p: {n: number}) => (p.n === 1 ? 'Hay 1 permiso más esperando' : `Hay ${p.n} permisos más esperando`),
         },
         toolCard: {
             openNote: 'Abrir nota',
@@ -259,6 +266,7 @@ export default {
             enqueue: 'Dejar el mensaje en cola',
             search: 'Buscar en la conversación',
             reset: 'Reiniciar la conversación',
+            closeChat: 'Cerrar el chat',
             jumpLatest: 'Ir al último mensaje',
             copyMessage: 'Copiar el mensaje',
         },
@@ -324,7 +332,8 @@ export default {
             `${p.agent} está trabajando — escribí y Enter lo deja en cola para cuando termine`,
         placeholder: (p: {agent: string}) => `Preguntale a ${p.agent}… (Enter manda, Shift+Enter salta de línea)`,
         enqueueTitle: 'Deja este mensaje en cola: sale solo cuando termine el turno en curso',
-        stopTitle: 'Corta el turno en curso. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo.',
+        stopTitle: 'Detener: corta el turno en curso y deja el chat abierto. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo. Para terminar el chat del todo, usá «Cerrar chat».',
+        closeChatTitle: 'Cerrar chat: corta lo que esté corriendo, lo saca de IA → Activas y suelta su memoria. La conversación queda en el historial y se puede abrir de nuevo. Cerrar la pestaña, en cambio, NO cierra el chat.',
         sendTitle: 'Manda el mensaje (Enter)',
     },
     host: {

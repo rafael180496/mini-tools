@@ -161,3 +161,42 @@ func TestDescribeForApproval(t *testing.T) {
 		}
 	}
 }
+
+// La sesión dueña del CLI viaja en la petición: es lo que deja rotular el
+// diálogo global con el chat aunque su pestaña esté cerrada.
+func TestSessionTravels(t *testing.T) {
+	var got Request
+	c := startTestChannel(t, func(r Request) Decision {
+		got = r
+		return Decision{Allow: true}
+	})
+	Ask(c.Path(), Request{Tool: "Bash", SessionID: "chat-42"})
+	if got.SessionID != "chat-42" {
+		t.Fatalf("SessionID = %q", got.SessionID)
+	}
+}
+
+func TestHookEnvForCarriesSession(t *testing.T) {
+	env := HookEnvFor("/tmp/s.sock", "chat-42")
+	want := map[string]bool{
+		envHookActive + "=1":           false,
+		envHookSocket + "=/tmp/s.sock": false,
+		envHookSession + "=chat-42":    false,
+	}
+	for _, e := range env {
+		if _, ok := want[e]; ok {
+			want[e] = true
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("falta %q en %v", k, env)
+		}
+	}
+	// Sin sesión no se agrega una variable vacía.
+	for _, e := range HookEnvFor("/tmp/s.sock", "") {
+		if e == envHookSession+"=" {
+			t.Error("variable de sesión vacía")
+		}
+	}
+}

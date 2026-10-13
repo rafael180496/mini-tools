@@ -224,12 +224,29 @@ func chatTitleFrom(typed string) string {
 	return line
 }
 
+// chatTitleFor es el título con el que se rotula la sesión: el guardado del
+// chat (puede haber sido renombrado) o, si todavía no hay fila, el que saldría
+// del primer mensaje.
+func (a *App) chatTitleFor(sessionID, typed string) string {
+	if a.vault != nil {
+		if t := strings.TrimSpace(a.vault.AgentChatTitle(sessionID)); t != "" {
+			return t
+		}
+	}
+	return chatTitleFrom(typed)
+}
+
 // sendRecorded manda el turno al Manager grabándolo en el historial.
 func (a *App) sendRecorded(module, contextID, typed string, t agentchat.Turn) error {
 	// El título sale del primer mensaje; si fue solo adjuntos, del primer archivo.
 	title := typed
 	if strings.TrimSpace(title) == "" && len(t.Attachments) > 0 {
 		title = t.Attachments[0].Name
+	}
+	// Rótulos de la sesión para el registro (sidebar y diálogo de permisos).
+	t.Module, t.ContextID = module, contextID
+	if t.Title == "" {
+		t.Title = a.chatTitleFor(t.SessionID, title)
 	}
 	// Sesión ocupada: Send va a rechazarlo, y abrir un registro nuevo pisaría
 	// el del turno que sí está corriendo.

@@ -142,7 +142,12 @@ type App struct {
 	// approvePending son las preguntas esperando respuesta del usuario,
 	// indexadas por el id que asigna el canal.
 	approvePending map[string]chan agentapprove.Decision
-	approveMu      sync.Mutex
+	// approveReqs son esas mismas preguntas con su contenido, para que una
+	// interfaz montada DESPUÉS (la pestaña estaba cerrada cuando se preguntó)
+	// pueda listarlas con ListPendingApprovals. Mismo candado, mismo ciclo de
+	// vida que approvePending.
+	approveReqs map[string]agentapprove.Request
+	approveMu   sync.Mutex
 	// approvalEmit publica los eventos de la pregunta de permiso del chat con
 	// servidores de modelos (app_llmtools.go). nil = el runtime de Wails; solo
 	// los tests lo reemplazan, porque EventsEmit exige el contexto de la
@@ -280,6 +285,11 @@ func (a *App) startup(ctx context.Context) {
 		a.recordChatEvent(sessionID, ev)
 		emit(sessionID, ev)
 	})
+	// El listado de sesiones vivas se difunde a toda la interfaz (el sidebar
+	// no depende de ninguna pestaña de chat abierta).
+	a.agentChats.SetSessionsEmitter(func(list []agentchat.AgentSessionInfo) {
+		emit(agentSessionsEvent, list)
+	})
 
 	// Canal de aprobación por acción. Que falle NO impide arrancar: en una
 	// máquina sin AF_UNIX el chat sigue funcionando con la aprobación por
@@ -315,6 +325,13 @@ func (a *App) startup(ctx context.Context) {
 // right schema_migrations version but with every connection/history row
 // gone. See Store.Close's doc comment for the checkpoint itself.
 func (a *App) shutdown(ctx context.Context) {
+	// Los turnos de chat en segundo plano se cortan primero y con el vault
+	// todavía abierto: cada uno emite su error final y recordChatEvent lo
+	// graba en el historial. Cerrar el vault antes los dejaría escribiendo en
+	// una base cerrada, y sin cortarlos los CLIs quedarían como huérfanos.
+	if a.agentChats != nil {
+		a.agentChats.Shutdown(agentShutdownGrace)
+	}
 	if a.autoBackup != nil {
 		a.autoBackup.Stop()
 	}

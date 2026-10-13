@@ -32,6 +32,8 @@ import {createRoot} from 'react-dom/client'
 import './styles/globals.css'
 import {normalizeLang, setLanguage, t} from './i18n'
 import GitOutputNotice from './components/git/GitOutputNotice'
+import {requestOpenAiChat} from './lib/appBus'
+import {useEffect, useState} from 'react'
 
 // --- Bindings simulados ---------------------------------------------------
 //
@@ -850,7 +852,7 @@ const fixtures: Record<string, unknown> = {
         {path: '/consultas/facturacion-pendiente.sql', connId: 'c1', language: 'sql', kind: 'editor'},
         {path: '/consultas/contactos-duplicados.sql', connId: 'c5', language: 'sql', kind: 'editor'},
         {path: '', connId: 'c3', language: 'redis-cli', kind: 'redis-browser'},
-    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisessutil') ? 'utilities' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisess') ? 'ai' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' || gitWorkShot ? '' : 'agents', gitSideHidden: new URLSearchParams(location.search).get('view') === 'gitworkcollapsed', gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
@@ -1570,6 +1572,12 @@ const APPROVAL_RISKY = {
 
 anyWindow.runtime = {
     EventsOnMultiple: (name: string, cb: (data: unknown) => void) => {
+        // Las vistas aisess* empujan una lista nueva de sesiones a mano (el aviso
+        // de «terminó una conversación»): se guardan los suscriptores.
+        if (name === 'agent-sessions') {
+            ;(anyWindow.__sessionCbs ??= []).push(cb)
+            return () => {}
+        }
         if (name === 'agent-approval' && new URLSearchParams(location.search).get('view') === 'approvalrisky') {
             setTimeout(() => cb(APPROVAL_RISKY), 2600)
             return () => {}
@@ -2061,17 +2069,17 @@ const views: Record<string, React.ReactNode> = {
     ),
     aichat: (
         <div className="h-full">
-            <AiChatTab visible />
+            <AiChatTab visible paneId="uishot" />
         </div>
     ),
     aichatchat: (
         <div className="h-full">
-            <AiChatTab visible />
+            <AiChatTab visible paneId="uishot" />
         </div>
     ),
     aichatsearch: (
         <div className="h-full">
-            <AiChatTab visible />
+            <AiChatTab visible paneId="uishot" />
         </div>
     ),
     activitymonitor: (
@@ -2158,6 +2166,91 @@ const views: Record<string, React.ReactNode> = {
 }
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
+
+// --- Sesiones de IA en segundo plano (vistas aisess*) -------------------------
+//
+// Cinco conversaciones en estados distintos: una trabajando con salida parcial
+// (la que se retoma), una pidiendo permiso, una terminada sin leer, una fallida y
+// una más trabajando en otro proveedor. Los instantes salen de `Date.now()` para
+// que el reloj de «trabajando» muestre un tiempo creíble el día que se saque.
+const sessEs = uiLang === 'es'
+if (view.startsWith('aisess')) {
+    const nowMs = Date.now()
+    const T = {
+        mig: sessEs ? 'Migrar el módulo de pagos a PL/SQL' : 'Migrate the payments module to PL/SQL',
+        plan: sessEs ? 'Revisar el plan de ejecución de la consulta lenta' : 'Review the execution plan of the slow query',
+        tests: sessEs ? 'Generar los tests del parser de logs' : 'Generate tests for the log parser',
+        job: sessEs ? 'Diagnosticar el timeout del job nocturno' : 'Diagnose the nightly job timeout',
+        logs: sessEs ? 'Resumir los logs de la semana' : 'Summarize this week logs',
+    }
+    const mk = (id: string, agentId: string, title: string, ctx: string, ago: number, model: string) => ({
+        id, repoId: '', agentId, title, conversationId: `conv-${id}`, createdAt: aiNow - ago - 600, updatedAt: aiNow - ago, model, effort: '', mode: '', module: 'utilities', contextId: ctx, brain: false,
+    })
+    fixtures.ListAllAgentChats = [
+        mk('as-1', 'claude', T.mig, 'ws:w1', 40, 'sonnet'),
+        mk('as-2', 'llm:ms1', T.plan, '', 120, 'qwen2.5-coder:14b'),
+        mk('as-3', 'codex', T.tests, 'r4', 700, ''),
+        mk('as-4', 'antigravity', T.job, 'ws:w1', 1500, ''),
+        mk('as-5', 'llm:ms2', T.logs, '', 30, 'llama3.1:70b'),
+        ...aiChats.slice(0, 5),
+    ]
+    const info = (id: string, agentId: string, agentLabel: string, title: string, model: string, ctx: string, status: string, extra: Record<string, unknown>) => ({
+        sessionId: id, chatId: id, agentId, agentLabel, model, mode: '', module: 'utilities', contextId: ctx, title, status,
+        startedAt: nowMs - 900_000, lastEventAt: nowMs - 2000, turnStartedAt: nowMs - 312_000, lastText: '', pendingApprovalId: '', unread: false, ...extra,
+    })
+    const sessionList = (finished: boolean) => [
+        info('as-2', 'llm:ms1', 'Ollama local', T.plan, 'qwen2.5-coder:14b', '', 'awaiting_approval', {
+            pendingApprovalId: 'apr-1', turnStartedAt: nowMs - 95_000,
+            lastText: sessEs ? 'Necesito correr EXPLAIN sobre la consulta para ver si usa el índice.' : 'I need to run EXPLAIN on the query to see whether it uses the index.',
+        }),
+        info('as-1', 'claude', 'Claude Code', T.mig, 'sonnet', 'ws:w1', 'running', {
+            lastText: sessEs ? 'Leyendo backend/payments/settle.pks para mapear los procedimientos que hay que portar…' : 'Reading backend/payments/settle.pks to map the procedures that need porting…',
+        }),
+        info('as-5', 'llm:ms2', 'vLLM en el servidor GPU', T.logs, 'llama3.1:70b', '', finished ? 'idle' : 'running', {
+            turnStartedAt: nowMs - 41_000, unread: finished,
+            lastText: sessEs ? 'Resumen: 3 reinicios del job y un pico de latencia el martes a las 02:10.' : 'Summary: 3 job restarts and a latency spike on Tuesday at 02:10.',
+            ...(finished ? {usage: {input: 5210, output: 640, cacheRead: 0, cacheWrite: 0, thinking: 0, total: 5850, costUsd: 0}} : {}),
+        }),
+        info('as-3', 'codex', 'Codex CLI', T.tests, '', 'r4', 'idle', {
+            unread: true, turnStartedAt: nowMs - 780_000, lastEventAt: nowMs - 600_000,
+            lastText: sessEs ? 'Agregué 14 casos de prueba; todos pasan con go test ./...' : 'Added 14 test cases; all pass with go test ./...',
+            usage: {input: 18200, output: 2220, cacheRead: 0, cacheWrite: 0, thinking: 0, total: 20420, costUsd: 0},
+        }),
+        info('as-4', 'antigravity', 'Antigravity CLI', T.job, '', 'ws:w1', 'error', {
+            unread: true, turnStartedAt: nowMs - 1_400_000, lastEventAt: nowMs - 1_300_000,
+            lastText: '',
+            error: sessEs ? 'el proceso terminó con código 1: no se pudo leer /var/log/batch/nocturno.log (permiso denegado)' : 'process exited with code 1: could not read /var/log/batch/nightly.log (permission denied)',
+        }),
+    ]
+    fixtures.ListAgentSessions = sessionList(false)
+    anyWindow.__sessionNext = sessionList(true)
+    fixtures.ListPendingApprovals = [
+        {
+            id: 'apr-1', tool: 'run_command', input: '{"command":"psql -c \"EXPLAIN ANALYZE SELECT * FROM pagos WHERE estado = 3\""}',
+            summary: 'psql -c "EXPLAIN ANALYZE SELECT * FROM pagos WHERE estado = 3"', detail: '', sessionId: 'as-2', title: T.plan, agentLabel: 'Ollama local', createdAt: nowMs - 30_000,
+        },
+    ]
+    fixtures.MarkAgentSessionRead = null
+    const ev = (seq: number, kind: string, text: string, extra: Record<string, unknown> = {}) => ({seq, kind, text, ...extra})
+    fixtures.AgentSessionReplay = (id: string) =>
+        id !== 'as-1'
+            ? []
+            : [
+                  ev(1, 'start', '', {model: 'claude-sonnet-4', tools: ['Read', 'Grep', 'Edit'], mcpServers: []}),
+                  ev(2, 'text', sessEs ? 'Voy a empezar por entender qué procedimientos tiene el paquete de pagos.\n\n' : 'I will start by understanding which procedures the payments package has.\n\n'),
+                  ev(3, 'tool', '', {tool: {name: 'Grep', input: '{"pattern":"PROCEDURE"}', summary: 'PROCEDURE  backend/payments/', detail: ''}}),
+                  ev(4, 'tool', '', {tool: {name: 'Read', input: '{"file_path":"backend/payments/settle.pks"}', summary: 'backend/payments/settle.pks', detail: ''}}),
+                  ev(5, 'text', sessEs ? '## Lo que encontré\n\nEl paquete expone **7 procedimientos**; tres de ellos escriben en `PAGOS_LIQ` y hay que portarlos con su manejo de `COMMIT` intermedio:\n\n- `settle_batch`\n- `reverse_payment`\n- `close_period`\n\nSigo con `settle.pkb` para ver los cursores…' : '## What I found\n\nThe package exposes **7 procedures**; three of them write to `PAGOS_LIQ` and must be ported with their intermediate `COMMIT`:\n\n- `settle_batch`\n- `reverse_payment`\n- `close_period`\n\nContinuing with `settle.pkb` to look at the cursors…'),
+              ]
+    aiChatMessages['as-1'] = [{seq: 1, role: 'user', content: sessEs ? 'Migrá el módulo de pagos a PL/SQL y listame qué procedimientos hay que portar.' : 'Migrate the payments module to PL/SQL and list which procedures need porting.', toolName: '', createdAt: aiNow - 330}]
+    aiChatMessages['as-3'] = [
+        {seq: 1, role: 'user', content: sessEs ? 'Generá los tests del parser de logs.' : 'Generate the tests for the log parser.', toolName: '', createdAt: aiNow - 790},
+        {seq: 2, role: 'assistant', content: sessEs ? 'Agregué **14 casos de prueba**; todos pasan con `go test ./...`.' : 'Added **14 test cases**; all pass with `go test ./...`.', toolName: '', usage: {input: 18200, output: 2220, cacheRead: 0, thinking: 0, total: 20420, costUsd: 0}, createdAt: aiNow - 600},
+    ]
+    aiChatMessages['as-5'] = [
+        {seq: 1, role: 'user', content: sessEs ? 'Resumí los logs de la semana.' : 'Summarize this week logs.', toolName: '', createdAt: aiNow - 60},
+    ]
+}
 
 // La solapa de la columna de trabajo se recuerda por repositorio en el
 // almacenamiento del navegador (GitRepoTab): para fotografiar cada una basta
@@ -3321,6 +3414,164 @@ if (attachViews.includes(view)) {
         })
     }
 }
+// Sesiones de IA: el workspace entero con unos pasos escritos a mano (abrir una
+// conversación, dividir, tocar «Revisar»), que es la forma de fotografiar estados
+// que sólo existen tras una interacción.
+function AiSessHarness({steps, noToast = false}: {steps: (() => void)[]; noToast?: boolean}) {
+    useEffect(() => {
+        const ids = steps.map((fn, i) => window.setTimeout(fn, 1800 + i * 1400))
+        // Las capturas de la cabecera del chat no deben quedar tapadas por el
+        // aviso de aprobación que traen los datos de ejemplo.
+        const iv = noToast
+            ? window.setInterval(() => {
+                  const el = document.querySelector<HTMLElement>(`[aria-label="${t().aiSessions.toast.region}"]`)
+                  if (el) el.style.display = 'none'
+              }, 100)
+            : 0
+        return () => {
+            ids.forEach((id) => window.clearTimeout(id))
+            if (iv) window.clearInterval(iv)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+    return <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />
+}
+const clickEl = (sel: string, nth = 0) => () => document.querySelectorAll<HTMLElement>(sel)[nth]?.click()
+views.aisesssidebar = <AiSessHarness steps={[]} />
+views.aisessreattach = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'})]} />
+views.aisesstabs = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true})]} />
+views.aisesssplit = (
+    <AiSessHarness
+        steps={[
+            () => requestOpenAiChat({chatId: 'as-1'}),
+            clickEl('[data-split-toggle]'),
+            () => document.querySelectorAll('[data-aichat-root]')[1]?.querySelector<HTMLElement>('[data-chat-id="as-3"]')?.click(),
+        ]}
+    />
+)
+// Verificación del flujo de varias pestañas de Chat de IA con CLICS REALES (no
+// con `requestOpenAiChat`): cada paso toca el botón o el atajo que tocaría una
+// persona y deja en #trace cuántas pestañas de Chat de IA hay y cuál está activa.
+// `./scripts/uishot.sh` no lo imprime: se lee con `--dump-dom`.
+function AiNavProbe({steps, showTrace = false}: {steps: {label: string; run: () => void}[]; showTrace?: boolean}) {
+    const [trace, setTrace] = useState<string[]>([])
+    useEffect(() => {
+        const snap = (label: string) => {
+            const tabs = [...document.querySelectorAll<HTMLElement>('[data-tab-kind="utility"]')]
+            const active = document.querySelector<HTMLElement>('[data-tab-active]')?.dataset.tabId
+            const roots = document.querySelectorAll('[data-aichat-root]').length
+            setTrace((prev) => [...prev, `${label} => utilTabs=${tabs.length} aichatRoots=${roots} active=${tabs.findIndex((x) => x.dataset.tabId === active)}`])
+        }
+        const ids: number[] = []
+        steps.forEach((st, i) => {
+            ids.push(window.setTimeout(st.run, 1800 + i * 1500))
+            ids.push(window.setTimeout(() => snap(st.label), 1800 + i * 1500 + 700))
+        })
+        return () => ids.forEach((id) => window.clearTimeout(id))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+    return (
+        <>
+            <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />
+            <pre id="trace" className={showTrace ? 'fixed bottom-0 right-0 z-[100] bg-black/80 p-2 text-ui-10 text-white' : 'hidden'}>{trace.join('\n')}</pre>
+        </>
+    )
+}
+const shiftN = () => window.dispatchEvent(new KeyboardEvent('keydown', {key: 'N', metaKey: true, shiftKey: true, bubbles: true}))
+const pickMenu = (label: () => string) => () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent?.includes(label()))?.click()
+const tr = () => t().aiSessions.tabs
+views.aisessnavprobe = (
+    <AiNavProbe
+        steps={[
+            {label: 'open conversation as-1 (sidebar/recent)', run: () => requestOpenAiChat({chatId: 'as-1'})},
+            {label: 'click [data-new-window] (icon next to split)', run: clickEl('[data-new-window]')},
+            {label: 'Cmd+Shift+N', run: shiftN},
+            {label: 'history "open in new tab" row button', run: () => document.querySelector<HTMLElement>(`button[aria-label="${tr().openInNewTab}"]`)?.click()},
+            {label: 'IA sidebar main button [data-ai-new-chat]', run: clickEl('[data-ai-new-chat]')},
+            {label: 'IA sidebar menu -> split tab', run: () => { clickEl('[data-ai-new-menu]')(); setTimeout(pickMenu(() => tr().newSplitTab), 300) }},
+            {label: 'header split-button main (same tab: no new tab)', run: clickEl('[data-new-chat]')},
+            {label: 'header menu -> new chat in a new tab', run: () => { clickEl('[data-new-chat-menu]')(); setTimeout(pickMenu(() => tr().newInNewTab), 300) }},
+            {label: '+ Nueva menu -> Chat de IA', run: () => { clickEl('[data-new-menu]')(); setTimeout(pickMenu(() => t().editor.tabs.newAiChat), 300) }},
+        ]}
+    />
+)
+const treeRowMenu = () => {
+    const name = t().utilities.tools.aiChat.name
+    const row = [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].find((r) => r.textContent?.includes(name))
+    row?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 140, clientY: 190}))
+}
+views.aisessutilprobe = (
+    <AiNavProbe
+        steps={[
+            {label: 'open conversation as-1', run: () => requestOpenAiChat({chatId: 'as-1'})},
+            {label: 'utilities tree "+" [data-ai-new-tab]', run: clickEl('[data-ai-new-tab]')},
+            {label: 'tree right-click menu -> new split tab', run: () => { treeRowMenu(); setTimeout(pickMenu(() => t().utilities.sidebar.aiChat.newSplit), 300) }},
+            {label: 'tree child row click focuses first tab (active=0)', run: () => document.querySelectorAll<HTMLElement>('[data-tree-row] button[title^="' + (t().utilities.sidebar.aiChat.tabTitle({title: ''}).slice(0, 8)) + '"]')[0]?.click()},
+        ]}
+    />
+)
+views.aisessnewmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), clickEl('[data-new-chat-menu]')]} />
+views.aisesssidemenu = <AiSessHarness noToast steps={[clickEl('[data-ai-new-menu]')]} />
+views.aisessplusmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), clickEl('[data-new-menu]')]} />
+views.aisessempty = <AiSessHarness noToast steps={[() => requestOpenAiChat({newWindow: true})]} />
+views.aisessutiltabs = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({newWindow: true}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true})]} />
+views.aisessutilmenu = (
+    <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true}), treeRowMenu]} />
+)
+views.aisessapproval = <AiSessHarness steps={[clickEl('[data-approval-card] button')]} />
+views.aisesstoast = (
+    <AiSessHarness
+        steps={[
+            () => {
+                const cbs = (anyWindow.__sessionCbs ?? []) as ((d: unknown) => void)[]
+                for (const cb of cbs) cb(anyWindow.__sessionNext)
+            },
+        ]}
+    />
+)
+// Cerrar una pestaña NO cierra el chat (vistas aisessbg*):
+//   aisessbgtabmenu    clic derecho en una pestaña de Chat de IA
+//   aisessbgclosetoast se cierra con la × la pestaña de un chat que trabaja
+//   aisessbglist       IA → Activas con chats abiertos en segundo plano
+//   aisessbgmenu       el menú ⋯ de la fila de uno de ellos
+if (view.startsWith('aisessbg')) {
+    const nowMs = Date.now()
+    // Sin la tarjeta de aprobación de los datos de ejemplo: taparía el aviso.
+    fixtures.ListPendingApprovals = []
+    if (view === 'aisessbglist' || view === 'aisessbgmenu') {
+        // Solo las filas que hacen falta: con las cinco de siempre la nueva
+        // quedaría fuera de la ventana.
+        const all = fixtures.ListAgentSessions as Record<string, unknown>[]
+        const list = all.filter((x) => x.sessionId !== 'as-2' && x.sessionId !== 'as-5')
+        fixtures.ListAgentSessions = list
+        const title6 = sessEs ? 'Refactorizar el parser de logs' : 'Refactor the log parser'
+        // La de «Migrar…» trabaja con su pestaña cerrada; la de «Refactorizar…»
+        // terminó, ya la leíste y sigue abierta.
+        for (const x of list) if (x.sessionId === 'as-1') Object.assign(x, {attached: false, detached: true})
+        list.push({
+            sessionId: 'as-6', chatId: 'as-6', agentId: 'claude', agentLabel: 'Claude Code', model: 'sonnet', mode: '', module: 'utilities', contextId: 'ws:w1', title: title6, status: 'idle',
+            startedAt: nowMs - 2_400_000, lastEventAt: nowMs - 1_200_000, turnStartedAt: nowMs - 1_500_000, lastText: sessEs ? 'Listo: extraje el tokenizador y el parser quedó en 90 líneas.' : 'Done: I extracted the tokenizer and the parser is down to 90 lines.',
+            pendingApprovalId: '', unread: false, attached: false, detached: true,
+        })
+        const chats = fixtures.ListAllAgentChats as Record<string, unknown>[]
+        chats.push({id: 'as-6', repoId: '', agentId: 'claude', title: title6, conversationId: 'conv-as-6', createdAt: aiNow - 2500, updatedAt: aiNow - 1200, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: 'ws:w1', brain: false})
+    }
+}
+const tabContextMenu = () => {
+    const tabs = [...document.querySelectorAll<HTMLElement>('[data-tab-kind="utility"]')]
+    const tab = tabs[tabs.length - 1]
+    const r = tab?.getBoundingClientRect()
+    tab?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: (r?.left ?? 0) + 40, clientY: (r?.bottom ?? 0) - 4}))
+}
+const closeLastAiTab = () => {
+    const tabs = [...document.querySelectorAll<HTMLElement>('[data-tab-kind="utility"]')]
+    tabs[tabs.length - 1]?.querySelector<HTMLElement>(`button[title="${t().aiSessions.tabs.closeTabTitle}"]`)?.click()
+}
+views.aisessbgtabmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), tabContextMenu]} />
+views.aisessbgclosetoast = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'}), closeLastAiTab]} />
+views.aisessbglist = <AiSessHarness noToast steps={[]} />
+views.aisessbgmenu = <AiSessHarness noToast steps={[() => document.querySelector<HTMLElement>('[data-ai-session="as-6"] [data-ai-row-menu]')?.click()]} />
 // El idioma se fija antes de montar, igual que App.tsx lo carga antes de
 // dibujar: UISHOT_LANG=es|en (por defecto, el de la app).
 setLanguage(normalizeLang(new URLSearchParams(location.search).get('lang')))

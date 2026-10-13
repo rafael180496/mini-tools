@@ -1,8 +1,10 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import type {dockerctl} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import SidebarSection from '../sidebar/SidebarSection'
 import TreeRow from '../sidebar/TreeRow'
+import {MenuButton, useTreeMenu} from '../sidebar/TreeMenu'
+import {aiChatShortcuts} from '../../lib/aiChatTabs'
 import {useT} from '../../i18n'
 import {DOCKER_SECTIONS, type DockerSection} from './docker/sections'
 import {UTILITIES, type UtilityId} from './utilities'
@@ -28,6 +30,16 @@ interface UtilitiesTreeProps {
         counts: dockerctl.Counts | null
     }
     onOpenDockerSection: (s: DockerSection) => void
+    // El Chat de IA admite varias pestañas: acá se listan las abiertas y se pide
+    // otra. Un clic en su fila lleva a la que ya está (o abre la primera); el
+    // doble clic, el «+» de la fila, su menú o ⇧⌘N abren OTRA.
+    aiChat: {
+        tabs: {id: string; title: string}[]
+        activeTabId: string | null
+        onFocusTab: (tabId: string) => void
+        onNewTab: () => void
+        onNewSplit: () => void
+    }
     // Búsqueda global de la barra: filtra por nombre y por descripción.
     filter: string
     onMatchCount: (n: number | null) => void
@@ -40,11 +52,18 @@ interface UtilitiesTreeProps {
 // menú propio dentro de la pestaña, y vive acá porque la barra lateral es donde
 // se navega en esta app —igual que las ramas, remotos y tags de Git—, dejando a
 // la pestaña todo el ancho para el contenido.
-export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, docker, onOpenDockerSection, filter, onMatchCount}: UtilitiesTreeProps) {
+export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, docker, onOpenDockerSection, aiChat, filter, onMatchCount}: UtilitiesTreeProps) {
     const t = useT()
+    const menu = useTreeMenu(288)
     const td = t.utilities.docker
     const query = filter.trim().toLowerCase()
     const [dockerExpanded, setDockerExpanded] = useState(true)
+    const [aiExpanded, setAiExpanded] = useState(true)
+    const tai = t.utilities.sidebar.aiChat
+    // Cuántas pestañas de chat había en el primer clic de un doble clic. El
+    // primer clic ya abre una si no había ninguna: sin esto, un doble clic sobre
+    // la fila con cero pestañas abriría dos.
+    const aiTabsAtClick = useRef(0)
 
     const visible = useMemo(
         () =>
@@ -70,6 +89,17 @@ export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, d
         return n === undefined || n < 0 ? null : n
     }
 
+    // El mismo menú con clic derecho o con el «⋯» de la fila.
+    const aiMenu = (e: ReactMouseEvent) => {
+        const k = aiChatShortcuts()
+        menu.openAt(e, [
+            {label: tai.open, icon: 'forum', title: tai.openTitle, onSelect: () => onOpen('aiChat')},
+            'separator',
+            {label: tai.newTab, icon: 'open_in_new', hint: k.newTab, title: tai.newTabTitle({shortcut: k.newTab}), onSelect: aiChat.onNewTab},
+            {label: tai.newSplit, icon: 'vertical_split', title: tai.newSplitTitle, onSelect: aiChat.onNewSplit},
+        ])
+    }
+
     return (
         <SidebarSection title={t.utilities.sidebar.title} count={query ? `${visible.length}/${UTILITIES.length}` : String(UTILITIES.length)}>
             {visible.length === 0 ? (
@@ -82,28 +112,81 @@ export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, d
                     const isDocker = u.id === 'docker'
                     // Con Docker apagado el submenú no se ofrece: sus secciones
                     // no tienen nada que mostrar.
-                    const hasChildren = isDocker && !reason
+                    const isAi = u.id === 'aiChat'
+                    const aiTabs = aiChat.tabs
+                    // Las pestañas de chat se listan desde la primera: una pestaña
+                    // abierta que no aparece acá parece no existir.
+                    const hasChildren = (isDocker && !reason) || (isAi && aiTabs.length > 0)
+                    const expandedNow = isAi ? aiExpanded : dockerExpanded
                     return (
                         <div key={u.id}>
                             <TreeRow
                                 depth={0}
                                 icon={u.icon}
                                 label={tool.name}
-                                title={reason ? `${reason} ${t.utilities.sidebar.recheck}` : `${t.utilities.sidebar.openTool({name: tool.name})} — ${tool.hint}`}
+                                title={
+                                    reason
+                                        ? `${reason} ${t.utilities.sidebar.recheck}`
+                                        : isAi
+                                          ? `${tai.openTitle} — ${tool.hint}`
+                                          : `${t.utilities.sidebar.openTool({name: tool.name})} — ${tool.hint}`
+                                }
                                 iconClass={reason ? 'opacity-40' : undefined}
                                 labelClass={reason ? 'opacity-50' : undefined}
                                 active={activeId === u.id && !hasChildren}
-                                expanded={hasChildren ? dockerExpanded || !!query : undefined}
-                                onToggle={hasChildren ? () => setDockerExpanded((v) => !v) : undefined}
-                                onClick={() => {
+                                expanded={hasChildren ? expandedNow || !!query : undefined}
+                                onToggle={hasChildren ? () => (isAi ? setAiExpanded((v) => !v) : setDockerExpanded((v) => !v)) : undefined}
+                                onClick={(e) => {
+                                    // El segundo clic de un doble clic no vuelve a
+                                    // enfocar: lo resuelve onDoubleClick.
+                                    if (isAi && e.detail > 1) return
+                                    if (isAi) aiTabsAtClick.current = aiTabs.length
                                     onOpen(u.id)
-                                    if (hasChildren) setDockerExpanded(true)
+                                    if (hasChildren) (isAi ? setAiExpanded : setDockerExpanded)(true)
                                 }}
+                                onDoubleClick={
+                                    isAi
+                                        ? () => {
+                                              // Con cero pestañas el primer clic ya abrió una.
+                                              if (aiTabsAtClick.current > 0) aiChat.onNewTab()
+                                              setAiExpanded(true)
+                                          }
+                                        : undefined
+                                }
+                                onContextMenu={isAi ? aiMenu : undefined}
+                                actions={
+                                    isAi ? (
+                                        <>
+                                            <button
+                                                type="button"
+                                                data-ai-new-tab
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    aiChat.onNewTab()
+                                                }}
+                                                title={tai.newTabTitle({shortcut: aiChatShortcuts().newTab})}
+                                                aria-label={tai.newTab}
+                                                className="sidebar-icon !p-0.5"
+                                            >
+                                                <Icon name="add" size={14} />
+                                            </button>
+                                            <MenuButton onOpen={aiMenu} />
+                                        </>
+                                    ) : undefined
+                                }
                                 trailing={
                                     reason ? (
                                         <span title={reason} className="flex items-center gap-1 text-ui-9 uppercase text-on-surface-variant/60">
                                             <Icon name="block" size={11} />
                                             {t.utilities.sidebar.unavailable}
+                                        </span>
+                                    ) : isAi && aiTabs.length > 0 ? (
+                                        <span
+                                            data-ai-tab-count
+                                            title={tai.openCount({n: aiTabs.length})}
+                                            className="rounded-full bg-primary/15 px-1.5 font-mono text-ui-10 font-semibold tabular-nums text-primary"
+                                        >
+                                            {aiTabs.length}
                                         </span>
                                     ) : open ? (
                                         <span title={t.utilities.sidebar.alreadyOpen} className="flex items-center text-primary">
@@ -112,7 +195,22 @@ export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, d
                                     ) : undefined
                                 }
                             />
-                            {hasChildren &&
+                            {isAi &&
+                                hasChildren &&
+                                (aiExpanded || !!query) &&
+                                aiTabs.map((tab) => (
+                                    <TreeRow
+                                        key={tab.id}
+                                        depth={1}
+                                        icon="chat_bubble"
+                                        label={tab.title}
+                                        title={tai.tabTitle({title: tab.title})}
+                                        active={aiChat.activeTabId === tab.id}
+                                        onClick={() => aiChat.onFocusTab(tab.id)}
+                                    />
+                                ))}
+                            {isDocker &&
+                                hasChildren &&
                                 (dockerExpanded || !!query) &&
                                 DOCKER_SECTIONS.map((s) => {
                                     const n = countOf(s.id)
@@ -137,6 +235,7 @@ export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, d
                     )
                 })
             )}
+            {menu.element}
         </SidebarSection>
     )
 }

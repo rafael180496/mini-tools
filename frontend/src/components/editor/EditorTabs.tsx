@@ -8,6 +8,8 @@ import DbTypeIcon, {dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
+import {useTreeMenu} from '../sidebar/TreeMenu'
+import {aiChatShortcuts} from '../../lib/aiChatTabs'
 import {t as tr, useT} from '../../i18n'
 import type {UtilityId} from '../utilities/utilities'
 
@@ -165,6 +167,13 @@ export interface EditorTab {
     shellLabel?: string
     // Herramienta que muestra la pestaña — solo para kind === 'utility'.
     utilityId?: UtilityId
+    // Solo para la utilidad «Chat de IA», de la que puede haber VARIAS pestañas
+    // (cada una con su proyecto, proveedor y conversaciones):
+    //   openRequest  conversación que hay que llevar a la vista en esta pestaña;
+    //                `pane` dice en cuál de sus dos paneles (1 o 2). El token
+    //                hace que pedir lo mismo dos veces vuelva a llevar a ella.
+    //   split        la pestaña muestra dos chats lado a lado
+    aiChat?: {openRequest?: {chatId: string; token: number; pane: 1 | 2}; split?: boolean}
 }
 
 interface EditorTabsProps {
@@ -173,7 +182,12 @@ interface EditorTabsProps {
     connections: vault.ConnectionSummary[]
     onSelect: (id: string) => void
     onClose: (id: string) => void
+    // «Cerrar y detener el chat» (clic derecho en una pestaña de Chat de IA):
+    // cierra de verdad las conversaciones de la pestaña, no solo la pestaña.
+    onCloseAiChatForReal: (id: string) => void
     onNew: () => void
+    // «+ Nueva ▾» → Chat de IA: una pestaña de chat nueva.
+    onNewAiChat: () => void
     onReorder: (tabs: EditorTab[]) => void
     onChangeTabConnection: (tabId: string, connId: string | null) => void
     onChangeTabLanguage: (tabId: string, language: TabLanguage) => void
@@ -185,7 +199,13 @@ interface EditorTabsProps {
     onOpenRecentFile: (path: string) => void
     // Ids de las pestañas que están ejecutando algo. Ver `isRunning` arriba.
     runningIds: Set<string>
+    // Estado de las conversaciones de IA de cada pestaña de Chat de IA: trabaja,
+    // espera un permiso o terminó sin leer. Es lo que dice, desde otra pestaña,
+    // que la IA sigue en lo suyo (o que te espera).
+    agentStatus?: Record<string, AgentTabStatus>
 }
+
+export type AgentTabStatus = 'running' | 'approval' | 'unread'
 
 interface SortableTabProps {
     tab: EditorTab
@@ -193,19 +213,23 @@ interface SortableTabProps {
     connections: vault.ConnectionSummary[]
     onSelect: (id: string) => void
     onClose: (id: string) => void
+    // Clic derecho en una pestaña de Chat de IA: abre su menú (lo dibuja
+    // EditorTabs, fuera de la pestaña, para que sus eventos no lleguen a dnd-kit).
+    onAiChatMenu: (e: React.MouseEvent, tab: EditorTab) => void
     onChangeTabConnection: (tabId: string, connId: string | null) => void
     onChangeTabLanguage: (tabId: string, language: TabLanguage) => void
     // Esta pestaña tiene algo ejecutándose AHORA. Desde que dos pestañas pueden
     // correr a la vez, es lo único que dice que la que dejaste atrás sigue
     // trabajando —y cuándo terminó—, que es lo que hace usable irse.
     isRunning: boolean
+    agentStatus?: AgentTabStatus
 }
 
 // Un solo tab, arrastrable dentro del SortableContext de abajo. distance:5
 // en el sensor (ver EditorTabs) evita que un simple click (sin
 // desplazamiento) se interprete como intento de drag — así el botón de
 // cerrar y el click de selección siguen funcionando igual que antes.
-function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTabConnection, onChangeTabLanguage, isRunning}: SortableTabProps) {
+function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMenu, onChangeTabConnection, onChangeTabLanguage, isRunning, agentStatus}: SortableTabProps) {
     const t = useT()
     const {attributes, listeners, setNodeRef, transform, transition, isDragging} = useSortable({id: tab.id})
     const [menuOpen, setMenuOpen] = useState(false)
@@ -225,6 +249,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
     // Solo el editor puede cambiar de conexión/lenguaje: el resto de las
     // clases nace atado a lo suyo y no hay menú que ofrecer.
     const isEditorTab = tab.kind === 'editor'
+    const isAiChatTab = tab.kind === 'utility' && tab.utilityId === 'aiChat'
 
     // Posiciona el menú vía viewport coords + un portal a document.body, no
     // position:absolute dentro de esta fila — la fila de pestañas tiene
@@ -246,7 +271,15 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             style={style}
             {...attributes}
             {...listeners}
+            // Los usa el banco de capturas (uishot.tsx) para encontrar y contar
+            // pestañas sin depender del texto, que cambia con el idioma.
+            data-tab-id={tab.id}
+            data-tab-kind={tab.kind}
+            data-tab-active={isActive ? '' : undefined}
             onClick={() => onSelect(tab.id)}
+            // Clic derecho en un Chat de IA: cerrar la pestaña o cerrar el chat
+            // de verdad. En las demás no hay nada que ofrecer.
+            onContextMenu={isAiChatTab ? (e) => onAiChatMenu(e, tab) : undefined}
             // Clic central = cerrar, como en VS Code. Acá no se puede usar
             // `closeOnMiddleClick` con spread: el `onPointerDown` de dnd-kit
             // viene en `listeners` y sobrescribirlo mataría el arrastre para
@@ -315,6 +348,17 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-secondary"
                 />
             )}
+            {agentStatus && (
+                <span
+                    data-agent-status={agentStatus}
+                    title={agentStatus === 'running' ? t.aiSessions.tabs.stateRunning : agentStatus === 'approval' ? t.aiSessions.tabs.stateApproval : t.aiSessions.tabs.stateUnread}
+                    className={
+                        agentStatus === 'running'
+                            ? 'h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-primary motion-reduce:animate-none'
+                            : `h-2 w-2 shrink-0 rounded-full ${agentStatus === 'approval' ? 'bg-tertiary' : 'bg-secondary'}`
+                    }
+                />
+            )}
             <span className="min-w-0 shrink truncate">
                 {tab.title}
                 {tab.dirty ? ' •' : ''}
@@ -325,7 +369,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     onClose(tab.id)
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                title={tab.dirty ? t.editor.tabs.closeDirty : t.editor.tabs.close}
+                title={isAiChatTab ? t.aiSessions.tabs.closeTabTitle : tab.dirty ? t.editor.tabs.closeDirty : t.editor.tabs.close}
                 className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
             >
                 <Icon name="close" size={14} />
@@ -430,16 +474,21 @@ export default function EditorTabs({
     connections,
     onSelect,
     onClose,
+    onCloseAiChatForReal,
     onNew,
+    onNewAiChat,
     onReorder,
     onChangeTabConnection,
     onChangeTabLanguage,
     onOpenFile,
     onOpenRecentFile,
     runningIds,
+    agentStatus,
 }: EditorTabsProps) {
     const t = useT()
     const sensors = useSensors(useSensor(PointerSensor, {activationConstraint: {distance: 5}}))
+    const newMenu = useTreeMenu(288)
+    const tabMenu = useTreeMenu(372)
 
     function handleDragEnd(event: DragEndEvent) {
         const {active, over} = event
@@ -448,6 +497,16 @@ export default function EditorTabs({
         const newIndex = tabs.findIndex((t) => t.id === over.id)
         if (oldIndex === -1 || newIndex === -1) return
         onReorder(arrayMove(tabs, oldIndex, newIndex))
+    }
+
+    // Cerrar la pestaña de un Chat de IA y cerrar el chat son dos acciones
+    // distintas, y el menú las pone una al lado de la otra con su diferencia dicha.
+    function openAiChatMenu(e: React.MouseEvent, tab: EditorTab) {
+        const ts = t.aiSessions.tabs
+        tabMenu.openAt(e, [
+            {label: ts.closeTabKeep, icon: 'tab_close', title: ts.closeTabKeepTitle, onSelect: () => onClose(tab.id)},
+            {label: ts.closeForReal, icon: 'cancel_presentation', title: ts.closeForRealTitle, danger: true, onSelect: () => onCloseAiChatForReal(tab.id)},
+        ])
     }
 
     return (
@@ -468,9 +527,11 @@ export default function EditorTabs({
                                 connections={connections}
                                 onSelect={onSelect}
                                 onClose={onClose}
+                                onAiChatMenu={openAiChatMenu}
                                 onChangeTabConnection={onChangeTabConnection}
                                 onChangeTabLanguage={onChangeTabLanguage}
                                 isRunning={runningIds.has(t.id)}
+                                agentStatus={agentStatus?.[t.id]}
                             />
                         ))}
                     </SortableContext>
@@ -480,14 +541,35 @@ export default function EditorTabs({
             {/* "+ Nueva" stays right against the tab strip (no divider), same
                 spot it always had — it's the highest-frequency action here,
                 so it belongs closer to the tabs than Abrir/Recientes. */}
-            <button
-                onClick={onNew}
-                title={t.editor.tabs.newTitle}
-                className="ml-1 flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
-            >
-                <Icon name="add" size={16} />
-                {t.editor.tabs.new}
-            </button>
+            <div className="ml-1 flex shrink-0 items-center rounded text-on-surface-variant">
+                <button
+                    onClick={onNew}
+                    title={t.editor.tabs.newTitle}
+                    data-new-tab
+                    className="flex items-center gap-1 rounded-l px-2 py-1 text-xs hover:text-on-surface"
+                >
+                    <Icon name="add" size={16} />
+                    {t.editor.tabs.new}
+                </button>
+                <button
+                    data-new-menu
+                    onClick={(e) => {
+                        const k = aiChatShortcuts()
+                        newMenu.openAt(e, [
+                            {label: t.editor.tabs.newQuery, icon: 'terminal', title: t.editor.tabs.newTitle, onSelect: onNew},
+                            {label: t.editor.tabs.newAiChat, icon: 'forum', hint: k.newTab, title: t.editor.tabs.newAiChatTitle({shortcut: k.newTab}), onSelect: onNewAiChat},
+                        ])
+                    }}
+                    title={t.editor.tabs.newMenuTitle}
+                    aria-label={t.editor.tabs.newMenu}
+                    aria-haspopup="menu"
+                    className="flex items-center rounded-r px-0.5 py-1 hover:text-on-surface"
+                >
+                    <Icon name="arrow_drop_down" size={16} />
+                </button>
+                {newMenu.element}
+            </div>
+            {tabMenu.element}
 
             {/* Global file actions — which file to open next doesn't depend
                 on the active tab, so these live here once instead of

@@ -1,5 +1,136 @@
+export namespace agentapprove {
+	
+	export class Request {
+	    id: string;
+	    tool: string;
+	    input: string;
+	    summary: string;
+	    detail: string;
+	    sessionId: string;
+	    title: string;
+	    agentLabel: string;
+	    createdAt?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.tool = source["tool"];
+	        this.input = source["input"];
+	        this.summary = source["summary"];
+	        this.detail = source["detail"];
+	        this.sessionId = source["sessionId"];
+	        this.title = source["title"];
+	        this.agentLabel = source["agentLabel"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+
+}
+
 export namespace agentchat {
 	
+	export class Usage {
+	    input: number;
+	    output: number;
+	    cacheRead: number;
+	    cacheWrite: number;
+	    thinking: number;
+	    total: number;
+	    costUsd: number;
+	    model?: string;
+	    durationMs?: number;
+	    agentId?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Usage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.cacheRead = source["cacheRead"];
+	        this.cacheWrite = source["cacheWrite"];
+	        this.thinking = source["thinking"];
+	        this.total = source["total"];
+	        this.costUsd = source["costUsd"];
+	        this.model = source["model"];
+	        this.durationMs = source["durationMs"];
+	        this.agentId = source["agentId"];
+	    }
+	}
+	export class AgentSessionInfo {
+	    sessionId: string;
+	    chatId: string;
+	    agentId: string;
+	    agentLabel: string;
+	    model: string;
+	    mode: string;
+	    module: string;
+	    contextId: string;
+	    title: string;
+	    status: string;
+	    startedAt: number;
+	    lastEventAt: number;
+	    turnStartedAt: number;
+	    usage?: Usage;
+	    lastText: string;
+	    pendingApprovalId: string;
+	    unread: boolean;
+	    error?: string;
+	    attached: boolean;
+	    detached: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentSessionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.chatId = source["chatId"];
+	        this.agentId = source["agentId"];
+	        this.agentLabel = source["agentLabel"];
+	        this.model = source["model"];
+	        this.mode = source["mode"];
+	        this.module = source["module"];
+	        this.contextId = source["contextId"];
+	        this.title = source["title"];
+	        this.status = source["status"];
+	        this.startedAt = source["startedAt"];
+	        this.lastEventAt = source["lastEventAt"];
+	        this.turnStartedAt = source["turnStartedAt"];
+	        this.usage = this.convertValues(source["usage"], Usage);
+	        this.lastText = source["lastText"];
+	        this.pendingApprovalId = source["pendingApprovalId"];
+	        this.unread = source["unread"];
+	        this.error = source["error"];
+	        this.attached = source["attached"];
+	        this.detached = source["detached"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Attachment {
 	    path: string;
 	    name: string;
@@ -100,6 +231,54 @@ export namespace agentchat {
 	        this.detail = source["detail"];
 	    }
 	}
+	export class Event {
+	    kind: string;
+	    text: string;
+	    tool?: ToolCall;
+	    usage?: Usage;
+	    conversationId?: string;
+	    model?: string;
+	    tools?: string[];
+	    mcpServers?: string[];
+	    error?: string;
+	    seq: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Event(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.text = source["text"];
+	        this.tool = this.convertValues(source["tool"], ToolCall);
+	        this.usage = this.convertValues(source["usage"], Usage);
+	        this.conversationId = source["conversationId"];
+	        this.model = source["model"];
+	        this.tools = source["tools"];
+	        this.mcpServers = source["mcpServers"];
+	        this.error = source["error"];
+	        this.seq = source["seq"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PastTurn {
 	    role: string;
 	    text: string;
@@ -137,36 +316,6 @@ export namespace agentchat {
 		}
 	}
 	
-	export class Usage {
-	    input: number;
-	    output: number;
-	    cacheRead: number;
-	    cacheWrite: number;
-	    thinking: number;
-	    total: number;
-	    costUsd: number;
-	    model?: string;
-	    durationMs?: number;
-	    agentId?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Usage(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.input = source["input"];
-	        this.output = source["output"];
-	        this.cacheRead = source["cacheRead"];
-	        this.cacheWrite = source["cacheWrite"];
-	        this.thinking = source["thinking"];
-	        this.total = source["total"];
-	        this.costUsd = source["costUsd"];
-	        this.model = source["model"];
-	        this.durationMs = source["durationMs"];
-	        this.agentId = source["agentId"];
-	    }
-	}
 
 }
 

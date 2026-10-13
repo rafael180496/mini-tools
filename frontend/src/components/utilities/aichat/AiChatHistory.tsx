@@ -35,9 +35,12 @@ interface Props {
     onOpen: (chat: vault.AgentChat) => void
     onRename: (chat: vault.AgentChat) => void
     onDelete: (chat: vault.AgentChat) => void
+    // Abre la conversación en SU PROPIA pestaña de Chat de IA, para tenerla a la
+    // vista junto a otras.
+    onOpenInNewTab?: (chat: vault.AgentChat) => void
 }
 
-export default function AiChatHistory({chats, agents, lostLabels, resourceNames, activeChatId, busyChatIds, onOpen, onRename, onDelete}: Props) {
+export default function AiChatHistory({chats, agents, lostLabels, resourceNames, activeChatId, busyChatIds, onOpen, onRename, onDelete, onOpenInNewTab}: Props) {
     const t = useT()
     const ta = t.utilities.aiChat
     const [query, setQuery] = useState('')
@@ -265,6 +268,16 @@ export default function AiChatHistory({chats, agents, lostLabels, resourceNames,
                                         mouse o al enfocar. Flotan sobre el borde
                                         derecho y no reservan ancho en cada fila. */}
                                     <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-surface-container-high opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+                                        {onOpenInNewTab && (agent || lost) && (
+                                            <button
+                                                onClick={() => onOpenInNewTab(c)}
+                                                title={t.aiSessions.tabs.openInNewTabTitle}
+                                                aria-label={t.aiSessions.tabs.openInNewTab}
+                                                className={`rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
+                                            >
+                                                <Icon name="open_in_new" size={12} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => onRename(c)}
                                             title={ta.renameTitle}
