@@ -641,6 +641,18 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
 FROM   SGCPRO.CLIENTES c
 JOIN   <span class="c">▮</span>             <span class="c">-- suggests the complete JOIN from the foreign key</span></code></pre></div>
   <p><kbd>Ctrl+Space</kbd> forces it where it doesn't open on its own, and <kbd>Tab</kbd> accepts the grey suggestion.</p>
+  <p>Inside a <strong>PL/SQL block</strong> it reads the block too: each statement of the body has its own scope
+  (a <code>WHERE</code> sees only its own statement's tables), the variables of the <code>DECLARE</code> and the
+  parameters of the procedure you're writing are suggested as values, and inside a call to a stored procedure
+  it offers the parameters you haven't passed yet, inserted as <code>p_name =&gt; </code>. After
+  <code>SCHEMA.</code> it lists the schema's tables, procedures, functions and packages.</p>
+  <div class="codewrap"><pre><code>DECLARE
+  v_cant NUMBER;
+BEGIN
+  SGCPRO.PR_INFORMANTE(p_fecha_batch =&gt; SYSDATE, <span class="c">▮</span>  <span class="c">-- p_usuario, p_cant, p_retorno</span>
+                       p_cant =&gt; <span class="c">▮</span>              <span class="c">-- v_cant</span></code></pre></div>
+  <p><kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> opens find and replace at the top of the editor; the three toggles are
+  match case, regular expression and whole word, and every button says its shortcut in its tooltip.</p>
 
   <h2 id="bases-consultas--atajos">Expansion shortcuts</h2>
   <p>It ships <strong>46 common shortcuts</strong> (up to 64 depending on the engine). Type the three letters
@@ -659,7 +671,7 @@ JOIN   <span class="c">▮</span>             <span class="c">-- suggests the co
   <ul>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> runs <strong>the selection</strong>, or the statement under the cursor if nothing is selected.</li>
     <li><strong>Block</strong> (<kbd>Ctrl+Shift+↵</kbd>) runs a complete PL/SQL block, with <code>DBMS_OUTPUT</code> captured.</li>
-    <li>Results arrive <strong>live</strong>, statement by statement, and can be <strong>cancelled on the fly</strong>. A multi-statement script opens one result per statement, in tabs you can close one by one or all at once.</li>
+    <li>Results arrive <strong>live</strong>, statement by statement, and can be <strong>cancelled on the fly</strong> — even while the connection is still opening. If the database doesn't confirm the cancellation within a few seconds, the result is marked cancelled anyway, with a note that the statement may still be finishing on the server. A multi-statement script opens one result per statement, in tabs you can close one by one or all at once.</li>
     <li><strong>Running doesn't block anything.</strong> While a long query runs you can run another: in another tab, against another connection, or <strong>in the same tab</strong> — the new run appends its "Result N" after the previous ones instead of overwriting them. Results, console and cancellation belong to the tab that asked for them, and the tab that's working shows a spinning ring on its label, so you can see it from any other.</li>
     <li><strong>Auto-commit</strong> is the lightning icon in the bar, lit when it's on: one click switches to manual transactions, and then <strong>Commit</strong> and <strong>Rollback</strong> appear next to the "Transaction open" notice. There's never any doubt about whether a change was committed — and no greyed-out buttons waiting for the 1% of the time they're useful.</li>
   </ul>

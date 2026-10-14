@@ -2,6 +2,7 @@ import {EditorState} from '@codemirror/state'
 import type {Extension} from '@codemirror/state'
 import {EditorView} from '@codemirror/view'
 import type {vault} from '../../wailsjs/go/models'
+import {editorChrome} from './editorChrome'
 
 // Cómo se ve y se comporta cualquier editor de la app.
 //
@@ -111,6 +112,10 @@ export function editorAppearanceExtension(a: EditorAppearance, opts?: {forceLine
             ...(a.lineNumbers ? {} : {'.cm-gutters': {display: 'none'}}),
         }),
         EditorState.tabSize.of(a.tabSize),
+        // Paneles, diálogos y tooltips con los colores de la app — ver
+        // editorChrome.ts. Va acá porque esto es lo que comparten todos los
+        // editores: el SQL, el de Git y el de notas.
+        editorChrome(),
     ]
     if (wrap) ext.push(EditorView.lineWrapping)
     return ext

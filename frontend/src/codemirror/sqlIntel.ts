@@ -45,6 +45,9 @@ const KIND_TO_TYPE: Record<string, string> = {
     join: 'sqlintel-join',
     alias: 'sqlintel-alias',
     expand: 'sqlintel-expand',
+    variable: 'sqlintel-variable',
+    param: 'sqlintel-param',
+    package: 'sqlintel-package',
 }
 
 // Go returns an absolute score (roughly 0-1800). CodeMirror expects a
@@ -61,7 +64,7 @@ function toBoost(score: number): number {
 // A completion is only worth remembering when it names something from the
 // schema — counting keyword and snippet picks would just add noise to a
 // ranking signal meant to learn which TABLES and COLUMNS this session uses.
-const TRACKED_KINDS = new Set(['table', 'column', 'schema', 'routine'])
+const TRACKED_KINDS = new Set(['table', 'column', 'schema', 'routine', 'package'])
 
 function toCompletion(item: sqlintel.Item, connId: string): Completion {
     const base: Completion = {
@@ -181,7 +184,10 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         // The 64-char window is cut at its first whitespace so a slice that
         // began mid-word ("…rgin ") cannot pass that fragment off as "in".
         const before = context.state.sliceDoc(Math.max(0, context.pos - 64), context.pos).replace(/^\S+/, '')
-        const autoOpen = /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in)\s+|[,(]\s*)$/i.test(before)
+        // "into" and "update" name a table just like "from" does; "=>" opens
+        // the value of a named argument, where the block's variables are the
+        // answer (Go only answers there when the block declares some).
+        const autoOpen = /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in|into|update)\s+|[,(]\s*|=>\s*)$/i.test(before)
         // "FROM clientes |" is the alias position, and it is the one place
         // the engine PROPOSES a name instead of looking one up — so it has
         // to open by itself. The rule above cannot see it: the word right
@@ -241,7 +247,18 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
             // path. A dot, a space or a new clause fails the pattern and
             // triggers a fresh request, which is exactly when Go's answer
             // would actually change.
-            validFor: /^[\w$#]*$/,
+            //
+            // **Except when Go cut the list.** The reply carries the best 60
+            // matches for what was typed WHEN IT WAS ASKED; filtering that
+            // list locally as more letters arrive can only narrow those 60,
+            // never bring in the table that ranked 61st for "c" and is the
+            // only match for "carg". That was the "sometimes the table just
+            // isn't offered" bug: on a schema with hundreds of tables the
+            // popup opened on "FROM ", got the first 60, and every letter
+            // after that filtered the wrong list. A truncated reply is
+            // re-asked on every keystroke instead — one bridge hop, a few
+            // milliseconds.
+            validFor: resp.truncated ? undefined : /^[\w$#]*$/,
         }
     }
 }
@@ -414,6 +431,21 @@ export const sqlCompletionTheme = EditorView.baseTheme({
     '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-expand::after': {
         content: "'unfold_more'",
         color: 'var(--color-primary)',
+    },
+    // A variable or parameter of the PL/SQL block being written: a value
+    // that lives in the buffer, not in the catalog.
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-variable::after': {
+        content: "'data_object'",
+        color: 'var(--color-tertiary)',
+    },
+    // A parameter of the routine being CALLED, inserted as "p_x => ".
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-param::after': {
+        content: "'input'",
+        color: 'var(--color-secondary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-package::after': {
+        content: "'inventory_2'",
+        color: 'var(--color-secondary)',
     },
     // lang-sql contributes its own keyword completions from a separate
     // source and types them 'keyword'; without this they would keep the

@@ -108,6 +108,20 @@ type Executor struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	// rawEmit is the EmitFunc the executor was built with. e.emit wraps it
+	// so the events of an abandoned run are dropped (see runs below);
+	// rawEmit is what the watchdog itself uses to report that abandonment.
+	rawEmit EmitFunc
+	// runs tracks each script in flight: which statement it is on, and
+	// whether a "cancelled" already went out for it. It exists for the two
+	// ways a Stop used to do nothing — see Cancel.
+	runs map[string]*runState
+	// earlyCancels are Cancel calls that arrived before their run
+	// registered. ExecuteQuery opens the pool synchronously before the run
+	// even starts, and on Oracle over a VPN that can take seconds — a Stop
+	// pressed in that window used to find nothing to cancel and was simply
+	// lost, so the query ran to the end anyway.
+	earlyCancels map[string]time.Time
 
 	// txMu/txns implement the auto-commit-off flow: BeginTransaction
 	// reserves one *sql.Conn per connID (auto-commit gets genuinely
@@ -130,11 +144,14 @@ type Executor struct {
 // statement's terminal outcome (pass a no-op func if not needed).
 func NewExecutor(parentCtx context.Context, pools *db.PoolManager, emit EmitFunc, history HistorySink) *Executor {
 	e := &Executor{
-		parentCtx: parentCtx, pools: pools, emit: emit, history: history,
-		cancels: make(map[string]context.CancelFunc),
-		txns:    make(map[string]*sql.Conn),
-		cursors: newCursors(), pageSize: defaultPageSize,
+		parentCtx: parentCtx, pools: pools, history: history, rawEmit: emit,
+		cancels:      make(map[string]context.CancelFunc),
+		runs:         make(map[string]*runState),
+		earlyCancels: make(map[string]time.Time),
+		txns:         make(map[string]*sql.Conn),
+		cursors:      newCursors(), pageSize: defaultPageSize,
 	}
+	e.emit = e.filteredEmit
 	// Releases paused cursors (and their pooled connections) that nobody came
 	// back for — see paging.go.
 	e.startCursorJanitor()
@@ -272,19 +289,158 @@ func (e *Executor) Execute(connID, queryID, sqlText string, captureDBMSOutput bo
 	go e.run(connID, queryID, sqlText, captureDBMSOutput, params)
 }
 
+// cancelGrace is how long Cancel waits for the driver to confirm an
+// interruption before giving up on the statement and releasing the UI.
+var cancelGrace = 4 * time.Second
+
+// earlyCancelTTL bounds how long a Cancel that found no run is remembered.
+// Long enough to cover a slow pool open, short enough that the map never
+// grows with Stops pressed on runs that had already finished.
+const earlyCancelTTL = 2 * time.Minute
+
+// runState is the bookkeeping of one script in flight.
+type runState struct {
+	connID  string
+	idx     int
+	total   int
+	sqlText string
+	// cancelSent: a "cancelled" event already went out for this run, so
+	// nothing else has to announce it.
+	cancelSent bool
+	// abandoned: the watchdog gave up waiting for the driver and reported
+	// the run as cancelled itself. Every later event of the run is dropped
+	// — the UI already moved on, and a "done" arriving a minute later would
+	// resurrect a result nobody is waiting for.
+	abandoned bool
+}
+
 // Cancel cancels the in-flight script registered under queryID, if any —
 // stops before running any further statements, and interrupts the
 // statement currently in flight. The pool itself is left open and healthy.
 // Cancel also drops any cursor paused under queryID — cancelling a result the
 // user no longer wants must release its connection too.
+//
+// Two cases used to make Stop do nothing, and both are handled here:
+//
+//   - The run has not registered yet (the pool is still opening). The
+//     request is remembered and applied the moment the run starts.
+//   - The driver never confirms the interruption. go-ora sends Oracle a
+//     break and then waits for the server to answer it; through some
+//     networks (and with some server states) that answer takes very long or
+//     never comes, and the UI stayed on "running" for as long as the
+//     statement did. After cancelGrace the run is reported as cancelled and
+//     abandoned: the goroutine finishes on its own in the background, but
+//     nobody is left waiting for it.
 func (e *Executor) Cancel(queryID string) {
 	e.cursors.closeQuery(queryID)
 	e.mu.Lock()
 	cancel, ok := e.cancels[queryID]
+	_, tracked := e.runs[queryID]
+	if !ok {
+		now := time.Now()
+		for id, at := range e.earlyCancels {
+			if now.Sub(at) > earlyCancelTTL {
+				delete(e.earlyCancels, id)
+			}
+		}
+		e.earlyCancels[queryID] = now
+	}
 	e.mu.Unlock()
 	if ok {
 		cancel()
+		if tracked {
+			time.AfterFunc(cancelGrace, func() { e.abandonIfStuck(queryID) })
+		}
 	}
+}
+
+// abandonIfStuck is the watchdog half of Cancel: if the run is still alive
+// and nothing has reported its cancellation yet, it does so itself.
+func (e *Executor) abandonIfStuck(queryID string) {
+	e.mu.Lock()
+	r, ok := e.runs[queryID]
+	if !ok || r.cancelSent || r.abandoned {
+		e.mu.Unlock()
+		return
+	}
+	r.abandoned = true
+	r.cancelSent = true
+	connID, idx, total, sqlText := r.connID, r.idx, r.total, r.sqlText
+	e.mu.Unlock()
+
+	e.recordHistory(connID, sqlText, "cancelled", 0, 0, "")
+	e.rawEmit(queryID, Event{
+		Type: "cancelled", StatementIndex: idx, TotalStatements: total, SQLText: sqlText,
+		Note: i18n.T(i18n.Msg{
+			ES: "la base no confirmó la cancelación a tiempo: la sentencia puede seguir terminando en el servidor",
+			EN: "the database did not confirm the cancellation in time: the statement may still be finishing on the server",
+		}),
+	})
+}
+
+// filteredEmit is e.emit: the events of an abandoned run are dropped, and a
+// "cancelled" is noted so the run is not announced as cancelled twice.
+func (e *Executor) filteredEmit(queryID string, data interface{}) {
+	if ev, isEvent := data.(Event); isEvent {
+		e.mu.Lock()
+		if r, ok := e.runs[queryID]; ok {
+			if r.abandoned {
+				e.mu.Unlock()
+				return
+			}
+			if ev.Type == "cancelled" {
+				r.cancelSent = true
+			}
+		}
+		e.mu.Unlock()
+	}
+	e.rawEmit(queryID, data)
+}
+
+// startRun registers a script's cancel func and its bookkeeping. A Cancel
+// that arrived before this point is applied right away.
+func (e *Executor) startRun(queryID, connID string, cancel context.CancelFunc) {
+	e.mu.Lock()
+	e.cancels[queryID] = cancel
+	e.runs[queryID] = &runState{connID: connID}
+	_, early := e.earlyCancels[queryID]
+	delete(e.earlyCancels, queryID)
+	e.mu.Unlock()
+	if early {
+		cancel()
+	}
+}
+
+// endRun forgets the run. An abandoned run may have parked a cursor after
+// the Stop already closed everything under its id; that cursor is released
+// here instead of waiting for the janitor.
+func (e *Executor) endRun(queryID string) {
+	e.mu.Lock()
+	r := e.runs[queryID]
+	delete(e.runs, queryID)
+	delete(e.cancels, queryID)
+	e.mu.Unlock()
+	if r != nil && r.abandoned {
+		e.cursors.closeQuery(queryID)
+	}
+}
+
+// setStatement records which statement the run is on, for the watchdog's
+// "cancelled" event.
+func (e *Executor) setStatement(queryID string, idx, total int, sqlText string) {
+	e.mu.Lock()
+	if r, ok := e.runs[queryID]; ok {
+		r.idx, r.total, r.sqlText = idx, total, sqlText
+	}
+	e.mu.Unlock()
+}
+
+// cancelAnnounced reports whether a "cancelled" already went out for the run.
+func (e *Executor) cancelAnnounced(queryID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r, ok := e.runs[queryID]
+	return ok && r.cancelSent
 }
 
 func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, params []ParamValue) {
@@ -293,9 +449,28 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 	// paging.go's "one paused cursor per connection" rule).
 	e.cursors.closeConn(connID)
 
+	// Registered before anything that can fail or take time, so a Stop is
+	// never lost in between. endRun is deferred FIRST so it runs LAST —
+	// after the deferred block below has decided who owns cancel.
+	ctx, cancel := context.WithCancel(e.parentCtx)
+	e.startRun(queryID, connID, cancel)
+	defer e.endRun(queryID)
+	// Not a plain `defer cancel()`: if this run left a result set paused for
+	// paging, the cursor is still open and database/sql would close it the
+	// moment this context is cancelled. In that case ownership of cancel moves
+	// to the cursor, which calls it when IT closes (see paging.go).
+	defer func() {
+		if !e.cursors.attachCancel(queryID, cancel) {
+			cancel()
+		}
+	}()
+
+	// TotalStatements is 1, not 0, on the two errors below: the frontend lets
+	// go of a run when the LAST statement reports, and with a total of 0
+	// "the last one" is index -1 — the run stayed on "running" for good.
 	pool, err := e.pools.Get(connID)
 	if err != nil {
-		e.emit(queryID, Event{Type: "error", Error: err.Error()})
+		e.emit(queryID, Event{Type: "error", TotalStatements: 1, Error: err.Error()})
 		return
 	}
 	dbType, _ := e.pools.Type(connID)
@@ -310,23 +485,10 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 
 	statements := SplitStatements(sqlText)
 	if len(statements) == 0 {
-		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "query: no hay ninguna sentencia para ejecutar", EN: "query: there is no statement to run"})})
+		e.emit(queryID, Event{Type: "error", TotalStatements: 1, Error: i18n.T(i18n.Msg{ES: "query: no hay ninguna sentencia para ejecutar", EN: "query: there is no statement to run"})})
 		return
 	}
 	total := len(statements)
-
-	ctx, cancel := context.WithCancel(e.parentCtx)
-	e.registerCancel(queryID, cancel)
-	defer e.clearCancel(queryID)
-	// Not a plain `defer cancel()`: if this run left a result set paused for
-	// paging, the cursor is still open and database/sql would close it the
-	// moment this context is cancelled. In that case ownership of cancel moves
-	// to the cursor, which calls it when IT closes (see paging.go).
-	defer func() {
-		if !e.cursors.attachCancel(queryID, cancel) {
-			cancel()
-		}
-	}()
 
 	paramValues := ParamValuesByName(params)
 	// Anonymous "?" placeholders are numbered across the whole script, the
@@ -337,12 +499,21 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 
 	for idx, stmt := range statements {
 		if ctx.Err() != nil {
-			// The script was cancelled while an earlier statement was
-			// running — that statement already emitted its own "cancelled"
-			// event via emitTerminal. Remaining statements never started,
-			// so there's nothing further to emit or record for them.
+			// Usually the statement that was running already emitted its own
+			// "cancelled" via emitTerminal, and the remaining ones never
+			// start. But the cancel can also land BETWEEN statements (the
+			// previous one finished "done" a moment before), or before the
+			// first one (a Stop pressed while the pool was opening). Then
+			// nothing has said so yet, and the frontend — which only lets go
+			// of a run on "cancelled" or on the LAST statement's outcome —
+			// would show it running forever.
+			if !e.cancelAnnounced(queryID) {
+				e.recordHistory(connID, stmt.Text, "cancelled", 0, 0, "")
+				e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total, SQLText: stmt.Text})
+			}
 			break
 		}
+		e.setStatement(queryID, idx, total, stmt.Text)
 
 		start := time.Now()
 
@@ -471,7 +642,7 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 	hasMore := false
 	for (limit == PageSizeAll || rowCount < int64(limit)) && rows.Next() {
 		if err := rows.Scan(scanArgs...); err != nil {
-			e.emitError(connID, queryID, sqlText, err, idx, total)
+			e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 			return
 		}
 

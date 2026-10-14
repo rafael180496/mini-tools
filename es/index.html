@@ -639,6 +639,19 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
 FROM   SGCPRO.CLIENTES c
 JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN completo desde la clave foránea</span></code></pre></div>
   <p><kbd>Ctrl+Espacio</kbd> lo fuerza donde no se abre solo, y <kbd>Tab</kbd> acepta la sugerencia en gris.</p>
+  <p>Dentro de un <strong>bloque PL/SQL</strong> lee también el bloque: cada sentencia del cuerpo tiene su propio
+  alcance (un <code>WHERE</code> ve solo las tablas de su sentencia), las variables del <code>DECLARE</code> y los
+  parámetros del procedimiento que estás escribiendo se sugieren como valores, y dentro de la llamada a un
+  procedimiento almacenado ofrece los parámetros que todavía no pasaste, insertados como
+  <code>p_nombre =&gt; </code>. Después de <code>ESQUEMA.</code> lista las tablas, procedimientos, funciones y
+  packages de ese esquema.</p>
+  <div class="codewrap"><pre><code>DECLARE
+  v_cant NUMBER;
+BEGIN
+  SGCPRO.PR_INFORMANTE(p_fecha_batch =&gt; SYSDATE, <span class="c">▮</span>  <span class="c">-- p_usuario, p_cant, p_retorno</span>
+                       p_cant =&gt; <span class="c">▮</span>              <span class="c">-- v_cant</span></code></pre></div>
+  <p><kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> abre buscar y reemplazar arriba del editor; los tres interruptores son
+  distinguir mayúsculas, expresión regular y palabra completa, y cada botón dice su atajo en el tooltip.</p>
 
   <h2 id="bases-consultas--atajos">Atajos de expansión</h2>
   <p>Trae <strong>46 atajos comunes</strong> (hasta 64 según el motor). Escribí las tres letras y
@@ -657,7 +670,7 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
   <ul>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> corre <strong>lo seleccionado</strong>, o la sentencia donde está el cursor si no hay selección.</li>
     <li><strong>Bloque</strong> (<kbd>Ctrl+Shift+↵</kbd>) corre un bloque PL/SQL completo, con <code>DBMS_OUTPUT</code> capturado.</li>
-    <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong>. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
+    <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong> — incluso mientras la conexión todavía se está abriendo. Si la base no confirma el corte en unos segundos, el resultado queda igual como cancelado, con una nota de que la sentencia puede seguir terminando en el servidor. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
     <li><strong>Ejecutar no bloquea nada.</strong> Mientras una consulta larga corre podés ejecutar otra: en otra pestaña, contra otra conexión, o <strong>en la misma pestaña</strong> — la corrida nueva agrega sus «Resultado N» detrás de los anteriores en vez de pisarlos. Resultados, consola y cancelación son de la pestaña que los pidió, y la que está trabajando muestra un anillo girando en su solapa, así que se ve desde cualquier otra.</li>
     <li><strong>Auto-commit</strong> es el ícono del rayo de la barra, encendido cuando está activo: un clic pasa a transacción manual, y ahí aparecen <strong>Commit</strong> y <strong>Rollback</strong> junto al aviso «Transacción abierta». Nunca hay ambigüedad sobre si un cambio quedó confirmado — y no hay botones apagados esperando el 1 % de las veces en que sirven.</li>
   </ul>

@@ -135,17 +135,15 @@ function textSpan(text: string): HTMLElement {
 }
 
 const signatureTheme = EditorView.baseTheme({
+    // El marco (borde, fondo, sombra) lo pone el tooltip que lo contiene —
+    // editorChrome.ts—; repetirlo acá dibujaba un recuadro dentro de otro.
     '.cm-sqlintel-signature': {
-        border: '1px solid var(--color-outline-variant)',
-        borderRadius: '8px',
-        backgroundColor: 'var(--color-surface-container-high)',
         color: 'var(--color-on-surface)',
         padding: '5px 9px',
         fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
         fontSize: '11.5px',
         lineHeight: '1.55',
         maxWidth: 'min(52em, 90vw)',
-        boxShadow: '0 8px 24px rgb(0 0 0 / 0.28)',
     },
     '.cm-sqlintel-signature-item + .cm-sqlintel-signature-item': {
         marginTop: '4px',

@@ -4,6 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **El autocompletado SQL entiende los bloques PL/SQL.** Dentro de un `DECLARE … BEGIN … END` (o del cuerpo de un procedimiento, función o package) sugiere las **variables, constantes y cursores declarados** y los **parámetros del procedimiento que estás escribiendo**, con su tipo. Dentro de la llamada a un procedimiento almacenado —`SGCPRO.PR_INFORMANTE(|`— ofrece **los parámetros que todavía no pasaste**, en el orden de la firma y marcando los opcionales, y al aceptarlos los escribe en notación nombrada (`p_usuario => `); después de `=>` el popup se abre solo con las variables del bloque. Funciona en Oracle y PostgreSQL.
+- **`ESQUEMA.` sugiere también procedimientos, funciones y packages**, no solo tablas: llamar a un procedimiento calificado por su esquema —lo habitual desde un bloque que corre con otro usuario— ya tiene qué completar. Elegir uno inserta la llamada con un hueco por parámetro. Después de `FROM` las tablas siguen primero.
+
+### Cambiado
+
+- **El panel de buscar y reemplazar del editor sigue el tema de la app.** Antes era el de CodeMirror sin estilo —botones con degradé gris, casillas nativas y textos en inglés—. Ahora se abre **arriba** del editor, con campos y botones del sistema de diseño en claro y oscuro, flechas de anterior/siguiente, interruptores de ícono para **mayúsculas, expresión regular y palabra completa**, cada botón con su atajo en el tooltip, y en el idioma de la app. Lo mismo para el diálogo de **ir a la línea**, el panel de diagnósticos y los tooltips (el de la firma y el del esquema dejaron de dibujar un recuadro dentro de otro). Aplica al editor SQL, al de archivos y al visor de diffs de Git, y al visor de DDL.
+
+### Corregido
+
+- **El autocompletado a veces no ofrecía la tabla que buscabas.** El motor devuelve las 60 mejores coincidencias, y el editor seguía filtrando *esa* lista a medida que escribías: en un esquema con cientos de tablas, si la que querías no había entrado entre las 60 del primer carácter (o del popup que se abre solo tras `FROM `), no aparecía nunca. Ahora una lista recortada se vuelve a pedir en cada tecla.
+- **Dentro de un bloque PL/SQL las sugerencias mezclaban todas sus sentencias.** El bloque entero contaba como una sola, así que un `WHERE` de la tercera sentencia ofrecía las columnas de las tablas de las otras dos. Ahora cada sentencia del cuerpo tiene su propio alcance.
+- **`INSERT INTO ` y `UPDATE ` abren la lista de tablas solos**, igual que `FROM `.
+- **Detener una consulta a veces no hacía nada.** Dos causas: si apretabas *Detener* mientras la conexión todavía se abría (segundos en un Oracle por VPN), el pedido se perdía y la consulta corría hasta el final; y si la base no confirmaba la interrupción, la pestaña quedaba «ejecutando» todo lo que tardara la sentencia. Ahora la cancelación temprana se aplica en cuanto la ejecución arranca, y si la base no confirma el corte en 4 segundos el resultado se marca **cancelado** con la nota de que la sentencia puede seguir terminando en el servidor. También quedaba «ejecutando» para siempre un script cancelado justo entre dos sentencias, o uno que fallaba antes de empezar (conexión no disponible).
+
 ## [2.10.1] - 2026-10-13
 
 ### Cambiado

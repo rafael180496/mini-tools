@@ -110,7 +110,10 @@ export default function CodeMirrorTabbedEditor({
             doc: tab.content,
             extensions: [
                 basicSetup,
-                search(),
+                // Arriba, igual que en el visor de diffs: el panel de búsqueda
+                // queda junto a la barra del editor y no al borde que da a la
+                // grilla de resultados.
+                search({top: true}),
                 keymap.of([indentWithTab]),
                 languageCompartment.of(languageExtensions(tab.language, dbType, connId, schemaMetadata)),
                 themeCompartment.of(theme),

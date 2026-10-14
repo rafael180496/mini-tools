@@ -15,6 +15,7 @@ import {
 import {defaultKeymap} from '@codemirror/commands'
 import {highlightSelectionMatches, search, searchKeymap} from '@codemirror/search'
 import {resolveEditorTheme} from '../../codemirror/themes'
+import {editorChrome} from '../../codemirror/editorChrome'
 import {DEFAULT_EDITOR_APPEARANCE, editorFontStack, type EditorAppearance} from '../../codemirror/editorAppearance'
 import type {Theme} from '../../hooks/useTheme'
 import {git} from '../../../wailsjs/go/models'
@@ -527,6 +528,7 @@ export default function DiffViewer({
                     drawSelection(),
                     highlightSelectionMatches(),
                     search({top: true}),
+                    editorChrome(),
                     keymap.of([...defaultKeymap, ...searchKeymap]),
                     ...blameGutter,
                     ...noGutters,

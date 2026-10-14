@@ -119,6 +119,13 @@ type Context struct {
 	// the text and will never be in the catalog index, which is exactly why
 	// the engine has to read them out of the buffer to know about them.
 	Script []*TableEntry `json:"-"`
+	// Variables are what the PL/SQL blocks around the cursor declare —
+	// locals, constants, cursors and the enclosing routine's parameters.
+	// Like Script, they exist only in the buffer.
+	Variables []Variable `json:"-"`
+	// Call is the stored-routine call whose argument the cursor is starting,
+	// nil anywhere else. It is what lets "PROC(|" offer the parameter names.
+	Call *CallSlot `json:"-"`
 }
 
 // Analyze resolves the cursor's context inside src. cursor is a rune offset.
@@ -155,6 +162,11 @@ func Analyze(src []rune, cursor int) Context {
 	ctx.Script = ScriptTables(tokens, stmt)
 	ctx.Projected = projectedItems(stmt)
 	ctx.AliasSlot = aliasSlot(stmt, ctx)
+	// Both read the whole buffer, not the statement: a block's declarations
+	// sit in earlier statements than the one the cursor is in, and a call's
+	// arguments can span lines the statement split does not care about.
+	ctx.Variables = BlockVariables(tokens, cursor)
+	ctx.Call = CallSlotAt(tokens, cursor, ctx.From)
 	return ctx
 }
 
@@ -419,11 +431,10 @@ var continuations = map[string]bool{
 
 // statementRange narrows tokens to the statement containing cursor, so a
 // multi-statement script does not leak the previous statement's FROM into
-// this one's scope. Splitting is on top-level ";", with a BEGIN/END depth
-// counter so a PL/SQL block's internal semicolons do not split it — the
-// same rule backend/query/splitter.go uses, minus its DECLARE-section
-// tracking (a mis-split here costs one imprecise suggestion, not a broken
-// execution, so the cheaper approximation is the right trade).
+// this one's scope. Every ";" splits, including the ones inside a PL/SQL
+// block (see the case below for why this differs from
+// backend/query/splitter.go). The BEGIN/END depth only gates the blank-line
+// rule, so a blank line inside a block body is never read as a boundary.
 //
 // A blank line before a statement-starting keyword is a boundary too, and
 // that second rule is what makes the engine usable in the file people
@@ -455,7 +466,12 @@ func statementRange(src []rune, tokens []Token, cursor int) (int, int) {
 			if !followsWith(tokens, i, "IF", "LOOP", "CASE") && depth > 0 {
 				depth--
 			}
-		case t.Kind == TokenPunct && t.Text == ";" && depth == 0:
+		// Every ";" ends a statement, also inside a BEGIN … END. The executor
+		// keeps a PL/SQL block whole because it has to SEND it whole, but
+		// for completion the unit is the SQL statement inside it: treating
+		// the block as one statement mixed the FROM of every SELECT in it
+		// into the scope of each, and offered the columns of all of them.
+		case t.Kind == TokenPunct && t.Text == ";":
 			if t.End <= cursor {
 				lo = i + 1
 			} else {

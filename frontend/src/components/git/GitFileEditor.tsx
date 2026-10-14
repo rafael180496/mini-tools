@@ -421,7 +421,7 @@ export default function GitFileEditor({
                 doc: file.content,
                 extensions: [
                     basicSetup,
-                    search(),
+                    search({top: true}),
                     keymap.of([
                         indentWithTab,
                         {

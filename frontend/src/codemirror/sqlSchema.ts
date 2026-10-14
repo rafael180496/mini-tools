@@ -191,12 +191,11 @@ export function sqlSchemaHover(meta: db.SchemaMetadata | null): Extension {
             above: true,
             create() {
                 const dom = document.createElement('div')
+                // Sin borde ni fondo propios: el marco es el del tooltip
+                // (editorChrome.ts).
                 dom.style.padding = '6px 8px'
                 dom.style.font = '12px var(--font-mono)'
-                dom.style.background = 'var(--color-surface-container-high)'
                 dom.style.color = 'var(--color-on-surface)'
-                dom.style.border = '1px solid var(--color-outline-variant)'
-                dom.style.borderRadius = '6px'
                 dom.style.maxWidth = '360px'
                 dom.style.whiteSpace = 'pre-wrap'
 

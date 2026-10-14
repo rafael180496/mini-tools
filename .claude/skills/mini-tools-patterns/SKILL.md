@@ -50,6 +50,8 @@ Streaming de resultados: como los bindings de Wails v2 son petición/respuesta, 
 
 Cancelación: cada `queryID` en curso tiene un `context.CancelFunc` registrado; `CancelQuery(queryID)` lo invoca y limpia el registro. El pool debe quedar sano después de cancelar (no cerrar la conexión subyacente, solo el statement en curso) — verificado en `backend/query/executor_test.go` con una CTE recursiva larga, y con un script multi-statement efímero (cancelar detiene antes del segundo statement).
 
+**Cancelación que no se pierde ni cuelga la UI** (`Executor.Cancel`, `startRun`/`endRun`, `abandonIfStuck`). Dos huecos reales reportados como "detener no siempre funciona": (1) `App.ExecuteQuery` abre el pool **sincrónicamente** antes de que `run` registre su cancel — en un Oracle por VPN son segundos, y un Stop en esa ventana no encontraba nada que cancelar; ahora se guarda en `earlyCancels` (TTL 2 min) y `startRun` lo aplica al arrancar. (2) go-ora manda el BREAK y espera la respuesta del servidor, que a veces no llega a tiempo; tras `cancelGrace` (4 s) el watchdog emite `cancelled` con `Note` y marca la corrida `abandoned`: `filteredEmit` descarta todo lo que esa corrida emita después. Además el loop de `run` emite `cancelled` si el corte cae ENTRE sentencias (si no, el frontend —que solo suelta una corrida con `cancelled` o con el resultado de la ÚLTIMA sentencia— la mostraba corriendo para siempre), y los errores previos al loop llevan `TotalStatements: 1` por el mismo motivo (con 0, "la última" es el índice -1). Tests: `TestExecutorCancelBeforeRunStartsIsApplied`, `TestExecutorCancelWatchdogReleasesStuckRun`.
+
 # Patrones de metadata de schema
 
 `backend/db/metadata.go` (`FetchSchemaMetadata`) unifica tablas/columnas/nullable/PK/FK en `db.SchemaMetadata`, una función por motor:
@@ -95,6 +97,18 @@ CodeMirror 6 resultó **más liviano** que Monaco recortado a SQL pese a sumar a
 **Verificado con un script Node standalone** (mismo patrón que `connStringParser.ts`/el retirado `sqlContext.ts` — mirror en JS plano de `detectClause`, sin test nuevo) cubriendo 13 casos: el de la screenshot original, `FROM` bare, lista de columnas en `SELECT`, `AND`/`ON`/`SET`, `INSERT INTO` con y sin paréntesis abierto, múltiples tablas en `FROM`, y un script multi-statement (el detector encuentra el último keyword más cercano al cursor sin importar que cruce un `;` de statement anterior, porque siempre se queda con el match de mayor índice). Un solo caso quedó como limitación aceptada y documentada: dentro de `VALUES (|` ninguna clasificación es realmente correcta (no es tabla ni columna) — `'column'` es la menos mala de las dos, no amerita más lógica especial.
 
 **No se tocó `sqlSchemaHover`** (el hover del cursor sobre tabla/columna) — sigue usando su propia resolución de alias/punto independiente, sin relación con este cambio salvo compartir `extractTableRefs`.
+
+# Autocompletado: lista truncada, bloques PL/SQL y llamadas (backend/sqlintel)
+
+**`validFor` solo si la respuesta NO vino truncada** (`sqlIntel.ts`). Go devuelve las 60 mejores coincidencias para el prefijo del momento; con `validFor` CodeMirror sigue filtrando ESA lista mientras se escribe y nunca trae la tabla que quedó en el puesto 61 para "c" y es la única para "carg". Era el "a veces no me sale la tabla". Con `resp.truncated` se repregunta en cada tecla.
+
+**`statementRange` corta en TODO `;`, también dentro de `BEGIN … END`** — al revés que `backend/query/splitter.go`, a propósito: el executor tiene que MANDAR el bloque entero, pero para completar la unidad es la sentencia SQL de adentro; con el bloque como una sola sentencia, un `WHERE` veía las tablas de todas. La profundidad BEGIN/END queda solo para la regla de la línea en blanco.
+
+**`plsql.go`**: `BlockVariables` (pila de alcances DECLARE / PROCEDURE·FUNCTION `IS|AS` / PACKAGE; `CASE … END` cuenta aparte para no cerrar un bloque) y `CallSlotAt` (reusa `findCallSite` de `signature.go`; solo en el arranque de un argumento, y con los nombres ya pasados por `=>`). El engine ofrece `KindParam` (`p_x => `, 1300, solo Oracle/Postgres), `KindVariable` (450, bajo las columnas) y, tras `ESQUEMA.`, `schemaRoutines` (`KindRoutine` + `KindPackage`). Los kinds nuevos tienen su ícono en `KIND_TO_TYPE`/`sqlCompletionTheme`. Tests en `engine_test.go`.
+
+# Cromo de CodeMirror (`frontend/src/codemirror/editorChrome.ts`)
+
+Panel de búsqueda, diálogo de ir a línea, panel de lint y tooltips con tokens MD3 + frases en el idioma activo (`EditorState.phrases`, claves = texto inglés EXACTO que pide la librería) + `title` en los botones del panel (la clase `SearchPanel` no se exporta: un ViewPlugin se los pone al aparecer). Va en `editorAppearanceExtension`, así que lo heredan todos los editores que la usan; el visor de diffs y el de DDL lo suman a mano. **Especificidad:** el tema base escribe `&light .cm-button` (tres clases) — una regla `EditorView.theme` sobre `.cm-button` pierde siempre; por eso todos los selectores cuelgan de `&.cm-editor`. Y `button[name=replace]`, no `[name=replace]`: el campo de reemplazo se llama igual que su botón. Captura: `./scripts/uishot.sh editorsearch`.
 
 # Patrones de export
 

@@ -160,3 +160,54 @@ func TestExecutorCancelStopsLongRunningQuery(t *testing.T) {
 		t.Fatalf("expected cancelled, got %+v", final)
 	}
 }
+
+// A Stop pressed before the run registers — ExecuteQuery opens the pool
+// synchronously first, and on a remote Oracle that takes seconds — used to
+// find nothing to cancel and was lost: the script ran to the end anyway.
+func TestExecutorCancelBeforeRunStartsIsApplied(t *testing.T) {
+	exec, events := newTestExecutor(t)
+
+	exec.Cancel("q-early")
+	exec.Execute("conn-1", "q-early", "SELECT 1; SELECT 2", true, nil)
+
+	final := waitForTerminal(t, events)
+	if final.Type != "cancelled" || final.StatementIndex != 0 || final.TotalStatements != 2 {
+		t.Fatalf("expected the first statement reported cancelled, got %+v", final)
+	}
+	select {
+	case e := <-events:
+		t.Fatalf("nothing should run after an early cancel, got %+v", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// A driver that never confirms the interruption used to leave the UI on
+// "running" for as long as the statement took. The watchdog reports the run
+// as cancelled itself and drops whatever the abandoned run emits later.
+func TestExecutorCancelWatchdogReleasesStuckRun(t *testing.T) {
+	prev := cancelGrace
+	cancelGrace = 50 * time.Millisecond
+	t.Cleanup(func() { cancelGrace = prev })
+
+	exec, events := newTestExecutor(t)
+
+	// A run whose cancel func does nothing stands in for a driver that
+	// ignores the interruption.
+	exec.startRun("q-stuck", "conn-1", func() {})
+	exec.setStatement("q-stuck", 1, 3, "SELECT slow")
+	exec.Cancel("q-stuck")
+
+	final := waitForTerminal(t, events)
+	if final.Type != "cancelled" || final.StatementIndex != 1 || final.Note == "" {
+		t.Fatalf("expected a watchdog cancellation for statement 1, got %+v", final)
+	}
+
+	// The statement finally returns: its event must not reach the UI.
+	exec.emit("q-stuck", Event{Type: "done", StatementIndex: 1, TotalStatements: 3})
+	exec.endRun("q-stuck")
+	select {
+	case e := <-events:
+		t.Fatalf("an abandoned run must stay silent, got %+v", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+}

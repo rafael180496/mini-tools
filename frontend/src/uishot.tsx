@@ -1751,6 +1751,48 @@ const views_chat = (
 // adjunta y con destino para insertar: es lo que hace aparecer la barra de cada
 // bloque de código ("Al editor" / "Copiar"), que es lo nuevo que hay que
 // mostrar.
+// El panel de buscar/reemplazar de CodeMirror y un tooltip, con el cromo de
+// la app (codemirror/editorChrome.ts). UISHOT_THEME=light para el tema claro.
+const {EditorView: CMView} = await import('@codemirror/view')
+const {EditorState: CMState} = await import('@codemirror/state')
+const {basicSetup: cmBasicSetup} = await import('codemirror')
+const {search: cmSearch, openSearchPanel, setSearchQuery, SearchQuery} = await import('@codemirror/search')
+const {editorAppearanceExtension: cmAppearance, DEFAULT_EDITOR_APPEARANCE: cmDefaultLook} = await import('./codemirror/editorAppearance')
+const {resolveEditorTheme: cmTheme} = await import('./codemirror/themes')
+const {sqlLanguageExtension: cmSql} = await import('./codemirror/sqlSchema')
+
+function EditorSearchShot() {
+    const light = new URLSearchParams(location.search).get('theme') === 'light'
+    const ref = (el: HTMLDivElement | null) => {
+        if (!el || el.childElementCount) return
+        const view = new CMView({
+            parent: el,
+            state: CMState.create({
+                doc: `update BATCH_CTRL_MODULO
+set IND_ESTADO = 1,
+    DESCRIP_ERROR = 'Simulado por problemas de noche'
+where IND_ESTADO = 2;
+
+DECLARE
+    v_cant NUMBER; v_ret NUMBER;
+BEGIN
+    SGCPRO.PR_INFORMANTE(
+        p_fecha_batch => DATE '2026-09-10',
+        p_usuario     => USER,
+        p_cant        => v_cant,
+        p_retorno     => v_ret);
+END;`,
+                extensions: [cmBasicSetup, cmSearch({top: true}), cmSql('oracle', null), cmTheme('auto', light ? 'light' : 'dark'), ...cmAppearance(cmDefaultLook)],
+            }),
+        })
+        openSearchPanel(view)
+        view.dispatch({effects: setSearchQuery.of(new SearchQuery({search: 'IND_ESTADO', caseSensitive: true, replace: 'ESTADO'}))})
+        const input = el.querySelector<HTMLInputElement>('input[name=case]')
+        if (input) input.checked = true
+    }
+    return <div ref={ref} className="h-full w-full bg-surface" />
+}
+
 const views_chatdb = (
     <AgentChat
         sessionId="chat-db"
@@ -1843,6 +1885,7 @@ const views: Record<string, React.ReactNode> = {
     // El visor de DDL, con un objeto largo de verdad: lo que se mira acá es que
     // el panel scrollee adentro del modal (y no desborde) y que la cabecera y
     // la barra de estado queden fijas mientras el DDL corre.
+    editorsearch: <EditorSearchShot />,
     ddl: (
         <div className="h-full w-full bg-surface">
             <DDLViewerModal

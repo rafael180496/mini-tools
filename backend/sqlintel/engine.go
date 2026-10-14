@@ -26,6 +26,14 @@ const (
 	// KindExpand is a rewrite of what is already there — today the one
 	// case is "*" turned into the column list it stands for.
 	KindExpand = "expand"
+	// KindVariable is a name a PL/SQL block declares — a local, a constant,
+	// a cursor, or a parameter of the routine being written.
+	KindVariable = "variable"
+	// KindParam is a parameter of the routine being CALLED, offered as
+	// "p_x => " at the start of an argument.
+	KindParam = "param"
+	// KindPackage is an Oracle package, offered after "SCHEMA.".
+	KindPackage = "package"
 )
 
 // Request is one completion query from the editor.
@@ -148,15 +156,35 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 	// opens anyway, restricted to what the schema holds (tables, schemas,
 	// columns). Anything vaguer than that stays silent until Ctrl-Space.
 	autoOpen := prefix == "" && !req.Explicit && ctx.DotPrefix == "" && ctx.JoinTarget == nil
-	if autoOpen && !opensOnEmptyPrefix(ctx.Clause) {
+	// Right after "PROC(" or "," the clause says nothing (it is a call, not
+	// a query), but the routine's parameter list is exactly what goes there.
+	named := namedArgs(idx, req.DBType, ctx)
+	// "p_cant => |" is the value of a named argument: in a block, almost
+	// always one of its variables.
+	argValue := ctx.Clause == ClauseUnknown && ctx.DotPrefix == "" && len(ctx.Variables) > 0 && afterArrow(text, ctx.From)
+	if autoOpen && !opensOnEmptyPrefix(ctx.Clause) && len(named) == 0 && !argValue {
 		return resp
 	}
 
 	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen, explicit: req.Explicit}
 
-	if ctx.DotPrefix != "" {
+	switch {
+	case ctx.DotPrefix != "":
 		c.qualified(idx, ctx)
-	} else {
+	case len(named) > 0 && ctx.Clause == ClauseUnknown:
+		// An argument of a PL/SQL call: its name, or a value — a variable of
+		// the block, or an expression. The statement-level answer (snippets,
+		// the whole table list) is the one thing that never goes here.
+		c.namedArgs(named)
+		c.variables(ctx)
+		c.functions(dialect, ctx.Clause)
+		c.keywords(dialect, -100)
+	case argValue:
+		c.variables(ctx)
+		c.functions(dialect, ctx.Clause)
+		c.keywords(dialect, -100)
+	default:
+		c.namedArgs(named)
 		c.unqualified(idx, dialect, ctx)
 	}
 
@@ -192,6 +220,16 @@ func InlineOnly(idx *SchemaIndex, req Request) string {
 		return ""
 	}
 	return inlineSuggestion(idx, ctx, nil)
+}
+
+// afterArrow reports whether the text right before from (spaces aside) is
+// the "=>" of a named argument.
+func afterArrow(text []rune, from int) bool {
+	i := from - 1
+	for i >= 0 && isSpace(text[i]) {
+		i--
+	}
+	return i >= 1 && text[i] == '>' && text[i-1] == '='
 }
 
 // opensOnEmptyPrefix reports whether a clause pins the cursor down well
@@ -281,11 +319,112 @@ func (c *collector) qualified(idx *SchemaIndex, ctx Context) {
 		for _, t := range schemaTables {
 			c.add(t.Name, KindTable, t.Qualified, "", "", 400)
 		}
+		c.schemaRoutines(idx, ctx)
 	default:
 		// Not a table and not a schema: on Oracle the remaining thing a
 		// qualifier can name is a package, and its members are exactly what
 		// "PKG." is asking for.
 		c.packageMembers(idx.PackageMembers(ctx.DotPrefix))
+		// …or a schema that owns code but no indexed table.
+		c.schemaRoutines(idx, ctx)
+	}
+}
+
+// schemaRoutines offers what a schema owns besides tables — its standalone
+// procedures and functions, and its packages — for "SGCPRO.|". Without it a
+// schema-qualified call (the usual way to invoke a procedure from a block
+// that runs as another user) completed to a table list and nothing else.
+//
+// Inside a query (after FROM, in a WHERE…) they rank below the tables:
+// that position is about tables, and a function there is the exception.
+func (c *collector) schemaRoutines(idx *SchemaIndex, ctx Context) {
+	if idx == nil {
+		return
+	}
+	bonus := 420
+	switch ctx.Clause {
+	case ClauseFrom, ClauseJoin:
+		bonus = 200
+	}
+	packages := map[string]bool{}
+	for _, r := range idx.Routines {
+		if !strings.EqualFold(r.Schema, ctx.DotPrefix) {
+			continue
+		}
+		if r.Package != "" {
+			lower := strings.ToLower(r.Package)
+			if !packages[lower] {
+				packages[lower] = true
+				c.add(r.Package, KindPackage, "package · "+r.Schema, "", "", bonus)
+			}
+			continue
+		}
+		c.add(r.Name, KindRoutine, r.Detail(), r.Name+r.ArgSnippet(), r.Info(), bonus)
+	}
+}
+
+// namedArg is one parameter offered at the start of a call's argument.
+type namedArg struct {
+	name   string
+	detail string
+}
+
+// namedArgs resolves the call under the cursor (see Context.Call) against
+// the catalog and returns the parameters not passed yet, in declaration
+// order. Overloads contribute the union of their parameters.
+//
+// Only Oracle and Postgres: both write a named argument as "name => value".
+// SQL Server's is "@name = value" and SQLite has no stored routines.
+func namedArgs(idx *SchemaIndex, dbType string, ctx Context) []namedArg {
+	if ctx.Call == nil || ctx.DotPrefix != "" {
+		return nil
+	}
+	switch strings.ToLower(dbType) {
+	case "oracle", "postgres":
+	default:
+		return nil
+	}
+	var out []namedArg
+	seen := map[string]bool{}
+	for _, r := range matchRoutines(idx, ctx.Call.Name) {
+		for _, a := range r.Args {
+			lower := strings.ToLower(a.Name)
+			if a.Name == "" || seen[lower] || ctx.Call.Used[lower] {
+				continue
+			}
+			seen[lower] = true
+			detail := argLabel(a)
+			if a.HasDefault {
+				detail += i18n.T(i18n.Msg{ES: " · opcional", EN: " · optional"})
+			}
+			out = append(out, namedArg{name: a.Name, detail: detail})
+		}
+	}
+	return out
+}
+
+// namedArgs adds the parameter names, leading the list: at the start of an
+// argument of a known routine, naming it is what is being done. Declaration
+// order is kept through a small decreasing nudge, so with nothing typed the
+// list reads like the signature.
+func (c *collector) namedArgs(args []namedArg) {
+	for i, a := range args {
+		c.add(a.name, KindParam, a.detail, a.name+" => ",
+			i18n.T(i18n.Msg{ES: "Parámetro del procedimiento que se está llamando. Se inserta con «=>», en notación nombrada.", EN: "Parameter of the routine being called. Inserted with \"=>\", in named notation."}),
+			1300-i)
+	}
+}
+
+// variables offers what the enclosing PL/SQL blocks declare. Ranked under
+// the columns of the query (a WHERE inside a block is still mostly about
+// columns) and above functions and keywords.
+func (c *collector) variables(ctx Context) {
+	for _, v := range ctx.Variables {
+		detail := v.Type
+		if v.Param {
+			detail = i18n.T(i18n.Msg{ES: "parámetro", EN: "parameter"}) + " · " + v.Type
+		}
+		c.add(v.Name, KindVariable, detail, "", "", 450)
 	}
 }
 
@@ -306,6 +445,7 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		c.projected(ctx)
 		c.starExpansion(idx, ctx)
 		c.columnsInScope(idx, ctx)
+		c.variables(ctx)
 		c.functions(dialect, ctx.Clause)
 		c.routines(idx)
 		c.keywords(dialect, 0)
@@ -314,6 +454,7 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		c.tablesWithBonus(idx, -150)
 
 	case ClauseValues:
+		c.variables(ctx)
 		c.functions(dialect, ctx.Clause)
 		c.routines(idx)
 		c.keywords(dialect, 0)
@@ -323,6 +464,10 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		// Offer everything, led by statement templates — never nothing.
 		c.snippets(dialect)
 		c.keywords(dialect, 100)
+		// Inside a block body the statement very often starts with a
+		// variable ("v_total := …"), and the block's own names are a far
+		// better guess than any table of the catalog.
+		c.variables(ctx)
 		c.tables(idx)
 		c.functions(dialect, ctx.Clause)
 		// A statement that opens with a routine call is the normal way to

@@ -2096,6 +2096,9 @@ export default function Workspace({
                             break
                         case 'cancelled':
                             cur.status = 'cancelled'
+                            // Cuando la base no confirmó el corte a tiempo, el
+                            // backend lo dice acá (ver Executor.Cancel).
+                            cur.note = event.note ?? ''
                             break
                         case 'error':
                             cur.status = 'error'

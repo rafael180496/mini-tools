@@ -6,6 +6,7 @@ import {basicSetup} from 'codemirror'
 import {GetObjectDDL, SaveDDLToFile} from '../../wailsjs/go/main/App'
 import {sqlLanguageExtension} from '../codemirror/sqlSchema'
 import {resolveEditorTheme} from '../codemirror/themes'
+import {editorChrome} from '../codemirror/editorChrome'
 import type {Theme} from '../hooks/useTheme'
 import Icon from './Icon'
 import {formatNumber, useT} from '../i18n'
@@ -139,6 +140,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                 extensions: [
                     basicSetup,
                     baseTheme,
+                    editorChrome(),
                     // null connId: highlighting only. This viewer is
                     // read-only, so schema completion and ghost text would
                     // be bridge traffic with nowhere to land.
