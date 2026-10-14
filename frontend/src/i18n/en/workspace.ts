@@ -85,6 +85,7 @@ const en: Messages<typeof es> = {
             'Explain: shows the execution plan WITHOUT running anything. Explains the selection; with no selection, the statement under the cursor — not the whole file',
         explainAnalyze:
             'Explain Analyze — actually RUNS the query against the database and shows the plan with real rows and timings. Runs the selection; with no selection, the statement under the cursor. If it modifies data it asks for confirmation and runs inside a transaction that is rolled back',
+        format: 'Format SQL (Ctrl+Alt+L · ⌥⌘L): lays out and indents the selection or, with no selection, the whole file. It only changes whitespace and keyword case; PL/SQL blocks and DDL are left as they are',
         refresh: 'Refresh the catalog: re-reads tables and columns from the database (F5) — use it if you just created or altered a table',
         txOpen: 'Transaction open',
         commit: 'Commit: permanently confirms every change (INSERT/UPDATE/DELETE) made since the transaction was opened, and goes back to auto-commit',
@@ -140,6 +141,13 @@ const en: Messages<typeof es> = {
         pageSizeTitle: "How many rows each page fetches. 'All' turns paging off — careful with large tables. Saved as a preference.",
         pageSize: 'Rows per page',
         all: 'All',
+    },
+    execMark: {
+        rows: (n) => `${n} rows`,
+        affected: (n) => `${n} affected`,
+        error: 'error',
+        cancelled: 'cancelled',
+        title: (p) => `Ran ${p.when}${p.detail ? `\n${p.detail}` : ''}`,
     },
     footer: {
         runningProgress: (p) => `Running ${p.current}/${p.total}…`,

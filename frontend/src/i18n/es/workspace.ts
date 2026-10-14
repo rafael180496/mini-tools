@@ -89,6 +89,7 @@ export default {
             'Explain: muestra el plan de ejecución SIN correr nada. Explica lo que tengas seleccionado; sin selección, la sentencia donde está el cursor — no el archivo entero',
         explainAnalyze:
             'Explain Analyze — EJECUTA la consulta de verdad contra la base y muestra el plan con filas y tiempos reales. Corre lo seleccionado; sin selección, la sentencia donde está el cursor. Si modifica datos se pide confirmación y la ejecución va en una transacción que se revierte',
+        format: 'Formatear SQL (Ctrl+Alt+L · ⌥⌘L): ordena en líneas e indenta lo seleccionado o, sin selección, el archivo entero. Solo cambia espacios y mayúsculas de las palabras clave; los bloques PL/SQL y el DDL quedan como están',
         refresh: 'Refrescar el catálogo: vuelve a leer tablas y columnas de la base (F5) — usalo si acabás de crear o alterar una tabla',
         txOpen: 'Transacción abierta',
         commit: 'Commit: confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción, y vuelve a auto-commit',
@@ -146,6 +147,15 @@ export default {
         pageSizeTitle: "Cuántas filas trae cada página. 'Todas' desactiva la paginación — cuidado con tablas grandes. Se guarda como preferencia.",
         pageSize: 'Filas por página',
         all: 'Todas',
+    },
+    // Marca al final del renglón de cada sentencia ejecutada
+    // (codemirror/execTimeMarks.ts).
+    execMark: {
+        rows: (n: string) => `${n} filas`,
+        affected: (n: string) => `${n} afectadas`,
+        error: 'error',
+        cancelled: 'cancelada',
+        title: (p: {when: string; detail: string}) => `Ejecutada ${p.when}${p.detail ? `\n${p.detail}` : ''}`,
     },
     footer: {
         runningProgress: (p: {current: number; total: number}) => `Ejecutando ${p.current}/${p.total}…`,

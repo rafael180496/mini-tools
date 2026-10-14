@@ -604,6 +604,10 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
   <p>Connection → schema → categories. Tables go in their own collapsible category, always sorted
   alphabetically (tested against a real schema of 342 tables); next to them are Procedures, Functions,
   Triggers and Packages, each with its counter.</p>
+  <p><strong>Group by prefix</strong> (the folder icon on the <em>Tables</em> row, or its right-click menu) folds the
+  tables that share a prefix —up to the first <code>_</code>, <code>-</code> or <code>$</code>— into one row:
+  <code>TMP_*</code>, <code>AUD_*</code>, <code>BATCH_*</code>. Inside a group the prefix is left out of each name; a
+  prefix with a single table stays on its own. The choice is remembered on this machine.</p>
 
   <h2 id="bases-esquema--buscar">Search inside the schema</h2>
   <p>The filter at the top of the tree isn't limited to table names: it also finds procedures, functions,
@@ -651,6 +655,15 @@ JOIN   <span class="c">▮</span>             <span class="c">-- suggests the co
 BEGIN
   SGCPRO.PR_INFORMANTE(p_fecha_batch =&gt; SYSDATE, <span class="c">▮</span>  <span class="c">-- p_usuario, p_cant, p_retorno</span>
                        p_cant =&gt; <span class="c">▮</span>              <span class="c">-- v_cant</span></code></pre></div>
+  <h2 id="bases-consultas--formato">Format and go to the definition</h2>
+  <p><strong>Format SQL</strong> (<kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd>, also <kbd>Shift+Alt+F</kbd>, or the
+  <em>format</em> icon in the bar) lays out the selection —or the whole file, with nothing selected— one clause per
+  line: the <code>SELECT</code> list aligned, each <code>JOIN</code> on its own line, <code>AND</code>/<code>OR</code>
+  indented under the <code>WHERE</code> and subqueries indented inside their parentheses. It only changes whitespace
+  and keyword case, so the statement runs exactly as before; <strong>PL/SQL blocks, DDL and SQL*Plus commands are
+  left as they are</strong>. One <kbd>⌘Z</kbd> undoes it.</p>
+  <p><strong><kbd>⌘</kbd>+click</strong> (<kbd>Ctrl</kbd>+click on Windows and Linux) on a table, an alias, a
+  procedure, a function or a package opens its DDL. While you hold the key, whatever can be opened is underlined.</p>
   <p><kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> opens find and replace at the top of the editor; the three toggles are
   match case, regular expression and whole word, and every button says its shortcut in its tooltip.</p>
 
@@ -671,7 +684,9 @@ BEGIN
   <ul>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> runs <strong>the selection</strong>, or the statement under the cursor if nothing is selected.</li>
     <li><strong>Block</strong> (<kbd>Ctrl+Shift+↵</kbd>) runs a complete PL/SQL block, with <code>DBMS_OUTPUT</code> captured.</li>
-    <li>Results arrive <strong>live</strong>, statement by statement, and can be <strong>cancelled on the fly</strong> — even while the connection is still opening. If the database doesn't confirm the cancellation within a few seconds, the result is marked cancelled anyway, with a note that the statement may still be finishing on the server. A multi-statement script opens one result per statement, in tabs you can close one by one or all at once.</li>
+    <li>Results arrive <strong>live</strong>, statement by statement, and can be <strong>cancelled on the fly</strong>. Each statement run from the editor leaves a small mark at the end of
+    its line —<em>412 ms · 500 rows</em>, <em>error</em> or <em>cancelled</em>— with the time and the detail in its
+    tooltip; running the line again replaces it — even while the connection is still opening. If the database doesn't confirm the cancellation within a few seconds, the result is marked cancelled anyway, with a note that the statement may still be finishing on the server. A multi-statement script opens one result per statement, in tabs you can close one by one or all at once.</li>
     <li><strong>Running doesn't block anything.</strong> While a long query runs you can run another: in another tab, against another connection, or <strong>in the same tab</strong> — the new run appends its "Result N" after the previous ones instead of overwriting them. Results, console and cancellation belong to the tab that asked for them, and the tab that's working shows a spinning ring on its label, so you can see it from any other.</li>
     <li><strong>Auto-commit</strong> is the lightning icon in the bar, lit when it's on: one click switches to manual transactions, and then <strong>Commit</strong> and <strong>Rollback</strong> appear next to the "Transaction open" notice. There's never any doubt about whether a change was committed — and no greyed-out buttons waiting for the 1% of the time they're useful.</li>
   </ul>
@@ -764,6 +779,12 @@ BEGIN
     <li><strong>View SQL</strong> shows a preview of what's about to run.</li>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> sends them. <strong>Discard</strong> throws them away.</li>
   </ol>
+  <p><strong>SQL expressions.</strong> The <strong>fx</strong> button in the cell editor switches from a value to an
+  expression the database evaluates on save — <code>SYSDATE</code>, <code>NOW()</code>, <code>SEQ.NEXTVAL</code>,
+  <code>price * 1.12</code>. It goes into the <code>UPDATE</code> as written, in parentheses, instead of as a
+  parameter; the grid shows the expression marked <em>fx</em>, not its result. An expression can't contain
+  <code>;</code>, comments or unbalanced parentheses: those would change which statement runs, not which value is
+  written.</p>
 
   <h2 id="bases-editar--regla">The rule that governs the feature</h2>
   <p><strong>Never write a row that can't be identified beyond any doubt</strong>, because a
@@ -802,6 +823,20 @@ BEGIN
   <h1>Copy and export results</h1>
   <p class="lead">Select rows and they come out as CSV, <code>INSERT</code> or <code>UPDATE</code> ready to
   paste into another environment — with the real table and the dates converted for the target engine.</p>
+
+  <h2 id="bases-copiar--herramientas">Filter, statistics and record view</h2>
+  <p>The bar above the grid has three tools that don't query the database again — they work on the rows
+  <strong>already loaded</strong>:</p>
+  <ul>
+    <li><strong>Filter rows</strong> (<kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> with the grid focused): keeps the rows that
+    contain the text in any column, highlights it and says <em>N of M</em>. Selection and pending edits survive
+    clearing it. To filter the full result, add a <code>WHERE</code>.</li>
+    <li><strong>Statistics</strong>: for the chosen column, rows, values, nulls and distinct values; if it's numeric,
+    also sum, average, minimum and maximum, and if it's text, the minimum and maximum length. Computed over the
+    selected rows or, with none selected, over the visible ones. Click a figure to copy it.</li>
+    <li><strong>Record</strong>: one row at a time, each column on its own line with the full value — the way to read a
+    sixty-column table or a long text. Arrows (or <kbd>←</kbd>/<kbd>→</kbd>) move between rows; it's read-only.</li>
+  </ul>
 
   <h2 id="bases-copiar--anchos">Column widths</h2>
   <p>Each column starts <strong>as wide as what it holds</strong>: a seven-digit id column is narrow and a
@@ -3098,6 +3133,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Save the active tab (query, note, file, request)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Paste an image into a note, or an image or file into the chat (<a href="#ia-adjuntos">attachments</a>)</td></tr>
     <tr><td><kbd>Ctrl+Space</kbd></td><td>Force autocomplete, even where it doesn't open on its own</td></tr>
+    <tr><td><kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd></td><td>Format the selection or the whole file</td></tr>
+    <tr><td><kbd>⌘</kbd>+click / <kbd>Ctrl</kbd>+click</td><td>Open the DDL of the table or routine under the pointer</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Accept the grey suggestion, or jump to a shortcut's next placeholder</td></tr>
     <tr><td><kbd>F5</kbd></td><td>Refresh the active connection's catalog</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Close whichever panel, menu or search box is open</td></tr>

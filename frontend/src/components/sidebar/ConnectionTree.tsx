@@ -9,6 +9,7 @@ import RedisKeyTree from '../redis/RedisKeyTree'
 import MongoCollectionTree from '../mongo/MongoCollectionTree'
 import SidebarSection from './SidebarSection'
 import SchemaObjectsList from './SchemaObjectsList'
+import {groupByPrefix, loadGroupByPrefix, saveGroupByPrefix} from '../../lib/tablePrefixGroups'
 import TreeRow, {TREE_FOLDER_ICON, TREE_GUIDE_OFFSET, TREE_INDENT} from './TreeRow'
 import {MenuButton, moveToFolderSubmenu, useTreeMenu, type TreeMenuEntry} from './TreeMenu'
 import {flattenForMenu} from './MoveToFolderMenu'
@@ -176,6 +177,23 @@ export default function ConnectionTree({
     // before this existed) — collapsing is opt-in per schema, and reset on
     // connection change same as expandedSchemas above.
     const [collapsedTableSchemas, setCollapsedTableSchemas] = useState<Set<string>>(new Set())
+    // Agrupar las tablas de un esquema por prefijo (lib/tablePrefixGroups).
+    // Grupos plegados por defecto: desplegarlos todos de entrada sería la
+    // misma lista larga de antes con filas de más.
+    const [prefixGrouping, setPrefixGrouping] = useState(loadGroupByPrefix)
+    const [expandedPrefixes, setExpandedPrefixes] = useState<Set<string>>(new Set())
+    const toggleGroupByPrefix = () =>
+        setPrefixGrouping((v) => {
+            saveGroupByPrefix(!v)
+            return !v
+        })
+    const togglePrefix = (key: string) =>
+        setExpandedPrefixes((prev) => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
     // Which folder nodes are manually expanded — overridden (everything
     // relevant force-shown) while a search is active, same "flatten while
     // searching" behavior the table filter below already has.
@@ -468,7 +486,37 @@ export default function ConnectionTree({
         ])
     }
 
-    function renderTableRow(tb: db.Table, connId: string, depth: number, qualify: boolean) {
+    // Las tablas de un esquema, planas o agrupadas por prefijo. Dentro de un
+    // grupo se muestra el resto del nombre —el prefijo ya está en la fila del
+    // grupo—, igual que DataGrip; el tooltip y lo que se inserta llevan el
+    // nombre completo.
+    function renderSchemaTables(tables: db.Table[], connId: string, depth: number, schema: string): ReactNode {
+        if (!prefixGrouping) return tables.map((tb) => renderTableRow(tb, connId, depth, false))
+        return groupByPrefix(tables, (tb) => tb.name).map((entry) => {
+            if (entry.kind === 'item') return renderTableRow(entry.item, connId, depth, false)
+            const key = `${schema}\u0000${entry.prefix.toUpperCase()}`
+            const open = expandedPrefixes.has(key)
+            return (
+                <div key={`prefix:${key}`}>
+                    <TreeRow
+                        depth={depth}
+                        icon="folder"
+                        iconClass="text-on-surface-variant/70"
+                        label={`${entry.prefix}*`}
+                        labelClass="font-mono text-on-surface-variant"
+                        title={tc.prefixGroupTitle({prefix: entry.prefix, count: entry.items.length})}
+                        expanded={open}
+                        onToggle={() => togglePrefix(key)}
+                        onClick={() => togglePrefix(key)}
+                        trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{entry.items.length}</span>}
+                    />
+                    {open && entry.items.map((tb) => renderTableRow(tb, connId, depth + 1, false, tb.name.slice(entry.prefix.length)))}
+                </div>
+            )
+        })
+    }
+
+    function renderTableRow(tb: db.Table, connId: string, depth: number, qualify: boolean, shortLabel?: string) {
         const qualified = tb.schema ? `${tb.schema}.${tb.name}` : tb.name
         return (
             <TreeRow
@@ -479,7 +527,7 @@ export default function ConnectionTree({
                 // Sin agrupar por esquema (búsqueda o motor sin agrupación) el
                 // esquema va en el nombre: es lo único que distingue dos tablas
                 // iguales. Adentro de su esquema sería repetir la fila de arriba.
-                label={qualify ? qualified : tb.name}
+                label={qualify ? qualified : (shortLabel ?? tb.name)}
                 labelClass="text-on-surface-variant"
                 title={tc.tableTitle({name: qualified})}
                 onDoubleClick={() => onOpenTable(tb.name, tb.schema)}
@@ -651,11 +699,29 @@ export default function ConnectionTree({
                                                                 icon: tablesCollapsed ? 'unfold_more' : 'unfold_less',
                                                                 onSelect: () => toggleTableCategory(schema),
                                                             },
+                                                            {
+                                                                label: prefixGrouping ? tc.ungroupByPrefix : tc.groupByPrefix,
+                                                                icon: 'folder',
+                                                                title: tc.groupByPrefixTitle,
+                                                                onSelect: toggleGroupByPrefix,
+                                                            },
                                                         ])
+                                                    }
+                                                    actions={
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                toggleGroupByPrefix()
+                                                            }}
+                                                            title={`${prefixGrouping ? tc.ungroupByPrefix : tc.groupByPrefix} — ${tc.groupByPrefixTitle}`}
+                                                            className={`sidebar-icon !p-0.5 ${prefixGrouping ? 'text-primary' : ''}`}
+                                                        >
+                                                            <Icon name="folder" size={14} />
+                                                        </button>
                                                     }
                                                     trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{schemaTables.length}</span>}
                                                 />
-                                                {!tablesCollapsed && schemaTables.map((tb) => renderTableRow(tb, c.id, inner + 2, false))}
+                                                {!tablesCollapsed && renderSchemaTables(schemaTables, c.id, inner + 2, schema)}
                                             </>
                                         )}
                                         <SchemaObjectsList

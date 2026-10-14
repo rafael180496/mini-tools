@@ -19,8 +19,10 @@ import {useT} from '../../i18n'
 interface Props {
     kind: string
     initial: string | null
+    // La celda ya tenía una expresión pendiente: se reabre en modo fx.
+    initialExpression?: boolean
     nullable: boolean
-    onCommit: (value: string | null) => void
+    onCommit: (value: string | null, expression?: boolean) => void
     onCancel: () => void
 }
 
@@ -35,9 +37,13 @@ function toInputValue(kind: string, raw: string | null): string {
     return v
 }
 
-export default function CellEditor({kind, initial, nullable, onCommit, onCancel}: Props) {
+export default function CellEditor({kind, initial, initialExpression = false, nullable, onCommit, onCancel}: Props) {
     const t = useT()
-    const [value, setValue] = useState(() => toInputValue(kind, initial))
+    // Modo expresión (el «Edit as SQL Expression» de DataGrip): el valor es
+    // SQL que la base evalúa al guardar —SYSDATE, NOW(), SEQ.NEXTVAL—, así
+    // que el control es siempre texto, sea cual sea el tipo de la columna.
+    const [expr, setExpr] = useState(initialExpression)
+    const [value, setValue] = useState(() => (initialExpression ? (initial ?? '') : toInputValue(kind, initial)))
     const ref = useRef<HTMLInputElement | HTMLSelectElement>(null)
 
     useEffect(() => {
@@ -48,7 +54,7 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
     const keys = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             e.preventDefault()
-            onCommit(value)
+            onCommit(value, expr)
         }
         if (e.key === 'Escape') {
             e.preventDefault()
@@ -61,7 +67,18 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
 
     return (
         <div className="flex items-center gap-1">
-            {kind === 'bool' ? (
+            {expr ? (
+                <input
+                    ref={ref as React.RefObject<HTMLInputElement>}
+                    type="text"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={keys}
+                    placeholder={t.results.cellEditor.exprPlaceholder}
+                    spellCheck={false}
+                    className={`${common} italic text-primary`}
+                />
+            ) : kind === 'bool' ? (
                 <select
                     ref={ref as React.RefObject<HTMLSelectElement>}
                     value={value}
@@ -87,6 +104,20 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
                 />
             )}
 
+            <button
+                onClick={() => {
+                    // Al pasar a expresión se arranca vacío: el dato que había
+                    // casi nunca es una expresión válida (una fecha sin
+                    // comillas es una resta). Al volver, se recupera el dato.
+                    setExpr((v) => !v)
+                    setValue(expr ? toInputValue(kind, initialExpression ? null : initial) : '')
+                    setTimeout(() => ref.current?.focus(), 0)
+                }}
+                title={t.results.cellEditor.exprTitle}
+                className={`shrink-0 rounded px-1 font-mono text-ui-10 italic ${expr ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'}`}
+            >
+                {t.results.cellEditor.exprBadge}
+            </button>
             {nullable && (
                 <button
                     onClick={() => onCommit(null)}
@@ -97,7 +128,7 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
                 </button>
             )}
             <button
-                onClick={() => onCommit(value)}
+                onClick={() => onCommit(value, expr)}
                 title={t.results.cellEditor.commitTitle}
                 className="shrink-0 rounded text-primary hover:bg-surface-variant"
             >

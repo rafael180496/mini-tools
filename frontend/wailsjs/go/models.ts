@@ -3183,6 +3183,7 @@ export namespace main {
 	    column: string;
 	    value?: string;
 	    key: Record<string, string>;
+	    expression?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CellEdit(source);
@@ -3193,6 +3194,7 @@ export namespace main {
 	        this.column = source["column"];
 	        this.value = source["value"];
 	        this.key = source["key"];
+	        this.expression = source["expression"];
 	    }
 	}
 	export class CommitDraft {

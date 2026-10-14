@@ -13,11 +13,12 @@
 // and routing a mouse-hover through the bridge would buy nothing.
 
 import {sql, PostgreSQL, SQLite, PLSQL, MSSQL, StandardSQL, type SQLDialect} from '@codemirror/lang-sql'
-import {hoverTooltip} from '@codemirror/view'
-import type {Extension} from '@codemirror/state'
+import {Decoration, EditorView, hoverTooltip, type DecorationSet} from '@codemirror/view'
+import {StateEffect, StateField, type Extension} from '@codemirror/state'
 import {db} from '../../wailsjs/go/models'
 import {sqlIntelCompletionSource, sqlInlineSuggestions, sqlCompletionTheme} from './sqlIntel'
 import {sqlSignatureHelp} from './sqlSignature'
+import {sqlFormatKeymap} from './sqlFormat'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
 // list per engine (see the retired frontend/src/monaco/sqlLanguage.ts) —
@@ -107,6 +108,8 @@ export function sqlLanguageExtension(dbType: string | null | undefined, connId: 
         // still opens a popup there, and it should look like the rest of the
         // app rather than like CodeMirror's default.
         sqlCompletionTheme,
+        // Formatear (⌥⌘L / Ctrl+Alt+L) no necesita conexión: es solo texto.
+        sqlFormatKeymap,
     ]
     if (!connId) return base
 
@@ -213,4 +216,176 @@ export function sqlSchemaHover(meta: db.SchemaMetadata | null): Extension {
             },
         }
     })
+}
+
+// --- Ir a la definición (Ctrl/Cmd+clic) ------------------------------------
+
+// Lo que se puede abrir en el visor de DDL. Es el mismo conjunto que
+// DDLObjectType (components/DDLViewerModal.tsx), repetido acá para que el
+// módulo del editor no dependa de un componente.
+export interface SchemaObjectRef {
+    objectType: 'table' | 'procedure' | 'function' | 'package'
+    schema: string
+    name: string
+    oid: number
+}
+
+function eqi(a: string | undefined, b: string | undefined): boolean {
+    return (a ?? '').toLowerCase() === (b ?? '').toLowerCase()
+}
+
+// resolveObjectAt lee el identificador bajo pos —con lo que tenga calificado
+// a la izquierda: "alias.", "ESQUEMA.", "PKG."— y lo busca en la metadata.
+// Devuelve también el rango a subrayar.
+function resolveObjectAt(
+    meta: db.SchemaMetadata,
+    doc: string,
+    pos: number,
+): {ref: SchemaObjectRef; from: number; to: number} | null {
+    const isWord = (c: string | undefined) => !!c && /[\w$#]/.test(c)
+    let start = pos
+    let end = pos
+    while (start > 0 && isWord(doc[start - 1])) start--
+    while (end < doc.length && isWord(doc[end])) end++
+    if (start === end) return null
+    const word = doc.slice(start, end)
+
+    // Calificador inmediato a la izquierda ("x." + palabra).
+    let qualifier: string | undefined
+    if (doc[start - 1] === '.') {
+        let q = start - 1
+        while (q > 0 && isWord(doc[q - 1])) q--
+        qualifier = doc.slice(q, start - 1) || undefined
+    }
+    // Lo que sigue: "PKG" en "PKG.miembro" es el package, no un miembro.
+    const followedByDot = doc[end] === '.'
+
+    const tableRef = (t: db.Table): SchemaObjectRef => ({objectType: 'table', schema: t.schema ?? '', name: t.name, oid: 0})
+
+    if (qualifier) {
+        // alias.columna o tabla.columna: la palabra es una columna; se abre la
+        // tabla a la que pertenece.
+        const refs = extractTableRefs(doc)
+        const viaAlias = refs.find((r) => eqi(r.alias, qualifier) || (!r.alias && eqi(r.table, qualifier)))
+        if (viaAlias) {
+            const t = resolveRefTable(viaAlias, meta)
+            if (t) return {ref: tableRef(t), from: start, to: end}
+        }
+        // ESQUEMA.tabla
+        const t = findTable(meta, word, qualifier)
+        if (t) return {ref: tableRef(t), from: start, to: end}
+        // PKG.miembro → el package.
+        const pkg = meta.packages?.find((p) => eqi(p.name, qualifier))
+        if (pkg) return {ref: {objectType: 'package', schema: pkg.schema ?? '', name: pkg.name, oid: 0}, from: start, to: end}
+    }
+
+    const schema = qualifier
+    // Sin calificador, un alias ("FROM clientes c" … clic en "c") lleva a su
+    // tabla.
+    if (!qualifier) {
+        const aliasRef = extractTableRefs(doc).find((r) => eqi(r.alias, word))
+        if (aliasRef) {
+            const t = resolveRefTable(aliasRef, meta)
+            if (t) return {ref: tableRef(t), from: start, to: end}
+        }
+    }
+    // La tabla antes que el código: en un texto SQL un nombre suelto es casi
+    // siempre una tabla, y un procedimiento homónimo se abre calificándolo.
+    const t = findTable(meta, word, schema)
+    if (t && !followedByDot) return {ref: tableRef(t), from: start, to: end}
+    const proc = meta.procedures?.find((p) => eqi(p.name, word) && (!schema || eqi(p.schema, schema)))
+    if (proc && !followedByDot) return {ref: {objectType: 'procedure', schema: proc.schema ?? '', name: proc.name, oid: proc.oid ?? 0}, from: start, to: end}
+    const fn = meta.functions?.find((f) => eqi(f.name, word) && (!schema || eqi(f.schema, schema)))
+    if (fn && !followedByDot) return {ref: {objectType: 'function', schema: fn.schema ?? '', name: fn.name, oid: fn.oid ?? 0}, from: start, to: end}
+    const pkg = meta.packages?.find((p) => eqi(p.name, word) && (!schema || eqi(p.schema, schema)))
+    if (pkg) return {ref: {objectType: 'package', schema: pkg.schema ?? '', name: pkg.name, oid: 0}, from: start, to: end}
+    return null
+}
+
+const setGoLink = StateEffect.define<{from: number; to: number} | null>()
+
+const goLinkField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(deco, tr) {
+        for (const e of tr.effects) {
+            if (e.is(setGoLink)) {
+                return e.value ? Decoration.set([Decoration.mark({class: 'cm-sql-golink'}).range(e.value.from, e.value.to)]) : Decoration.none
+            }
+        }
+        return tr.docChanged ? Decoration.none : deco.map(tr.changes)
+    },
+    provide: (f) => EditorView.decorations.from(f),
+})
+
+const goLinkTheme = EditorView.baseTheme({
+    '.cm-sql-golink': {
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--color-primary)',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+    },
+})
+
+// En macOS el modificador es Cmd: Ctrl+clic ahí es el menú contextual.
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+const modHeld = (e: MouseEvent | KeyboardEvent) => (isMac ? e.metaKey : e.ctrlKey)
+
+// sqlGoToObject: Ctrl+clic (Cmd+clic en macOS) sobre una tabla, un alias, un
+// procedimiento, una función o un package abre su DDL — el "Go to
+// declaration" de DataGrip. Mientras se mantiene la tecla, el nombre que se
+// puede abrir se subraya: así se sabe ANTES de hacer clic si va a pasar algo.
+//
+// Sobre una palabra que no resuelve a nada el clic sigue su camino normal
+// (en CodeMirror, Mod+clic agrega un cursor), así que no se pierde nada.
+export function sqlGoToObject(meta: db.SchemaMetadata | null, open: (ref: SchemaObjectRef) => void): Extension {
+    if (!meta) return []
+    const underline = (view: EditorView, e: MouseEvent | null) => {
+        const current = view.state.field(goLinkField).size > 0
+        if (!e || !modHeld(e)) {
+            if (current) view.dispatch({effects: setGoLink.of(null)})
+            return
+        }
+        const pos = view.posAtCoords({x: e.clientX, y: e.clientY})
+        const hit = pos === null ? null : resolveObjectAt(meta, view.state.doc.toString(), pos)
+        if (!hit && !current) return
+        view.dispatch({effects: setGoLink.of(hit ? {from: hit.from, to: hit.to} : null)})
+    }
+    let lastMove: MouseEvent | null = null
+    return [
+        goLinkField,
+        goLinkTheme,
+        EditorView.domEventHandlers({
+            mousedown(e, view) {
+                if (e.button !== 0 || !modHeld(e)) return false
+                const pos = view.posAtCoords({x: e.clientX, y: e.clientY})
+                if (pos === null) return false
+                const hit = resolveObjectAt(meta, view.state.doc.toString(), pos)
+                if (!hit) return false
+                e.preventDefault()
+                view.dispatch({effects: setGoLink.of(null)})
+                open(hit.ref)
+                return true
+            },
+            mousemove(e, view) {
+                lastMove = e
+                underline(view, e)
+                return false
+            },
+            mouseleave(_e, view) {
+                lastMove = null
+                underline(view, null)
+                return false
+            },
+            keydown(e, view) {
+                if (lastMove && (e.key === 'Meta' || e.key === 'Control')) {
+                    underline(view, new MouseEvent('mousemove', {clientX: lastMove.clientX, clientY: lastMove.clientY, metaKey: e.metaKey, ctrlKey: e.ctrlKey}))
+                }
+                return false
+            },
+            keyup(e, view) {
+                if (e.key === 'Meta' || e.key === 'Control') underline(view, null)
+                return false
+            },
+        }),
+    ]
 }

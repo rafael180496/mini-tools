@@ -1760,6 +1760,36 @@ const {search: cmSearch, openSearchPanel, setSearchQuery, SearchQuery} = await i
 const {editorAppearanceExtension: cmAppearance, DEFAULT_EDITOR_APPEARANCE: cmDefaultLook} = await import('./codemirror/editorAppearance')
 const {resolveEditorTheme: cmTheme} = await import('./codemirror/themes')
 const {sqlLanguageExtension: cmSql} = await import('./codemirror/sqlSchema')
+const {execTimeField, execTimeTheme, execMarkSpec} = await import('./codemirror/execTimeMarks')
+type ExecMark = import('./codemirror/execTimeMarks').ExecMark
+
+function ExecMarksShot() {
+    const ref = (el: HTMLDivElement | null) => {
+        if (!el || el.childElementCount) return
+        const doc = `SELECT * FROM SGCPRO.CARGVAR ORDER BY F_ACTUAL DESC;
+
+UPDATE BATCH_CTRL_MODULO SET IND_ESTADO = 1 WHERE IND_ESTADO = 2;
+
+DELETE FROM SGCPRO.TMP_RECIBO WHERE F_BATCH < DATE '2026-01-01';
+
+SELECT COUNT(*) FROM SGCPRO.ITIFACT;`
+        const view = new CMView({
+            parent: el,
+            state: CMState.create({doc, extensions: [cmBasicSetup, cmSql('oracle', null), cmTheme('auto', 'dark'), ...cmAppearance(cmDefaultLook), execTimeField, execTimeTheme]}),
+        })
+        const marks: [string, ExecMark][] = [
+            ['SELECT * FROM SGCPRO.CARGVAR ORDER BY F_ACTUAL DESC', {status: 'done', label: '412 ms · 500 filas', title: ''}],
+            ['UPDATE BATCH_CTRL_MODULO SET IND_ESTADO = 1 WHERE IND_ESTADO = 2', {status: 'done', label: '1m 4s · 37 afectadas', title: ''}],
+            ["DELETE FROM SGCPRO.TMP_RECIBO WHERE F_BATCH < DATE '2026-01-01'", {status: 'error', label: 'error', title: ''}],
+            ['SELECT COUNT(*) FROM SGCPRO.ITIFACT', {status: 'cancelled', label: 'cancelada', title: ''}],
+        ]
+        for (const [sql, mark] of marks) {
+            const spec = execMarkSpec(view.state, sql, 0, mark)
+            if (spec) view.dispatch(spec)
+        }
+    }
+    return <div ref={ref} className="h-full w-full bg-surface" />
+}
 
 function EditorSearchShot() {
     const light = new URLSearchParams(location.search).get('theme') === 'light'
@@ -1930,6 +1960,16 @@ const views: Record<string, React.ReactNode> = {
     // El árbol de esquema con contenido: tablas, procedures, functions,
     // triggers y packages. Es el workspace entero y no el árbol suelto porque
     // el árbol depende del módulo activo de la barra, que lo maneja el marco.
+    // El árbol con «Agrupar por prefijo» puesto y un grupo abierto.
+    schemaprefix: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    // Marcas de tiempo de ejecución al final de cada sentencia.
+    execmarks: <ExecMarksShot />,
+    // Una celda editada con una expresión SQL (fx).
+    gridexpr: (
+        <div className="flex h-full flex-col">
+            <ResultGrid columns={gridColumns} rows={gridRows} connId="c1" sqlText="select * from contacts;" />
+        </div>
+    ),
     schematree: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     sidebarsearch: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La barra oculta: queda la columna con el menú master.
@@ -2043,6 +2083,18 @@ const views: Record<string, React.ReactNode> = {
     notesgraph: <NotesGraphView onOpenNote={() => {}} onClose={() => {}} activeNoteId="n1" />,
     // La grilla con la conexión y la consulta: es lo que la habilita a editar.
     gridedit: (
+        <div className="flex h-full flex-col">
+            <ResultGrid columns={gridColumns} rows={gridRows} connId="c1" sqlText="select * from contacts;" />
+        </div>
+    ),
+    // La barra de la grilla: filtro rápido puesto y estadísticas abiertas.
+    gridtools: (
+        <div className="flex h-full flex-col">
+            <ResultGrid columns={gridColumns} rows={gridRows} connId="c1" sqlText="select * from contacts;" toolbarStart={<span className="text-ui-11 text-on-surface-variant">Export ▾</span>} />
+        </div>
+    ),
+    // La vista de registro sobre la segunda fila.
+    gridrecord: (
         <div className="flex h-full flex-col">
             <ResultGrid columns={gridColumns} rows={gridRows} connId="c1" sqlText="select * from contacts;" />
         </div>
@@ -3001,6 +3053,24 @@ if (view === 'mcp') {
     // fotografiar.
     autoClick(() => document.querySelector<HTMLButtonElement>('button[data-mcp-howto]') ?? undefined)
 }
+if (view === 'gridtools' || view === 'gridrecord') {
+    const setInput = (input: HTMLInputElement, value: string) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
+        input.dispatchEvent(new Event('input', {bubbles: true}))
+    }
+    setTimeout(() => {
+        const buttons = [...document.querySelectorAll('button')]
+        if (view === 'gridtools') {
+            const filter = document.querySelector<HTMLInputElement>('input[placeholder]')
+            if (filter) setInput(filter, 'pr')
+            buttons.find((b) => /Estad|Statist/.test(b.textContent ?? ''))?.click()
+        } else {
+            const cell = [...document.querySelectorAll('td')].find((td) => td.textContent?.trim() === 'polished-rain-974')
+            cell?.parentElement?.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))
+            setTimeout(() => buttons.find((b) => /Registro|Record/.test(b.textContent ?? ''))?.click(), 200)
+        }
+    }, 900)
+}
 if (view === 'gridedit') {
     // Se edita una celda de verdad, como lo haría una persona: doble clic,
     // escribir, y confirmar. Así la captura muestra el estado que importa —la
@@ -3038,6 +3108,46 @@ if (view === 'commitgraph') {
             b.textContent?.includes('feat: Add agent chat functionalities'),
         ),
     )
+}
+if (view === 'schemaprefix') {
+    try {
+        localStorage.setItem('mini-tools.schemaTree.groupByPrefix', '1')
+    } catch {
+        // sin almacenamiento la vista sale sin agrupar
+    }
+    const meta = fixtures.GetSchemaMetadata as {tables: {schema: string; name: string; columns: never[]; foreignKeys: never[]}[]}
+    for (const name of ['FACTURA_ANULADA', 'FACTURA_HIST', 'TMP_RECIBO', 'TMP_LECTURA', 'TMP_TRANSAC', 'AUD_FACTURACION', 'AUD_FACTURACION_CFG']) {
+        meta.tables.push({schema: 'SGCPRO', name, columns: [], foreignKeys: []})
+    }
+    // Clic en la fila del árbol (columna izquierda) cuyo texto es exactamente
+    // `text`: carpeta → conexión → esquema → grupo, cada uno cuando el
+    // anterior ya se desplegó.
+    const clickRow = (text: string) => {
+        const leaf = [...document.querySelectorAll<HTMLElement>('span, div, button')].find(
+            (el) => el.childElementCount === 0 && el.textContent?.trim() === text && el.getBoundingClientRect().left < 280,
+        )
+        leaf?.dispatchEvent(new MouseEvent('click', {bubbles: true}))
+    }
+    setTimeout(() => clickRow('Producción'), 900)
+    setTimeout(() => clickRow('SGCPRO · producción'), 1400)
+    setTimeout(() => clickRow('SGCPRO'), 2200)
+    setTimeout(() => clickRow('TMP_*'), 2800)
+}
+if (view === 'gridexpr') {
+    setTimeout(() => {
+        const cell = [...document.querySelectorAll('td')].find((td) => td.textContent?.trim() === '2026-06-24 22:48:01.016058')
+        cell?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))
+        setTimeout(() => {
+            ;[...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'fx')?.click()
+            setTimeout(() => {
+                const input = document.querySelector('td input') as HTMLInputElement | null
+                if (!input) return
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'NOW()')
+                input.dispatchEvent(new Event('input', {bubbles: true}))
+                setTimeout(() => input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})), 150)
+            }, 200)
+        }, 300)
+    }, 900)
 }
 if (view === 'schematree') {
     // Dos pasos: primero se despliega la conexión (que dispara la lectura del

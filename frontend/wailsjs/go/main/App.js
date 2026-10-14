@@ -518,6 +518,10 @@ export function FetchMoreRows(arg1) {
   return window['go']['main']['App']['FetchMoreRows'](arg1);
 }
 
+export function FormatSQL(arg1) {
+  return window['go']['main']['App']['FormatSQL'](arg1);
+}
+
 export function GenerateProjectDocs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2, arg3);
 }

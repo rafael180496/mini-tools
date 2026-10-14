@@ -91,6 +91,11 @@ export default {
             'Filtra tablas, procedures, functions, triggers y packages de esta conexión por nombre o esquema — escribí texto simple para "contiene", o usá % / _ estilo SQL LIKE (% = cualquier texto, _ = un carácter)',
         noTables: 'Sin tablas.',
         tables: 'Tablas',
+        groupByPrefix: 'Agrupar por prefijo',
+        ungroupByPrefix: 'Dejar de agrupar por prefijo',
+        groupByPrefixTitle:
+            'Agrupa las tablas que comparten prefijo (hasta el primer _, - o $): TMP_*, AUD_*, BATCH_*… Un prefijo de una sola tabla queda suelto.',
+        prefixGroupTitle: (p: {prefix: string; count: number}) => `${p.count} tablas que empiezan con ${p.prefix}`,
         tablesTitle: (p: {collapsed: boolean; count: number; schema: string}) =>
             `${p.collapsed ? 'Ver' : 'Ocultar'} las ${p.count} tablas de "${p.schema}"`,
         loadingTables: 'Cargando tablas…',

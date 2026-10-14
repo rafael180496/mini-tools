@@ -1,4 +1,4 @@
-import {useEffect, useState, useRef, type MouseEvent} from 'react'
+import {useEffect, useMemo, useState, useRef, type MouseEvent, type ReactNode} from 'react'
 import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
 import Icon from '../Icon'
@@ -6,7 +6,11 @@ import {generateCSV, generateInsertStatements, generateUpdateStatements, type Sq
 import CellEditor from './CellEditor'
 import {useRowEditing} from './useRowEditing'
 import {MIN_COL_WIDTH, measureColumnWidth, measureColumnWidths} from './columnWidths'
-import {useT} from '../../i18n'
+import {formatNumber, useT} from '../../i18n'
+import GridStatsPanel from './GridStatsPanel'
+import RecordView from './RecordView'
+import {columnStats, rowMatches} from './columnStats'
+import {highlightMatch} from './highlightMatch'
 
 interface ResultGridProps {
     columns: string[]
@@ -31,6 +35,10 @@ interface ResultGridProps {
     // quede en la consola. Lo consume Workspace, que es quien tiene la consola
     // de la pestaña; la grilla solo lo reenvía.
     onEditsApplied?: (result: {statements: string[]; values: string[]; rows: number; durationMs: number; error: string}) => void
+    // Lo que va al principio de la barra de la grilla, antes del filtro. Hoy
+    // es el menú Exportar: vivía en una fila propia encima, y esa fila es la
+    // que ahora tiene el filtro, las estadísticas y la vista de registro.
+    toolbarStart?: ReactNode
 }
 
 const ROW_HEIGHT = 28
@@ -50,9 +58,33 @@ export default function ResultGrid({
     connId,
     sqlText,
     onEditsApplied,
+    toolbarStart,
 }: ResultGridProps) {
     const t = useT()
     const parentRef = useRef<HTMLDivElement>(null)
+    const filterRef = useRef<HTMLInputElement>(null)
+
+    // Filtro rápido, estadísticas y vista de registro — las herramientas de
+    // la grilla de DataGrip que no vuelven a consultar la base. Las tres
+    // trabajan sobre las filas YA CARGADAS, y lo dicen.
+    const [filter, setFilter] = useState('')
+    const needle = filter.trim().toLowerCase()
+    const [view, setView] = useState<'grid' | 'record'>('grid')
+    const [statsOpen, setStatsOpen] = useState(false)
+    const [statsColumn, setStatsColumn] = useState('')
+    const [recordPos, setRecordPos] = useState(0)
+
+    // Índices (en `rows`) de las filas que pasan el filtro. La selección, la
+    // edición y el ancla siguen hablando en índices de `rows`: el filtro solo
+    // decide cuáles se dibujan, así que quitarlo no pierde nada de lo marcado
+    // ni de lo editado.
+    const visible = useMemo(() => {
+        const out: number[] = []
+        for (let i = 0; i < rows.length; i++) {
+            if (!needle || rowMatches(rows[i], needle)) out.push(i)
+        }
+        return out
+    }, [rows, needle])
     // Set (not a single index) so ctrl/cmd-click and shift-click can build a
     // multi-row selection — anchorRef tracks the last non-shift click so a
     // shift-click knows which end of the range to extend from.
@@ -139,6 +171,7 @@ export default function ResultGrid({
         }
         setSelectedIndices(new Set())
         anchorRef.current = null
+        setRecordPos(0)
         setAutoSizes(measureColumnWidths(columns, rows))
         // `columns` se deriva de colsKey: agregarlo dispararía el efecto en cada
         // render, porque el padre arma el array nuevo cada vez.
@@ -157,11 +190,17 @@ export default function ResultGrid({
     const tableRows = table.getRowModel().rows
 
     const virtualizer = useVirtualizer({
-        count: tableRows.length,
+        count: visible.length,
         getScrollElement: () => parentRef.current,
         estimateSize: () => ROW_HEIGHT,
         overscan: 12,
     })
+
+    // La columna de las estadísticas: la elegida si sigue existiendo; si no,
+    // la primera numérica, que es casi siempre la que se quiere sumar.
+    const statsCol = columns.includes(statsColumn)
+        ? statsColumn
+        : (columns.find((_, i) => rows.length > 0 && columnStats(rows.slice(0, 50), i).numeric) ?? columns[0] ?? '')
 
     if (columns.length === 0) {
         return (
@@ -220,9 +259,13 @@ export default function ResultGrid({
     function selectRangeTo(index: number, additive: boolean): boolean {
         const anchor = anchorRef.current
         if (anchor === null || anchor < 0 || anchor >= rows.length) return false
-        const [lo, hi] = anchor <= index ? [anchor, index] : [index, anchor]
-        const range: number[] = []
-        for (let i = lo; i <= hi; i++) range.push(i)
+        // El rango se mide en filas VISIBLES: con un filtro puesto, Shift+click
+        // marca lo que se ve entre las dos, no las filas escondidas de en medio.
+        const a = visible.indexOf(anchor)
+        const b = visible.indexOf(index)
+        if (a < 0 || b < 0) return false
+        const [lo, hi] = a <= b ? [a, b] : [b, a]
+        const range = visible.slice(lo, hi + 1)
         setSelectedIndices((prev) => (additive ? new Set([...prev, ...range]) : new Set(range)))
         return true
     }
@@ -279,193 +322,307 @@ export default function ResultGrid({
         setSelectedIndices((prev) => (prev.size === 1 && prev.has(index) ? new Set() : new Set([index])))
     }
 
+    function openRecordView() {
+        // Abre la fila seleccionada (la primera, si hay varias); sin selección,
+        // la primera visible.
+        const first = sortedSelectedIndices.find((i) => visible.includes(i))
+        setRecordPos(first === undefined ? 0 : visible.indexOf(first))
+        setView('record')
+    }
+
+    const statsRows = selectedRows.length > 0 ? selectedRows : visible.map((i) => rows[i])
+    const recordRow = rows[visible[Math.min(recordPos, Math.max(0, visible.length - 1))]]
+    const toggleBtn = (active: boolean) =>
+        `flex items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
+            active ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+        }`
+
     return (
         <div className="relative flex flex-1 flex-col overflow-hidden">
-            <div
-                ref={parentRef}
-                // Foco propio, fuera del orden de tabulación (se lo da el click
-                // en una fila), para poder atender los dos atajos que cualquiera
-                // prueba antes de buscar un botón.
-                tabIndex={-1}
-                onKeyDown={(e) => {
-                    // Dentro del editor de una celda, Ctrl/Cmd+A es "seleccionar
-                    // todo el texto" y Esc es "cancelar la edición": ahí la
-                    // grilla no se mete.
-                    const tag = (e.target as HTMLElement).tagName
-                    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-                    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
-                        e.preventDefault()
-                        setSelectedIndices(new Set(rows.map((_, i) => i)))
-                        anchorRef.current = rows.length > 0 ? 0 : null
-                        return
-                    }
-                    if (e.key === 'Escape' && selectedIndices.size > 0) {
-                        e.preventDefault()
-                        setSelectedIndices(new Set())
-                    }
-                }}
-                className="flex-1 overflow-auto bg-surface font-mono outline-none"
-            >
-                <table
-                    // select-none mientras se arrastra un borde: sin eso el
-                    // navegador va pintando de azul el texto de las celdas por
-                    // las que pasa el cursor mientras se cambia el ancho.
-                    className={`border-collapse text-left text-xs ${isResizing ? 'select-none' : ''}`}
-                    style={{tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize()}}
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
+                {toolbarStart}
+                <div
+                    className="flex h-6 min-w-0 max-w-[22em] flex-1 items-center gap-1 rounded border border-outline-variant bg-surface-container-lowest px-1.5 focus-within:border-primary"
+                    title={t.results.grid.filterTitle}
                 >
-                    <thead className="sticky top-0 z-10 bg-surface-container-high shadow-sm">
-                        {table.getHeaderGroups().map((hg) => (
-                            <tr key={hg.id}>
-                                {hg.headers.map((header) => (
-                                    <th
-                                        key={header.id}
-                                        style={{width: header.getSize(), position: 'relative'}}
-                                        className="border-b border-outline-variant px-3 py-2 font-sans font-medium text-on-surface-variant"
-                                    >
-                                        <button
-                                            onClick={() => onSort?.(header.column.id)}
-                                            title={t.results.grid.sortTitle}
-                                            className="flex w-full items-center gap-1 truncate text-left hover:text-on-surface"
-                                        >
-                                            <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
-                                            {sortColumn === header.column.id && (
-                                                <Icon
-                                                    name={sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                                                    size={14}
-                                                    className="shrink-0 text-primary"
-                                                />
-                                            )}
-                                        </button>
-                                        {/* El borde de la columna ES el agarre. Antes era una
-                                            franja transparente de 4 px: la separación no se veía,
-                                            así que no había nada que invitara a arrastrarla — y
-                                            embocarla era cuestión de suerte. Ahora se dibuja
-                                            siempre una línea, la zona sensible son 9 px a caballo
-                                            del borde (de ahí el -right-1 y el z-20, para ganarle
-                                            a la columna de al lado), y la línea se engrosa y se
-                                            pinta al pasar el mouse o mientras se arrastra. */}
-                                        <div
-                                            onMouseDown={header.getResizeHandler()}
-                                            onTouchStart={header.getResizeHandler()}
-                                            onDoubleClick={() => fitColumn(header.column.id)}
-                                            title={t.results.grid.resizeTitle}
-                                            className="group absolute -right-1 top-0 z-20 flex h-full w-[9px] cursor-col-resize touch-none select-none items-stretch justify-center"
-                                        >
-                                            <span
-                                                className={
-                                                    header.column.getIsResizing()
-                                                        ? 'w-0.5 bg-primary'
-                                                        : 'w-px bg-outline-variant group-hover:w-0.5 group-hover:bg-primary'
-                                                }
-                                            />
-                                        </div>
-                                    </th>
-                                ))}
-                                {/* Columna de relleno, sin ancho propio: con
-                                    table-layout fijo se queda con el espacio que
-                                    sobra a la derecha. Sin ella, ese sobrante se
-                                    repartía entre las columnas reales — y
-                                    arrastrar un borde reescalaba todas las demás
-                                    en vez de mover solo esa. */}
-                                <th aria-hidden className="border-b border-outline-variant" />
-                            </tr>
-                        ))}
-                    </thead>
-                    <tbody>
-                        {paddingTop > 0 && (
-                            <tr>
-                                <td style={{height: paddingTop}} colSpan={columns.length + 1} />
-                            </tr>
-                        )}
-                        {virtualItems.map((vi) => {
-                            const row = tableRows[vi.index]
-                            const isSelected = selectedIndices.has(vi.index)
-                            return (
-                                <tr
-                                    key={row.id}
-                                    onMouseDown={(e) => rowMouseDown(vi.index, e)}
-                                    onClick={() => rowClick(vi.index)}
-                                    title={t.results.grid.rowTitle}
-                                    className={`cursor-pointer ${
-                                        isSelected
-                                            ? 'bg-primary-container/70 hover:bg-primary-container/90'
-                                            : 'odd:bg-surface even:bg-surface-container-lowest hover:bg-surface-variant/40'
-                                    }`}
-                                >
-                                    {row.getVisibleCells().map((cell, ci) => {
-                                        const colName = cell.column.id
-                                        const editable = editing.editableCols.get(colName.toLowerCase())
-                                        const change = editing.valueOf(vi.index, colName)
-                                        const value = change ? change.value : cell.getValue()
-                                        const isEditing =
-                                            editCell?.row === vi.index && editCell.col === colName
-                                        return (
-                                            <td
-                                                key={cell.id}
-                                                style={{width: cell.column.getSize()}}
-                                                // Doble clic y no un clic: el clic simple ya
-                                                // selecciona la fila para copiarla, y una
-                                                // grilla donde tocar un dato lo pone en
-                                                // edición se edita sola sin querer.
-                                                onDoubleClick={(e) => {
-                                                    if (!editable) return
-                                                    e.stopPropagation()
-                                                    setEditCell({row: vi.index, col: colName})
-                                                }}
-                                                title={
-                                                    editable
-                                                        ? t.results.grid.editCellTitle({dataType: editable.dataType})
-                                                        : undefined
-                                                }
-                                                className={`truncate whitespace-nowrap border-b border-r border-outline-variant/30 px-3 py-1.5 text-on-surface ${
-                                                    change
-                                                        ? change.saved
-                                                            ? 'bg-tertiary/15'
-                                                            : 'bg-primary/20 font-medium'
-                                                        : ''
-                                                } ${editable ? 'cursor-text' : ''} ${
-                                                    // Barra de acento en la primera celda de una
-                                                    // fila marcada: el tinte de fondo se pierde
-                                                    // bajo el mouse y sobre una grilla larga cuesta
-                                                    // seguir dónde empieza y termina lo elegido.
-                                                    // Va como sombra interior y no como borde para
-                                                    // no correr el ancho de la columna.
-                                                    isSelected && ci === 0
-                                                        ? 'shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                                                        : ''
-                                                }`}
-                                            >
-                                                {isEditing && editable ? (
-                                                    <CellEditor
-                                                        kind={editable.kind}
-                                                        initial={value === null || value === undefined ? null : String(value)}
-                                                        nullable={editable.nullable}
-                                                        onCommit={(v) => {
-                                                            editing.setValue(vi.index, colName, v)
-                                                            setEditCell(null)
-                                                        }}
-                                                        onCancel={() => setEditCell(null)}
-                                                    />
-                                                ) : value === null || value === undefined ? (
-                                                    <span className="italic text-on-surface-variant/60">NULL</span>
-                                                ) : (
-                                                    String(value)
-                                                )}
-                                            </td>
-                                        )
-                                    })}
-                                    <td aria-hidden className="border-b border-outline-variant/30" />
-                                </tr>
-                            )
-                        })}
-                        {paddingBottom > 0 && (
-                            <tr>
-                                <td style={{height: paddingBottom}} colSpan={columns.length + 1} />
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                    <Icon name="filter_list" size={13} className="shrink-0 text-on-surface-variant" />
+                    <input
+                        ref={filterRef}
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                                e.preventDefault()
+                                setFilter('')
+                                parentRef.current?.focus()
+                            }
+                        }}
+                        placeholder={t.results.grid.filterPlaceholder}
+                        spellCheck={false}
+                        className="min-w-0 flex-1 bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                    />
+                    {filter && (
+                        <button onClick={() => setFilter('')} title={t.results.grid.clearFilter} className="shrink-0 rounded text-on-surface-variant hover:text-on-surface">
+                            <Icon name="close" size={12} />
+                        </button>
+                    )}
+                </div>
+                {needle && (
+                    <span className={`shrink-0 font-mono text-ui-11 ${visible.length === 0 ? 'text-error' : 'text-on-surface-variant'}`}>
+                        {visible.length === 0
+                            ? t.results.grid.filterNoMatches
+                            : t.results.grid.filterCount({shown: formatNumber(visible.length), total: formatNumber(rows.length)})}
+                    </span>
+                )}
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <button onClick={() => setStatsOpen((v) => !v)} title={t.results.grid.statsTitle} className={toggleBtn(statsOpen)}>
+                        <Icon name="functions" size={14} />
+                        {t.results.grid.statsToggle}
+                    </button>
+                    <button
+                        onClick={() => (view === 'record' ? setView('grid') : openRecordView())}
+                        title={t.results.grid.recordTitle}
+                        className={toggleBtn(view === 'record')}
+                    >
+                        <Icon name="view_list" size={14} />
+                        {t.results.grid.recordToggle}
+                    </button>
+                </div>
             </div>
+
+            {view === 'record' ? (
+                <RecordView
+                    columns={columns}
+                    row={recordRow}
+                    pos={Math.min(recordPos, Math.max(0, visible.length - 1))}
+                    count={visible.length}
+                    onPos={setRecordPos}
+                    filter={needle}
+                    onCopy={(value, col) => void copy(value, t.results.grid.recordValueCopied(col))}
+                />
+            ) : (
+                <div
+                    ref={parentRef}
+                    // Foco propio, fuera del orden de tabulación (se lo da el click
+                    // en una fila), para poder atender los dos atajos que cualquiera
+                    // prueba antes de buscar un botón.
+                    tabIndex={-1}
+                    onKeyDown={(e) => {
+                        // Dentro del editor de una celda, Ctrl/Cmd+A es "seleccionar
+                        // todo el texto" y Esc es "cancelar la edición": ahí la
+                        // grilla no se mete.
+                        const tag = (e.target as HTMLElement).tagName
+                        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+                        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+                            e.preventDefault()
+                            setSelectedIndices(new Set(visible))
+                            anchorRef.current = visible.length > 0 ? visible[0] : null
+                            return
+                        }
+                        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+                            e.preventDefault()
+                            filterRef.current?.focus()
+                            filterRef.current?.select()
+                            return
+                        }
+                        if (e.key === 'Escape' && selectedIndices.size > 0) {
+                            e.preventDefault()
+                            setSelectedIndices(new Set())
+                        }
+                    }}
+                    className="flex-1 overflow-auto bg-surface font-mono outline-none"
+                >
+                    <table
+                        // select-none mientras se arrastra un borde: sin eso el
+                        // navegador va pintando de azul el texto de las celdas por
+                        // las que pasa el cursor mientras se cambia el ancho.
+                        className={`border-collapse text-left text-xs ${isResizing ? 'select-none' : ''}`}
+                        style={{tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize()}}
+                    >
+                        <thead className="sticky top-0 z-10 bg-surface-container-high shadow-sm">
+                            {table.getHeaderGroups().map((hg) => (
+                                <tr key={hg.id}>
+                                    {hg.headers.map((header) => (
+                                        <th
+                                            key={header.id}
+                                            style={{width: header.getSize(), position: 'relative'}}
+                                            className="border-b border-outline-variant px-3 py-2 font-sans font-medium text-on-surface-variant"
+                                        >
+                                            <button
+                                                onClick={() => onSort?.(header.column.id)}
+                                                title={t.results.grid.sortTitle}
+                                                className="flex w-full items-center gap-1 truncate text-left hover:text-on-surface"
+                                            >
+                                                <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                                                {sortColumn === header.column.id && (
+                                                    <Icon
+                                                        name={sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                        size={14}
+                                                        className="shrink-0 text-primary"
+                                                    />
+                                                )}
+                                            </button>
+                                            {/* El borde de la columna ES el agarre. Antes era una
+                                                franja transparente de 4 px: la separación no se veía,
+                                                así que no había nada que invitara a arrastrarla — y
+                                                embocarla era cuestión de suerte. Ahora se dibuja
+                                                siempre una línea, la zona sensible son 9 px a caballo
+                                                del borde (de ahí el -right-1 y el z-20, para ganarle
+                                                a la columna de al lado), y la línea se engrosa y se
+                                                pinta al pasar el mouse o mientras se arrastra. */}
+                                            <div
+                                                onMouseDown={header.getResizeHandler()}
+                                                onTouchStart={header.getResizeHandler()}
+                                                onDoubleClick={() => fitColumn(header.column.id)}
+                                                title={t.results.grid.resizeTitle}
+                                                className="group absolute -right-1 top-0 z-20 flex h-full w-[9px] cursor-col-resize touch-none select-none items-stretch justify-center"
+                                            >
+                                                <span
+                                                    className={
+                                                        header.column.getIsResizing()
+                                                            ? 'w-0.5 bg-primary'
+                                                            : 'w-px bg-outline-variant group-hover:w-0.5 group-hover:bg-primary'
+                                                    }
+                                                />
+                                            </div>
+                                        </th>
+                                    ))}
+                                    {/* Columna de relleno, sin ancho propio: con
+                                        table-layout fijo se queda con el espacio que
+                                        sobra a la derecha. Sin ella, ese sobrante se
+                                        repartía entre las columnas reales — y
+                                        arrastrar un borde reescalaba todas las demás
+                                        en vez de mover solo esa. */}
+                                    <th aria-hidden className="border-b border-outline-variant" />
+                                </tr>
+                            ))}
+                        </thead>
+                        <tbody>
+                            {paddingTop > 0 && (
+                                <tr>
+                                    <td style={{height: paddingTop}} colSpan={columns.length + 1} />
+                                </tr>
+                            )}
+                            {virtualItems.map((vi) => {
+                                // Índice en `rows`, no en la lista filtrada: es el
+                                // que entienden la selección y la edición.
+                                const ri = visible[vi.index]
+                                const row = tableRows[ri]
+                                if (!row) return null
+                                const isSelected = selectedIndices.has(ri)
+                                return (
+                                    <tr
+                                        key={row.id}
+                                        onMouseDown={(e) => rowMouseDown(ri, e)}
+                                        onClick={() => rowClick(ri)}
+                                        title={t.results.grid.rowTitle}
+                                        className={`cursor-pointer ${
+                                            isSelected
+                                                ? 'bg-primary-container/70 hover:bg-primary-container/90'
+                                                : 'odd:bg-surface even:bg-surface-container-lowest hover:bg-surface-variant/40'
+                                        }`}
+                                    >
+                                        {row.getVisibleCells().map((cell, ci) => {
+                                            const colName = cell.column.id
+                                            const editable = editing.editableCols.get(colName.toLowerCase())
+                                            const change = editing.valueOf(ri, colName)
+                                            const value = change ? change.value : cell.getValue()
+                                            const isEditing =
+                                                editCell?.row === ri && editCell.col === colName
+                                            return (
+                                                <td
+                                                    key={cell.id}
+                                                    style={{width: cell.column.getSize()}}
+                                                    // Doble clic y no un clic: el clic simple ya
+                                                    // selecciona la fila para copiarla, y una
+                                                    // grilla donde tocar un dato lo pone en
+                                                    // edición se edita sola sin querer.
+                                                    onDoubleClick={(e) => {
+                                                        if (!editable) return
+                                                        e.stopPropagation()
+                                                        setEditCell({row: ri, col: colName})
+                                                    }}
+                                                    title={
+                                                        editable
+                                                            ? t.results.grid.editCellTitle({dataType: editable.dataType})
+                                                            : undefined
+                                                    }
+                                                    className={`truncate whitespace-nowrap border-b border-r border-outline-variant/30 px-3 py-1.5 text-on-surface ${
+                                                        change
+                                                            ? change.saved
+                                                                ? 'bg-tertiary/15'
+                                                                : 'bg-primary/20 font-medium'
+                                                            : ''
+                                                    } ${editable ? 'cursor-text' : ''} ${
+                                                        // Barra de acento en la primera celda de una
+                                                        // fila marcada: el tinte de fondo se pierde
+                                                        // bajo el mouse y sobre una grilla larga cuesta
+                                                        // seguir dónde empieza y termina lo elegido.
+                                                        // Va como sombra interior y no como borde para
+                                                        // no correr el ancho de la columna.
+                                                        isSelected && ci === 0
+                                                            ? 'shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                                                            : ''
+                                                    }`}
+                                                >
+                                                    {isEditing && editable ? (
+                                                        <CellEditor
+                                                            kind={editable.kind}
+                                                            initial={value === null || value === undefined ? null : String(value)}
+                                                            initialExpression={!!change?.expression}
+                                                            nullable={editable.nullable}
+                                                            onCommit={(v, expression) => {
+                                                                editing.setValue(ri, colName, v, expression)
+                                                                setEditCell(null)
+                                                            }}
+                                                            onCancel={() => setEditCell(null)}
+                                                        />
+                                                    ) : change?.expression ? (
+                                                        <span
+                                                            className="italic text-primary"
+                                                            title={t.results.cellEditor.exprCellTitle({expr: String(value)})}
+                                                        >
+                                                            <span className="mr-1 font-mono not-italic opacity-70">{t.results.cellEditor.exprBadge}</span>
+                                                            {String(value)}
+                                                        </span>
+                                                    ) : value === null || value === undefined ? (
+                                                        <span className="italic text-on-surface-variant/60">NULL</span>
+                                                    ) : needle ? (
+                                                        highlightMatch(String(value), needle)
+                                                    ) : (
+                                                        String(value)
+                                                    )}
+                                                </td>
+                                            )
+                                        })}
+                                        <td aria-hidden className="border-b border-outline-variant/30" />
+                                    </tr>
+                                )
+                            })}
+                            {paddingBottom > 0 && (
+                                <tr>
+                                    <td style={{height: paddingBottom}} colSpan={columns.length + 1} />
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {statsOpen && (
+                <GridStatsPanel
+                    columns={columns}
+                    rows={statsRows}
+                    scopeLabel={
+                        selectedRows.length > 0
+                            ? t.results.grid.statsScopeSelected(formatNumber(selectedRows.length))
+                            : t.results.grid.statsScopeAll(formatNumber(visible.length))
+                    }
+                    column={statsCol}
+                    onColumn={setStatsColumn}
+                    onCopy={(v) => void copy(v, t.results.grid.statCopied)}
+                />
+            )}
 
             {/* Barra de cambios pendientes. Aparece solo cuando hay algo sin
                 guardar: es el recordatorio de que lo que se ve en la grilla
@@ -559,7 +716,7 @@ export default function ResultGrid({
                 </div>
             )}
 
-            {selectedRows.length > 0 && (
+            {selectedRows.length > 0 && view === 'grid' && (
                 <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">
                     {copyStatus && <span className="px-2 text-xs text-secondary">{copyStatus}</span>}
                     {selectedRows.length > 1 && (

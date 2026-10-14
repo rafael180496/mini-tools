@@ -46,6 +46,42 @@ export default {
         copyUpdateTitle:
             'Copia la(s) fila(s) seleccionadas como sentencias UPDATE (con WHERE por todas las columnas — revisalas antes de ejecutar) listas para editar y pegar en el editor',
         deselectTitle: 'Deselecciona todas las filas',
+        // Barra de la grilla: filtro rápido, estadísticas y vista de registro.
+        filterPlaceholder: 'Filtrar filas…',
+        filterTitle:
+            'Filtra las filas YA CARGADAS que contengan este texto en cualquier columna (Ctrl/Cmd+F con la grilla enfocada). No vuelve a consultar la base: para filtrar el resultado completo, agregá un WHERE.',
+        filterCount: (p: {shown: string; total: string}) => `${p.shown} de ${p.total}`,
+        filterNoMatches: 'Ninguna fila cargada contiene ese texto.',
+        clearFilter: 'Quitar el filtro (Esc)',
+        statsToggle: 'Estadísticas',
+        statsTitle:
+            'Estadísticas de una columna: filas, nulos, distintos y, si es numérica, suma, promedio, mínimo y máximo. Se calculan sobre las filas seleccionadas o, sin selección, sobre las que se ven.',
+        statsColumn: 'Columna',
+        statsScopeSelected: (n: string) => `sobre ${n} filas seleccionadas`,
+        statsScopeAll: (n: string) => `sobre ${n} filas visibles`,
+        statRows: 'Filas',
+        statNonNull: 'Con valor',
+        statNulls: 'Nulos',
+        statDistinct: 'Distintos',
+        statSum: 'Suma',
+        statAvg: 'Promedio',
+        statMin: 'Mínimo',
+        statMax: 'Máximo',
+        statMinLen: 'Largo mín.',
+        statMaxLen: 'Largo máx.',
+        statCopyTitle: 'Clic para copiar el valor',
+        statCopied: 'Valor copiado',
+        recordToggle: 'Registro',
+        recordTitle:
+            'Vista de registro: una fila a la vez, con cada columna en su propio renglón y el valor completo. Útil con tablas de muchas columnas. Abre la fila seleccionada.',
+        recordPos: (p: {i: string; n: string}) => `Registro ${p.i} de ${p.n}`,
+        recordFirst: 'Primer registro',
+        recordPrev: 'Registro anterior (←)',
+        recordNext: 'Registro siguiente (→)',
+        recordLast: 'Último registro',
+        recordCopyValue: 'Copiar el valor',
+        recordValueCopied: (col: string) => `${col} copiado`,
+        recordReadOnly: 'Para editar, volvé a la vista de grilla.',
     },
     rowEditing: {
         missingKeys: (p: {keys: string}) =>
@@ -57,6 +93,12 @@ export default {
         nullTitle: 'Deja la celda sin dato (NULL). Es distinto de dejarla vacía: la base guarda esa diferencia.',
         commitTitle: 'Guarda el cambio como PENDIENTE. Todavía no toca la base: se manda con el botón de arriba.',
         cancelTitle: 'Descarta este cambio (Esc)',
+        exprTitle:
+            'Expresión SQL (fx): lo que escribas va TAL CUAL dentro del UPDATE en vez de guardarse como dato — SYSDATE, NOW(), SEQ.NEXTVAL, precio * 1.12. Sin «;» ni comentarios.',
+        // Rótulo corto del modo expresión, en el botón y en la celda.
+        exprBadge: 'fx',
+        exprPlaceholder: 'SYSDATE, NOW(), precio * 1.12…',
+        exprCellTitle: (p: {expr: string}) => `Expresión SQL: ${p.expr} — la base calcula el valor al guardar; la grilla muestra la expresión, no el resultado.`,
     },
     dbmsOutput: {
         lineCount: (n: number) => (n === 1 ? '1 línea' : `${n} líneas`),

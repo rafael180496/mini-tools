@@ -10,6 +10,7 @@ import (
 	"mini-tools/backend/db"
 	"mini-tools/backend/i18n"
 	"mini-tools/backend/query"
+	"mini-tools/backend/sqlintel"
 )
 
 // Editar el resultado y que la app escriba el UPDATE.
@@ -69,6 +70,11 @@ type CellEdit struct {
 	Value *string `json:"value"`
 	// Key son los valores de la clave primaria de esa fila, como se leyeron.
 	Key map[string]string `json:"key"`
+	// Expression: Value no es un dato sino una expresión SQL —SYSDATE,
+	// NOW(), SEQ.NEXTVAL, precio * 1.12— que va TAL CUAL dentro del UPDATE en
+	// vez de viajar como parámetro. Es el «Edit as SQL Expression» de
+	// DataGrip. Ver checkExpression para lo que se rechaza.
+	Expression bool `json:"expression,omitempty"`
 }
 
 // EditApplied es el resultado de guardar.
@@ -278,11 +284,26 @@ func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any,
 	}
 
 	args := []any{}
-	value, err := convert(e.Value, col.Kind)
-	if err != nil {
-		return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q: %w", EN: "app: %q: %w"}, e.Column, err)
+	// El lado derecho del SET: un parámetro con el valor convertido, o la
+	// expresión entre paréntesis (los paréntesis fijan la precedencia: "a + 1"
+	// queda como una sola cosa pase lo que pase alrededor).
+	var setRHS string
+	if e.Expression {
+		if e.Value == nil || strings.TrimSpace(*e.Value) == "" {
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q: la expresión está vacía — para dejarla sin dato, poné NULL", EN: "app: %q: the expression is empty — to leave it without a value, enter NULL"}, e.Column)
+		}
+		if err := checkExpression(*e.Value); err != nil {
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q: %w", EN: "app: %q: %w"}, e.Column, err)
+		}
+		setRHS = "(" + strings.TrimSpace(*e.Value) + ")"
+	} else {
+		value, err := convert(e.Value, col.Kind)
+		if err != nil {
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q: %w", EN: "app: %q: %w"}, e.Column, err)
+		}
+		args = append(args, value)
+		setRHS = style(1)
 	}
-	args = append(args, value)
 
 	var where []string
 	for _, k := range target.KeyCols {
@@ -304,7 +325,7 @@ func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any,
 	}
 
 	stmt := fmt.Sprintf("UPDATE %s SET %s = %s WHERE %s",
-		target.Table, quoteIdent(e.Column), style(1), strings.Join(where, " AND "))
+		target.Table, quoteIdent(e.Column), setRHS, strings.Join(where, " AND "))
 
 	// Vista previa: se reemplazan los huecos por los valores, en orden.
 	if strings.Contains(stmt, "\x00") {
@@ -314,6 +335,72 @@ func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any,
 		return stmt, nil, nil
 	}
 	return stmt, args, nil
+}
+
+// checkExpression rechaza lo que una expresión de celda no puede traer sin
+// cambiar QUÉ sentencia se ejecuta, en vez de qué valor se escribe:
+//
+//   - un ";" — sería una segunda sentencia pegada al UPDATE;
+//   - un comentario — "1 --" comentaría el WHERE, y el UPDATE tocaría la
+//     tabla entera (el control de "exactamente una fila" lo revertiría, pero
+//     eso no es motivo para mandarlo);
+//   - paréntesis que no cierran — "1), OTRA = (2" escribiría otra columna;
+//   - un literal o identificador entre comillas sin cerrar.
+//
+// Se mira con el tokenizer del motor de completado, así que un ";" o un "--"
+// dentro de un literal ('a;b') no cuentan: son texto.
+func checkExpression(expr string) error {
+	depth := 0
+	for _, t := range sqlintel.Tokenize([]rune(expr)) {
+		switch t.Kind {
+		case sqlintel.TokenComment:
+			return i18n.Errorf(i18n.Msg{ES: "la expresión no puede llevar comentarios", EN: "the expression can't contain comments"})
+		case sqlintel.TokenString, sqlintel.TokenQuoted:
+			if !closedLiteral(t.Text) {
+				return i18n.Errorf(i18n.Msg{ES: "la expresión tiene un texto entre comillas sin cerrar", EN: "the expression has an unclosed quoted text"})
+			}
+		case sqlintel.TokenPunct:
+			switch t.Text {
+			case ";":
+				return i18n.Errorf(i18n.Msg{ES: "la expresión no puede llevar «;»: es un valor, no otra sentencia", EN: "the expression can't contain \";\": it's a value, not another statement"})
+			case "(":
+				depth++
+			case ")":
+				depth--
+				if depth < 0 {
+					return i18n.Errorf(i18n.Msg{ES: "la expresión cierra un paréntesis que no abrió", EN: "the expression closes a parenthesis it didn't open"})
+				}
+			}
+		}
+	}
+	if depth != 0 {
+		return i18n.Errorf(i18n.Msg{ES: "la expresión deja un paréntesis sin cerrar", EN: "the expression leaves a parenthesis unclosed"})
+	}
+	return nil
+}
+
+// closedLiteral reports whether a string/quoted-identifier token ends with
+// the delimiter it opened with. The tokenizer hands an unterminated one over
+// as a complete token running to the end of the input.
+func closedLiteral(text string) bool {
+	if len(text) < 2 {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(text, "'"), strings.HasPrefix(text, "N'"), strings.HasPrefix(text, "E'"):
+		return strings.HasSuffix(text, "'") && len(strings.TrimLeft(text, "NE")) >= 2
+	case strings.HasPrefix(text, `"`):
+		return strings.HasSuffix(text, `"`)
+	case strings.HasPrefix(text, "["):
+		return strings.HasSuffix(text, "]")
+	case strings.HasPrefix(text, "`"):
+		return strings.HasSuffix(text, "`")
+	case strings.HasPrefix(strings.ToLower(text), "q'"):
+		return len(text) >= 5
+	case strings.HasPrefix(text, "$"):
+		return strings.Count(text, "$") >= 4
+	}
+	return true
 }
 
 // convert lleva el texto que se escribió en la celda al tipo que espera el

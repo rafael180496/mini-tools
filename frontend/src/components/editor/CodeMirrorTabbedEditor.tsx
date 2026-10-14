@@ -1,5 +1,5 @@
-import {useEffect, useRef} from 'react'
-import {EditorState, Compartment, type Extension} from '@codemirror/state'
+import {useEffect, useRef, type MutableRefObject} from 'react'
+import {EditorState, Compartment, type Extension, type TransactionSpec} from '@codemirror/state'
 import {EditorView, keymap} from '@codemirror/view'
 import {indentWithTab} from '@codemirror/commands'
 import {search} from '@codemirror/search'
@@ -7,7 +7,7 @@ import {basicSetup} from 'codemirror'
 import {editorAppearanceExtension, type EditorAppearance} from '../../codemirror/editorAppearance'
 import {db} from '../../../wailsjs/go/models'
 import type {EditorTab, TabLanguage} from './EditorTabs'
-import {sqlLanguageExtension, sqlSchemaHover} from '../../codemirror/sqlSchema'
+import {sqlGoToObject, sqlLanguageExtension, sqlSchemaHover, type SchemaObjectRef} from '../../codemirror/sqlSchema'
 import {completionStatus, startCompletion} from '@codemirror/autocomplete'
 import {forgetPrimeCooldown, onSchemaIndexReady, primeSchemaIndex} from '../../codemirror/sqlIntel'
 import {redisCli} from '../../codemirror/redisLanguage'
@@ -15,6 +15,15 @@ import {mongosh} from '../../codemirror/mongoLanguage'
 import {lintExtension} from '../../codemirror/lintAdapter'
 import {resolveEditorTheme} from '../../codemirror/themes'
 import type {Theme} from '../../hooks/useTheme'
+import {execTimeField, execTimeTheme} from '../../codemirror/execTimeMarks'
+
+// TabbedEditorApi deja escribir en el estado de UNA pestaña aunque no sea la
+// que se ve. Lo necesita lo que llega de forma asíncrona y pertenece a una
+// pestaña concreta —la marca de tiempo de una sentencia que terminó mientras
+// se miraba otra—: despacharlo al view lo aplicaría a la pestaña equivocada.
+export interface TabbedEditorApi {
+    applyToTab: (tabId: string, build: (state: EditorState) => TransactionSpec | null) => void
+}
 
 // Shared across every tab's independent EditorState — a Compartment is
 // just an addressable slot within a state's extension list, so the same
@@ -35,13 +44,14 @@ function languageExtensions(
     dbType: string | null,
     connId: string | null,
     meta: db.SchemaMetadata | null,
+    openObject: (ref: SchemaObjectRef) => void,
 ): Extension[] {
     if (language === 'redis-cli') return [redisCli(), lintExtension(language)]
     if (language === 'mongosh') return [mongosh(), lintExtension(language)]
     // connId drives completion (answered by backend/sqlintel, keyed by
     // connection); meta drives the hover, which is still resolved locally
     // from the metadata the workspace already holds.
-    return [sqlLanguageExtension(dbType, connId), sqlSchemaHover(meta), lintExtension(language)]
+    return [sqlLanguageExtension(dbType, connId), sqlSchemaHover(meta), sqlGoToObject(meta, openObject), lintExtension(language)]
 }
 
 interface CodeMirrorTabbedEditorProps {
@@ -66,6 +76,9 @@ interface CodeMirrorTabbedEditorProps {
     // tabulación. Compartido con el editor de archivos de Git y el de notas
     // — ver frontend/src/codemirror/editorAppearance.ts.
     appearance: EditorAppearance
+    // Ctrl/Cmd+clic sobre una tabla o un procedimiento: abre su DDL.
+    onOpenObject?: (ref: SchemaObjectRef) => void
+    apiRef?: MutableRefObject<TabbedEditorApi | null>
 }
 
 // One shared CodeMirror EditorView for the whole workspace, with one
@@ -91,6 +104,8 @@ export default function CodeMirrorTabbedEditor({
     editorThemeId,
     appTheme,
     appearance,
+    onOpenObject,
+    apiRef,
 }: CodeMirrorTabbedEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
@@ -99,6 +114,11 @@ export default function CodeMirrorTabbedEditor({
     onChangeContentRef.current = onChangeContent
     const tabsRef = useRef(tabs)
     tabsRef.current = tabs
+    // Por ref: la extensión se arma al reconfigurar el lenguaje, y una
+    // función capturada ahí quedaría vieja en cuanto el padre se redibuja.
+    const onOpenObjectRef = useRef(onOpenObject)
+    onOpenObjectRef.current = onOpenObject
+    const openObject = (ref: SchemaObjectRef) => onOpenObjectRef.current?.(ref)
 
     // Colores + apariencia, que es lo que va adentro del compartment.
     function lookExtensions(): Extension {
@@ -115,7 +135,9 @@ export default function CodeMirrorTabbedEditor({
                 // grilla de resultados.
                 search({top: true}),
                 keymap.of([indentWithTab]),
-                languageCompartment.of(languageExtensions(tab.language, dbType, connId, schemaMetadata)),
+                execTimeField,
+                execTimeTheme,
+                languageCompartment.of(languageExtensions(tab.language, dbType, connId, schemaMetadata, openObject)),
                 themeCompartment.of(theme),
                 EditorView.updateListener.of((update) => {
                     statesRef.current.set(tab.id, update.state)
@@ -146,6 +168,27 @@ export default function CodeMirrorTabbedEditor({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    if (apiRef) {
+        apiRef.current = {
+            applyToTab(tabId, build) {
+                const view = viewRef.current
+                // El view muestra esta pestaña si su estado ES el guardado para
+                // ella (el updateListener los mantiene iguales). Más seguro que
+                // comparar con activeTabId, que cambia un render antes de que
+                // el efecto haga el setState.
+                if (view && statesRef.current.get(tabId) === view.state) {
+                    const spec = build(view.state)
+                    if (spec) view.dispatch(spec)
+                    return
+                }
+                const state = statesRef.current.get(tabId)
+                if (!state) return
+                const spec = build(state)
+                if (spec) statesRef.current.set(tabId, state.update(spec).state)
+            },
+        }
+    }
 
     // Drop states for tabs that no longer exist — unlike Monaco's
     // ITextModel, EditorState needs no explicit dispose, just dereferencing.
@@ -184,7 +227,7 @@ export default function CodeMirrorTabbedEditor({
     useEffect(() => {
         const view = viewRef.current
         if (!view || !activeLanguage) return
-        view.dispatch({effects: languageCompartment.reconfigure(languageExtensions(activeLanguage, dbType, connId, schemaMetadata))})
+        view.dispatch({effects: languageCompartment.reconfigure(languageExtensions(activeLanguage, dbType, connId, schemaMetadata, openObject))})
     }, [activeTabId, dbType, connId, schemaMetadata, activeLanguage])
 
     // Build the connection's schema index in the background as soon as a

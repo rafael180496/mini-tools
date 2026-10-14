@@ -17,7 +17,9 @@ import {useSqlTarget} from './results/useSqlTarget'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
 import EditorTabs, {EditorTab, TabLanguage, type AgentTabStatus, type AiPaneOpenRequest} from './editor/EditorTabs'
-import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
+import {formatSqlInView} from '../codemirror/sqlFormat'
+import {execMarkSpec, type ExecMark} from '../codemirror/execTimeMarks'
+import CodeMirrorTabbedEditor, {type TabbedEditorApi} from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
 import NotesTree from './notes/NotesTree'
 import NoteEditorTab from './notes/NoteEditorTab'
@@ -130,7 +132,7 @@ import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatLayout, us
 import {announceBackgroundChats, attentionCount, isLive, sessionsOfChats, useAgentSessions, useHiddenSessions, type AgentSessionInfo} from '../lib/agentSessions'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
-import {errorCode, formatNumber, t as tr, useT} from '../i18n'
+import {errorCode, formatDateTime, formatNumber, t as tr, useT} from '../i18n'
 import {setActiveMongoCollections} from '../codemirror/mongoCollectionsStore'
 import type {Theme} from '../hooks/useTheme'
 
@@ -957,7 +959,13 @@ export default function Workspace({
     //
     // Sigue vivo después del último evento mientras quede paginación abierta:
     // las páginas de "Cargar más" llegan por el mismo queryId.
-    const runMetaRef = useRef<Record<string, {tabId: string; base: number; connId: string}>>({})
+    // `origin`: dónde empezaba, en el documento, el texto que se mandó desde
+    // el editor. Con él se ubica cada sentencia para dejarle su marca de
+    // tiempo (execTimeMarks.ts); una corrida que no salió del editor (reordenar
+    // una columna, la barra lateral) no lo tiene y no marca nada.
+    const runMetaRef = useRef<Record<string, {tabId: string; base: number; connId: string; origin?: number}>>({})
+    const editorApiRef = useRef<TabbedEditorApi | null>(null)
+    const runOriginRef = useRef<{tabId: string; from: number} | null>(null)
     // Cómo desuscribirse de cada corrida en vuelo, por queryId. Va por corrida
     // y no por pestaña porque una pestaña puede tener más de una viva, y
     // cortar "la de la pestaña" mataría la que no era.
@@ -1995,7 +2003,11 @@ export default function Workspace({
             const prevExec = execByTabRef.current[runTab] ?? EMPTY_EXEC
             const appending = prevExec.liveRuns.length > 0
             const base = appending ? prevExec.resultSets.length : 0
-            runMetaRef.current[queryId] = {tabId: runTab, base, connId: connection.id}
+            // El origen se consume acá: es de ESTA corrida, y la siguiente que
+            // no salga del editor no tiene que heredarlo.
+            const origin = runOriginRef.current?.tabId === runTab ? runOriginRef.current.from : undefined
+            runOriginRef.current = null
+            runMetaRef.current[queryId] = {tabId: runTab, base, connId: connection.id, origin}
 
             // Empezar una consulta en una conexión CIERRA el cursor pausado que
             // esa conexión tuviera abierto (regla de "un cursor pausado por
@@ -2137,6 +2149,31 @@ export default function Workspace({
                         const next = [...cur.consoleLog, newEntry]
                         return {consoleLog: next.length > MAX_CONSOLE_ENTRIES ? next.slice(-MAX_CONSOLE_ENTRIES) : next}
                     })
+                }
+
+                // Marca de tiempo al final del renglón de la sentencia, en el
+                // editor de la pestaña que la corrió (aunque ya no sea la que
+                // se ve).
+                if (origin !== undefined && event.sqlText && (event.type === 'done' || event.type === 'error' || event.type === 'cancelled')) {
+                    const tm = tr().workspace.execMark
+                    const ms = event.durationMs ?? 0
+                    const n = event.rowsAffected ?? 0
+                    const mark: ExecMark =
+                        event.type === 'done'
+                            ? {
+                                  status: 'done',
+                                  label: seenColumns.has(event.statementIndex)
+                                      ? `${formatElapsed(ms)} · ${tm.rows(formatNumber(n))}`
+                                      : n > 0
+                                        ? `${formatElapsed(ms)} · ${tm.affected(formatNumber(n))}`
+                                        : formatElapsed(ms),
+                                  title: tm.title({when: formatDateTime(new Date()), detail: event.note ?? ''}),
+                              }
+                            : event.type === 'error'
+                              ? {status: 'error', label: tm.error, title: tm.title({when: formatDateTime(new Date()), detail: event.error ?? ''})}
+                              : {status: 'cancelled', label: tm.cancelled, title: tm.title({when: formatDateTime(new Date()), detail: event.note ?? ''})}
+                    const sqlText = event.sqlText
+                    editorApiRef.current?.applyToTab(runTab, (st) => execMarkSpec(st, sqlText, origin, mark))
                 }
 
                 // La última página cierra la suscripción que se mantuvo viva
@@ -2434,10 +2471,12 @@ export default function Workspace({
         } else {
             text = view.state.doc.lineAt(from).text
         }
+        runOriginRef.current = {tabId: activeTabId, from: empty ? view.state.doc.lineAt(from).from : from}
         confirmAndRun(text)
     }
 
     function runFullScript() {
+        runOriginRef.current = {tabId: activeTabId, from: 0}
         confirmAndRun(activeTabData?.content ?? '')
     }
 
@@ -4094,6 +4133,16 @@ export default function Workspace({
                                         <Divider />
 
                                         <button
+                                            onClick={() => {
+                                                const view = editorRef.current
+                                                if (view) void formatSqlInView(view).then(() => view.focus())
+                                            }}
+                                            title={t.workspace.toolbar.format}
+                                            className={TOOLBAR_ICON}
+                                        >
+                                            <Icon name="format_align_left" size={16} />
+                                        </button>
+                                        <button
                                             onClick={refreshMetadata}
                                             disabled={!activeTabConnection}
                                             title={t.workspace.toolbar.refresh}
@@ -4337,6 +4386,10 @@ export default function Workspace({
                         editorThemeId={editorThemeId}
                         appearance={editorAppearance}
                         appTheme={theme}
+                        apiRef={editorApiRef}
+                        onOpenObject={(ref) => {
+                            if (activeTabConnection) setDdlViewer({connId: activeTabConnection.id, ...ref})
+                        }}
                     />
                 </div>
 
@@ -4786,15 +4839,14 @@ export default function Workspace({
                                 statuses={resultSets.map((r) => r.status)}
                             />
 
-                            <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
-                                <ExportMenu
-                                    columns={activeResult?.columns ?? []}
-                                    rows={activeResult?.rows ?? []}
-                                    sqlTarget={sqlTarget}
-                                />
-                            </div>
-
                             <ResultGrid
+                                toolbarStart={
+                                    <ExportMenu
+                                        columns={activeResult?.columns ?? []}
+                                        rows={activeResult?.rows ?? []}
+                                        sqlTarget={sqlTarget}
+                                    />
+                                }
                                 columns={activeResult?.columns ?? []}
                                 rows={activeResult?.rows ?? []}
                                 sortColumn={activeResult?.sortColumn}

@@ -92,6 +92,11 @@ const en: Messages<typeof es> = {
             'Filters this connection\'s tables, procedures, functions, triggers and packages by name or schema — type plain text for "contains", or use SQL LIKE-style % / _ (% = any text, _ = one character)',
         noTables: 'No tables.',
         tables: 'Tables',
+        groupByPrefix: 'Group by prefix',
+        ungroupByPrefix: 'Stop grouping by prefix',
+        groupByPrefixTitle:
+            "Groups the tables that share a prefix (up to the first _, - or $): TMP_*, AUD_*, BATCH_*… A prefix with a single table stays on its own.",
+        prefixGroupTitle: (p) => `${p.count} tables starting with ${p.prefix}`,
         tablesTitle: (p: {collapsed: boolean; count: number; schema: string}) =>
             `${p.collapsed ? 'Show' : 'Hide'} the ${p.count} tables of "${p.schema}"`,
         loadingTables: 'Loading tables…',

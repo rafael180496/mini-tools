@@ -603,6 +603,10 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
   <p>Conexión → esquema → categorías. Las tablas van en su propia categoría plegable y siempre ordenadas
   alfabéticamente (probado contra un esquema real de 342 tablas); al lado están Procedures, Functions,
   Triggers y Packages, cada una con su contador.</p>
+  <p><strong>Agrupar por prefijo</strong> (el ícono de carpeta de la fila <em>Tablas</em>, o su menú de clic derecho)
+  junta en una fila las tablas que comparten prefijo —hasta el primer <code>_</code>, <code>-</code> o
+  <code>$</code>—: <code>TMP_*</code>, <code>AUD_*</code>, <code>BATCH_*</code>. Dentro del grupo cada nombre se
+  muestra sin el prefijo; un prefijo de una sola tabla queda suelto. La elección se recuerda en esta máquina.</p>
 
   <h2 id="bases-esquema--buscar">Buscar dentro del esquema</h2>
   <p>El filtro de arriba del árbol no se limita a los nombres de tabla: encuentra también procedures,
@@ -650,6 +654,16 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
 BEGIN
   SGCPRO.PR_INFORMANTE(p_fecha_batch =&gt; SYSDATE, <span class="c">▮</span>  <span class="c">-- p_usuario, p_cant, p_retorno</span>
                        p_cant =&gt; <span class="c">▮</span>              <span class="c">-- v_cant</span></code></pre></div>
+  <h2 id="bases-consultas--formato">Formatear e ir a la definición</h2>
+  <p><strong>Formatear SQL</strong> (<kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd>, también <kbd>Shift+Alt+F</kbd>, o el
+  ícono de <em>formato</em> de la barra) ordena lo seleccionado —o el archivo entero, sin selección— con una cláusula
+  por línea: la lista del <code>SELECT</code> alineada, cada <code>JOIN</code> en su renglón,
+  <code>AND</code>/<code>OR</code> sangrados bajo el <code>WHERE</code> y las subconsultas sangradas dentro de sus
+  paréntesis. Solo cambia espacios y mayúsculas de las palabras clave, así que la sentencia corre exactamente igual;
+  <strong>los bloques PL/SQL, el DDL y los comandos SQL*Plus quedan como están</strong>. Un <kbd>⌘Z</kbd> lo deshace.</p>
+  <p><strong><kbd>⌘</kbd>+clic</strong> (<kbd>Ctrl</kbd>+clic en Windows y Linux) sobre una tabla, un alias, un
+  procedimiento, una función o un package abre su DDL. Mientras mantenés la tecla, lo que se puede abrir aparece
+  subrayado.</p>
   <p><kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> abre buscar y reemplazar arriba del editor; los tres interruptores son
   distinguir mayúsculas, expresión regular y palabra completa, y cada botón dice su atajo en el tooltip.</p>
 
@@ -670,7 +684,9 @@ BEGIN
   <ul>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> corre <strong>lo seleccionado</strong>, o la sentencia donde está el cursor si no hay selección.</li>
     <li><strong>Bloque</strong> (<kbd>Ctrl+Shift+↵</kbd>) corre un bloque PL/SQL completo, con <code>DBMS_OUTPUT</code> capturado.</li>
-    <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong> — incluso mientras la conexión todavía se está abriendo. Si la base no confirma el corte en unos segundos, el resultado queda igual como cancelado, con una nota de que la sentencia puede seguir terminando en el servidor. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
+    <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong>. Cada sentencia ejecutada desde el editor deja una marca chica al
+    final de su renglón —<em>412 ms · 500 filas</em>, <em>error</em> o <em>cancelada</em>— con la hora y el detalle en
+    el tooltip; volver a ejecutar la línea la reemplaza — incluso mientras la conexión todavía se está abriendo. Si la base no confirma el corte en unos segundos, el resultado queda igual como cancelado, con una nota de que la sentencia puede seguir terminando en el servidor. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
     <li><strong>Ejecutar no bloquea nada.</strong> Mientras una consulta larga corre podés ejecutar otra: en otra pestaña, contra otra conexión, o <strong>en la misma pestaña</strong> — la corrida nueva agrega sus «Resultado N» detrás de los anteriores en vez de pisarlos. Resultados, consola y cancelación son de la pestaña que los pidió, y la que está trabajando muestra un anillo girando en su solapa, así que se ve desde cualquier otra.</li>
     <li><strong>Auto-commit</strong> es el ícono del rayo de la barra, encendido cuando está activo: un clic pasa a transacción manual, y ahí aparecen <strong>Commit</strong> y <strong>Rollback</strong> junto al aviso «Transacción abierta». Nunca hay ambigüedad sobre si un cambio quedó confirmado — y no hay botones apagados esperando el 1 % de las veces en que sirven.</li>
   </ul>
@@ -765,6 +781,11 @@ BEGIN
     <li><strong>Ver el SQL</strong> muestra la vista previa de lo que se va a ejecutar.</li>
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> los manda. <strong>Descartar</strong> los tira.</li>
   </ol>
+  <p><strong>Expresiones SQL.</strong> El botón <strong>fx</strong> del editor de celda pasa de un dato a una expresión
+  que la base evalúa al guardar — <code>SYSDATE</code>, <code>NOW()</code>, <code>SEQ.NEXTVAL</code>,
+  <code>precio * 1.12</code>. Va al <code>UPDATE</code> tal cual, entre paréntesis, en vez de como parámetro; la
+  grilla muestra la expresión marcada <em>fx</em>, no su resultado. Una expresión no puede llevar <code>;</code>,
+  comentarios ni paréntesis sin cerrar: cambiarían qué sentencia se ejecuta, no qué valor se escribe.</p>
 
   <h2 id="bases-editar--regla">La regla que gobierna la función</h2>
   <p><strong>Nunca escribir una fila que no se pueda identificar sin ninguna duda</strong>, porque un
@@ -804,6 +825,21 @@ BEGIN
   <h1>Copiar y exportar resultados</h1>
   <p class="lead">Seleccionás filas y salen como CSV, <code>INSERT</code> o <code>UPDATE</code> listas para
   pegar en otro entorno — con la tabla real y las fechas convertidas al motor de destino.</p>
+
+  <h2 id="bases-copiar--herramientas">Filtro, estadísticas y vista de registro</h2>
+  <p>La barra de arriba de la grilla tiene tres herramientas que no vuelven a consultar la base — trabajan sobre las
+  filas <strong>ya cargadas</strong>:</p>
+  <ul>
+    <li><strong>Filtrar filas</strong> (<kbd>⌘F</kbd> / <kbd>Ctrl+F</kbd> con la grilla enfocada): deja las filas que
+    contienen el texto en cualquier columna, lo resalta y dice <em>N de M</em>. La selección y los cambios pendientes
+    sobreviven a quitarlo. Para filtrar el resultado completo, agregá un <code>WHERE</code>.</li>
+    <li><strong>Estadísticas</strong>: de la columna elegida, filas, valores, nulos y distintos; si es numérica,
+    también suma, promedio, mínimo y máximo, y si es texto, el largo mínimo y máximo. Se calculan sobre las filas
+    seleccionadas o, sin selección, sobre las visibles. Un clic en un número lo copia.</li>
+    <li><strong>Registro</strong>: una fila a la vez, cada columna en su renglón con el valor completo — la forma de
+    leer una tabla de sesenta columnas o un texto largo. Las flechas (o <kbd>←</kbd>/<kbd>→</kbd>) pasan de fila; es
+    de solo lectura.</li>
+  </ul>
 
   <h2 id="bases-copiar--anchos">El ancho de las columnas</h2>
   <p>Cada columna nace <strong>del ancho de lo que trae</strong>: la de un id de siete dígitos es angosta y
@@ -3114,6 +3150,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota, o una imagen o un archivo en el chat (<a href="#ia-adjuntos">adjuntos</a>)</td></tr>
     <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
+    <tr><td><kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd></td><td>Formatear lo seleccionado o el archivo entero</td></tr>
+    <tr><td><kbd>⌘</kbd>+clic / <kbd>Ctrl</kbd>+clic</td><td>Abrir el DDL de la tabla o rutina bajo el puntero</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
     <tr><td><kbd>F5</kbd></td><td>Refrescar el catálogo de la conexión activa</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Cerrar el panel, el menú o el buscador que esté abierto</td></tr>

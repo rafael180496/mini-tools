@@ -33,6 +33,7 @@ import (
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
 	"mini-tools/backend/sftpx"
+	"mini-tools/backend/sqlformat"
 	"mini-tools/backend/sqlintel"
 	"mini-tools/backend/sshconn"
 	"mini-tools/backend/updatecheck"
@@ -3103,6 +3104,18 @@ func (a *App) SuggestInlineSQL(req sqlintel.Request) (out string, err error) {
 		return "", err
 	}
 	return sqlintel.InlineOnly(a.sqlIntel.Index(req.ConnID), req), nil
+}
+
+// FormatSQL reformats SQL text the way DataGrip's Reformat Code does — see
+// backend/sqlformat for what it changes (whitespace and keyword case) and
+// what it never touches (PL/SQL blocks, DDL, SQL*Plus commands).
+//
+// No vault gate: it reads nothing but the text it is handed. The recover is
+// the same belt as the other editor calls — a panic must answer with the
+// original text, not leave the editor's promise hanging.
+func (a *App) FormatSQL(sqlText string) (out string, err error) {
+	defer recoverEditorCall("FormatSQL", func() { out, err = sqlText, nil })
+	return sqlformat.Format(sqlText), nil
 }
 
 // RecordCompletionUse counts an accepted suggestion so the ranking learns
