@@ -22,7 +22,7 @@ export default {
             'VISIBLE PARA LA IA (el estado por defecto): los agentes pueden leer el contenido de esta nota si la referenciás o la buscan. Hacé clic para esconderla.',
         private: 'Privado',
         aiAllowed: 'Acceso IA permitido',
-        noAgent: 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity.',
+        noAgent: 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex, OpenCode o Antigravity.',
         chatPrivate:
             'Abre el chat con esta nota como contexto. Como está marcada como PRIVADA, su contenido no se le manda: podés preguntar igual, pero el agente no la lee.',
         chatVisible:
@@ -66,7 +66,7 @@ export default {
         saved: 'Guardado',
         shareConfirmTitle: 'Volver a compartir esta nota con los agentes',
         shareConfirmDescription: (p: {title: string}) =>
-            `El contenido completo de «${p.title}» va a poder ser leído por Claude Code, Codex o Antigravity cuando la referencies con @note o cuando la busquen. Las credenciales, claves y datos personales que tenga adentro salen con ella. Podés volver a esconderla en cualquier momento.`,
+            `El contenido completo de «${p.title}» va a poder ser leído por Claude Code, Codex, OpenCode o Antigravity cuando la referencies con @note o cuando la busquen. Las credenciales, claves y datos personales que tenga adentro salen con ella. Podés volver a esconderla en cualquier momento.`,
         share: 'Compartir',
         deleteConfirmTitle: 'Borrar la nota',
         deleteConfirmDescription: (p: {title: string}) =>

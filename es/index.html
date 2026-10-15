@@ -429,7 +429,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li class="chip">Oracle</li><li class="chip">PostgreSQL</li><li class="chip">SQLite</li>
     <li class="chip">SQL Server</li><li class="chip">Redis</li><li class="chip">MongoDB</li>
     <li class="chip">HTTP</li><li class="chip">SSH · SFTP</li><li class="chip">Git</li>
-    <li class="chip">Claude Code</li><li class="chip">Codex</li><li class="chip">Antigravity</li>
+    <li class="chip">Claude Code</li><li class="chip">Codex</li><li class="chip">OpenCode</li><li class="chip">Antigravity</li>
   </ul>
 
   <figure>
@@ -445,7 +445,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <div class="card"><h3>Un binario, cero instalación</h3><p>Go + Wails: usa el WebView del sistema. No hay Electron, no hay JVM, no hay Node corriendo por detrás.</p></div>
     <div class="card"><h3>Tus credenciales, tuyas</h3><p>Cada DSN, contraseña SSH y clave privada se cifra con AES-256-GCM. La clave se deriva de tu clave maestra con Argon2id y no se guarda en ningún lado.</p></div>
     <div class="card"><h3>Sin telemetría, sin cuenta</h3><p>No hay registro, no hay servidor de la app, no se manda nada. Lo único que sale a internet es lo que vos apuntás: tu base, tu servidor, tu API.</p></div>
-    <div class="card"><h3>Tus agentes, adentro</h3><p>Claude Code, Codex y Antigravity con su terminal completa o un chat nativo, con contexto del módulo en el que estás.</p></div>
+    <div class="card"><h3>Tus agentes, adentro</h3><p>Claude Code, Codex, OpenCode y Antigravity con su terminal completa o un chat nativo, con contexto del módulo en el que estás.</p></div>
     <div class="card"><h3>Producción se avisa</h3><p>Marcá una conexión como producción y cada sentencia destructiva pide confirmación explícita antes de correr.</p></div>
     <div class="card"><h3>Todo en español</h3><p>Interfaz, mensajes de error y documentación. Los tooltips explican la consecuencia, no repiten el nombre del botón.</p></div>
   </div>
@@ -1804,7 +1804,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
 <article class="topic" id="utilidades-chat-ia" data-title="Chat de IA">
   <h1>Chat de IA</h1>
-  <p class="lead">Un chat a pantalla completa con Claude Code, Codex, Antigravity o un <a href="#ia-modelos">servidor de modelos</a>,
+  <p class="lead">Un chat a pantalla completa con Claude Code, Codex, OpenCode, Antigravity o un <a href="#ia-modelos">servidor de modelos</a>,
   con el historial de todas las conversaciones a la izquierda y un buscador que mira dentro de los mensajes.</p>
 
   <p>Vive en el módulo <strong>Utilidades</strong>. Hacé clic en <em>Chat de IA</em> y se abre en <strong>una pestaña propia</strong>;
@@ -1869,7 +1869,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p><strong>Continuar con otro proveedor.</strong> Si el proveedor de una conversación se <strong>desactivó</strong> o se <strong>eliminó</strong>, su fila en el historial se marca en naranja con el nombre del proveedor (o <em>Proveedor eliminado</em>) y igual se abre: podés leer todo lo que se habló, la caja de mensajes queda bloqueada y una franja encima ofrece
   <strong>Continuar con otro proveedor</strong>. Elegí uno de los activos y la conversación sigue ahí, sin abrir otra. Si no hay otro proveedor de modelos activo, la franja ofrece agregar uno.</p>
   <div class="note"><span class="lbl">Los CLIs son distintos</span>
-  Un CLI (Claude Code, Codex, Antigravity) guarda su hilo en su propio almacenamiento, y no hay forma honesta de que otro proveedor continúe lo que venía haciendo. Cambiar hacia o desde un CLI abre una conversación nueva, como antes.</div>
+  Un CLI (Claude Code, Codex, OpenCode, Antigravity) guarda su hilo en su propio almacenamiento, y no hay forma honesta de que otro proveedor continúe lo que venía haciendo. Cambiar hacia o desde un CLI abre una conversación nueva, como antes.</div>
   <figure>
     <div class="shot"><img src="../docs/screenshots/es/ai-chat-lost.png" alt="Chat de IA abierto en una conversación cuyo proveedor se desactivó: la fila del historial marcada en naranja, una franja bajo la cabecera dice que el proveedor está desactivado y ofrece un selector con Continuar con otro proveedor, y la caja de mensajes bloqueada"></div>
     <figcaption>Una conversación cuyo proveedor ya no está disponible: se puede leer, con una franja para seguir con otro.</figcaption>
@@ -2168,7 +2168,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <!-- ----------------------------------------------------------------- IA -->
 <article class="topic" id="ia-chat" data-title="El chat, en todos los módulos">
   <h1>El chat, en todos los módulos</h1>
-  <p class="lead">Claude Code, Codex CLI y Antigravity CLI, detectados solos en el PATH, más los
+  <p class="lead">Claude Code, Codex CLI, OpenCode y Antigravity CLI, detectados solos en el PATH, más los
   <a href="#ia-modelos">servidores de modelos</a> que agregues. El mismo chat desde el editor SQL, una terminal SSH,
   una nota, un repositorio o una petición HTTP.</p>
 
@@ -2208,6 +2208,15 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>SSH y terminal local</td><td>Explicar qué está fallando en la salida de la terminal, con el sistema operativo del servidor como contexto. Un bloque de un solo comando de la respuesta se manda <strong>A la terminal</strong>: queda escrito, sin Enter</td></tr>
     <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
   </table></div>
+
+  <h2 id="ia-chat--opencode">OpenCode</h2>
+  <p><a href="https://opencode.ai/">OpenCode</a> se detecta en el PATH o en <code>~/.opencode/bin</code>, donde lo deja su
+  instalador. Se autentica por proveedor con <code>opencode auth login</code>, y el selector de modelos lista los de los
+  proveedores en los que iniciaste sesión, como <code>proveedor/modelo</code>. Dos modos: <strong>Solo consulta</strong> usa su
+  agente <em>plan</em>, que no escribe archivos; <strong>Aplicar ediciones</strong> usa su agente <em>build</em>, que edita la carpeta
+  sin preguntar. <strong>En los dos no puede correr comandos de terminal</strong>: por su cuenta los correría sin preguntar, y
+  en el chat no hay a quién preguntarle. Sus servidores MCP (<code>opencode.json</code>, en el proyecto y en
+  <code>~/.config/opencode</code>) se muestran en modo lectura, y lee el <code>AGENTS.md</code> del proyecto.</p>
 
   <h2 id="ia-chat--adjuntos">Adjuntar archivos</h2>
   <p>El botón <strong>Adjuntar</strong>, arrastrar sobre el chat o <kbd>⌘V</kbd> suman imágenes, PDF y archivos de texto o código a tu mensaje,
@@ -2433,6 +2442,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>Compatible con OpenAI: cualquier otro</td><td>Supuestas, sin confirmar</td><td>No</td><td>Sí</td></tr>
     <tr><td>Claude Code</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
     <tr><td>Codex CLI</td><td>Sí</td><td>No</td><td>Sí</td></tr>
+    <tr><td>OpenCode</td><td>Sí</td><td>No</td><td>Sí</td></tr>
     <tr><td>Antigravity CLI</td><td>Supuestas, sin verificar</td><td>No</td><td>Sí</td></tr>
   </table></div>
   <p><strong>El texto y el código los lee cualquiera</strong>: su contenido se pega en el mensaje, dentro de un bloque con el
@@ -2817,7 +2827,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li><strong>Carpetas</strong> (con ícono de carpeta) — cualquiera que hayas abierto. Una carpeta que ya no existe en el disco se ve apagada y no se puede elegir; al pasar el cursor dice por qué.</li>
     <li><strong>Abrir carpeta…</strong> y <strong>Administrar carpetas…</strong>, al final.</li>
   </ul>
-  <p>Los CLIs (Claude Code, Codex, Antigravity) también corren <em>dentro</em> de esa carpeta. Una conversación recuerda su proyecto: al retomarla desde el historial, ves el que tenía.</p>
+  <p>Los CLIs (Claude Code, Codex, OpenCode, Antigravity) también corren <em>dentro</em> de esa carpeta. Una conversación recuerda su proyecto: al retomarla desde el historial, ves el que tenía.</p>
 
   <h2 id="ia-proyectos--carpetas">Carpetas: abrir y administrar</h2>
   <p><strong>Abrir carpeta…</strong> muestra el selector de carpetas del sistema. La app solo recuerda la <strong>ruta</strong>; no copia nada. La raíz del disco y tu carpeta personal
@@ -3211,7 +3221,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>mini-tools ejecuta operaciones reales: consultas y sentencias contra tus bases de datos, comandos en servidores remotos, <strong>terminar procesos</strong>, <strong>eliminar contenedores, imágenes y volúmenes</strong> y purgar registros. Las confirmaciones y la marca de producción son una ayuda, no una salvaguarda; <strong>vos decidís, y respondés por, lo que se ejecuta y dónde</strong>. Usalo solo en sistemas a los que estés autorizado a acceder y respetá las políticas de tu organización y de los servicios a los que te conectes.</p>
 
   <h2 id="terminos--terceros">Herramientas de terceros</h2>
-  <p>Los agentes de IA (Claude Code, Codex CLI, Antigravity CLI), Docker, los motores de base de datos y los demás programas con los que habla mini-tools pertenecen a sus autores y se rigen por <strong>sus propios términos</strong> y precios; mini-tools no los incluye ni los revende. Lo que enviés a un agente de IA lo trata su proveedor según sus políticas.</p>
+  <p>Los agentes de IA (Claude Code, Codex CLI, OpenCode, Antigravity CLI), Docker, los motores de base de datos y los demás programas con los que habla mini-tools pertenecen a sus autores y se rigen por <strong>sus propios términos</strong> y precios; mini-tools no los incluye ni los revende. Lo que enviés a un agente de IA lo trata su proveedor según sus políticas.</p>
 
   <h2 id="terminos--cambios">Cambios</h2>
   <p>Estos términos pueden cambiar de una versión a otra, y esta página describe la versión que muestra la barra superior. Las preguntas, reportes y contribuciones van al <a href="https://github.com/rafael180496/mini-tools">repositorio del proyecto</a>.</p>

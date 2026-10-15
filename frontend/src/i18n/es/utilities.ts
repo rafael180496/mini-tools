@@ -41,7 +41,7 @@ export default {
         },
         aiChat: {
             name: 'Chat de IA',
-            hint: 'conversar con Claude, Codex, Antigravity o un modelo local, con historial y buscador',
+            hint: 'conversar con Claude, Codex, OpenCode, Antigravity o un modelo local, con historial y buscador',
         },
         modelManager: {
             name: 'Proveedores de IA',
@@ -180,7 +180,7 @@ export default {
             titleEditTitle: 'Escribí el nombre nuevo. Enter guarda, Esc cancela; si lo dejás vacío no cambia nada (máximo 120 caracteres).',
             providerLabel: 'Proveedor',
             providerTitle:
-                'Con quién hablás: un CLI instalado (Claude Code, Codex, Antigravity) o un proveedor de modelos (servidor propio o API en la nube). Entre proveedores de modelos podés cambiar a mitad de conversación: sigue la misma, y el nuevo recibe lo hablado como contexto. Cambiar hacia o desde un CLI abre una conversación nueva, porque el hilo de un CLI es del propio CLI.',
+                'Con quién hablás: un CLI instalado (Claude Code, Codex, OpenCode, Antigravity) o un proveedor de modelos (servidor propio o API en la nube). Entre proveedores de modelos podés cambiar a mitad de conversación: sigue la misma, y el nuevo recibe lo hablado como contexto. Cambiar hacia o desde un CLI abre una conversación nueva, porque el hilo de un CLI es del propio CLI.',
             providerPlaceholder: 'Elegí un proveedor',
             modelLabel: 'Modelo',
             modelTitle: 'Modelo que contesta de acá en adelante. La lista la informa el propio proveedor; «Por defecto» usa el que tenga configurado.',

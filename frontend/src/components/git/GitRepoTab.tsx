@@ -749,7 +749,7 @@ export default function GitRepoTab({
     // otros. Un fallo acá no rompe nada — es conveniencia, no navegación.
     const reloadCliChats = useCallback(() => {
         Promise.all(
-            ['claude', 'codex'].map((id) => AgentCLIConversations(id, repoId).catch(() => [] as agentchat.Conversation[])),
+            ['claude', 'codex', 'opencode'].map((id) => AgentCLIConversations(id, repoId).catch(() => [] as agentchat.Conversation[])),
         )
             .then((lists) => setCliChats(lists.flat()))
             .catch(() => setCliChats([]))

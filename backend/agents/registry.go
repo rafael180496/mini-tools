@@ -1,6 +1,6 @@
 // Package agents es el catálogo de asistentes de código por línea de
 // comandos que el módulo Git puede abrir en una sesión propia: Claude Code,
-// Codex CLI y Antigravity CLI — este último es el que antes se llamaba Gemini
+// Codex CLI, OpenCode y Antigravity CLI — este último es el que antes se llamaba Gemini
 // CLI, renombrado por Google, y por eso hay una sola entrada para los dos
 // nombres y no dos.
 //
@@ -152,6 +152,26 @@ var catalog = []catalogEntry{
 		},
 		docs:   "https://antigravity.google/",
 	},
+	{
+		id:      "opencode",
+		label:   "OpenCode",
+		vendor:  "SST",
+		bin:     "opencode",
+		command: "opencode",
+		// Sin variable de API key a propósito: OpenCode no es de un solo
+		// proveedor, cada uno trae la suya y las guarda `opencode auth login`.
+		// Un único campo acá no sabría a cuál corresponde.
+		keyEnv: "",
+		login: i18n.Msg{
+			ES: "Se autentica por proveedor con `opencode auth login` (OpenCode Zen, Anthropic, OpenAI y otros). Corré ese comando en una terminal y elegí el proveedor.",
+			EN: "It authenticates per provider with `opencode auth login` (OpenCode Zen, Anthropic, OpenAI and others). Run that command in a terminal and pick the provider.",
+		},
+		note: i18n.Msg{
+			ES: "Asistente de código abierto por línea de comandos, sobre el repositorio abierto. Trabaja con modelos de muchos proveedores; los modelos se eligen como proveedor/modelo.",
+			EN: "Open-source command-line assistant, on the open repository. It works with models from many providers; models are picked as provider/model.",
+		},
+		docs: "https://opencode.ai/docs/",
+	},
 }
 
 // extraLookupDirs son los directorios donde suelen quedar instalados estos
@@ -166,12 +186,15 @@ func extraLookupDirs() []string {
 		return []string{
 			filepath.Join(home, "AppData", "Roaming", "npm"),
 			filepath.Join(home, ".bun", "bin"),
+			filepath.Join(home, ".opencode", "bin"),
 		}
 	}
 	return []string{
 		filepath.Join(home, ".local", "bin"),
 		filepath.Join(home, ".bun", "bin"),
 		filepath.Join(home, ".npm-global", "bin"),
+		// El instalador oficial de OpenCode deja el binario acá.
+		filepath.Join(home, ".opencode", "bin"),
 		"/opt/homebrew/bin",
 		"/usr/local/bin",
 	}

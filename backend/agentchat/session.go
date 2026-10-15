@@ -113,6 +113,10 @@ var modesByAgent = map[string][]Mode{
 	// a lo que hay: por defecto su sandbox de solo lectura, y para editar el
 	// de escritura en el workspace.
 	"codex": {ModeAsk, ModeEdit},
+	// OpenCode tampoco tiene un modo "plan" aparte del de preguntar: su agente
+	// `plan` es lo que hace que no edite, y se usa para preguntar (ver
+	// buildArgs). Ofrecer los dos daría dos opciones que hacen lo mismo.
+	"opencode": {ModeAsk, ModeEdit},
 }
 
 // ModesFor filtra los que no se pueden ofrecer en esta máquina.
@@ -263,7 +267,7 @@ func (m *Manager) Send(t Turn) error {
 	if IsLLM(t.AgentID) {
 		return m.sendLLM(t)
 	}
-	adapt, ok := adapters[t.AgentID]
+	adapt, finish, ok := adapterFor(t.AgentID)
 	if !ok {
 		// Se falla claro en vez de correr el CLI y mostrar un chat mudo: sin
 		// adaptador verificado no se puede leer nada de lo que conteste.
@@ -287,7 +291,7 @@ func (m *Manager) Send(t Turn) error {
 	}
 
 	m.beginTurn(ctx, t)
-	m.spawn(func() { m.run(ctx, t, args, adapt) })
+	m.spawn(func() { m.run(ctx, t, args, adapt, finish) })
 	return nil
 }
 
@@ -305,7 +309,9 @@ func (m *Manager) Send(t Turn) error {
 // devuelve texto no tiene por qué poder tocar archivos; para eso está el chat,
 // donde el modo se elige a la vista.
 func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
-	adapt, ok := adapters[t.AgentID]
+	// El cierre no hace falta: acá solo importa el texto, y el turno termina
+	// cuando termina el proceso.
+	adapt, _, ok := adapterFor(t.AgentID)
 	if !ok && !IsLLM(t.AgentID) {
 		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)
 	}
@@ -327,7 +333,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	args = withExec(t, args)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = t.Cwd
-	cmd.Env = t.Env
+	cmd.Env = append(append([]string{}, t.Env...), turnEnv(t)...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -440,7 +446,7 @@ func (m *Manager) finish(sessionID string) {
 	m.sessionEnded(sessionID)
 }
 
-func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter) {
+func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter, finish finisher) {
 	defer m.finish(t.SessionID)
 
 	if len(args) == 0 {
@@ -454,7 +460,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 	// El entorno del hook viaja al proceso del agente para que lo herede el
 	// re-exec que el CLI va a lanzar: el hook necesita saber a qué socket
 	// contestar, y solo puede saberlo por herencia.
-	cmd.Env = append(append([]string{}, t.Env...), t.ApproveEnv...)
+	cmd.Env = append(append(append([]string{}, t.Env...), t.ApproveEnv...), turnEnv(t)...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -475,6 +481,10 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 	// El texto llega en trozos y un trozo puede cortar un carácter por la
 	// mitad: acá se vuelve a pegar. Uno por flujo — ver rawtext.go.
 	var textFix, thinkFix utf8Stitcher
+	// failed: el CLI ya explicó el fallo con un evento propio. El código de
+	// salida que llega después es el mismo fallo, y mostrarlo otra vez dejaría
+	// dos errores (y dos filas en el historial) para una sola cosa.
+	failed := false
 
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
@@ -504,6 +514,9 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 				m.convos[t.SessionID] = ev.ConversationID
 				m.mu.Unlock()
 			}
+			if ev.Kind == KindError {
+				failed = true
+			}
 			m.emit(t.SessionID, ev)
 		}
 	}
@@ -526,12 +539,30 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 		return
 	}
 	if waitErr != nil {
+		if failed {
+			return
+		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = waitErr.Error()
 		}
 		m.emit(t.SessionID, Event{Kind: KindError, Error: msg})
+		return
 	}
+	if finish != nil && !failed {
+		for _, ev := range finish(t) {
+			m.emit(t.SessionID, ev)
+		}
+	}
+}
+
+// turnEnv son las variables que el turno agrega según el agente, encima del
+// entorno que armó quien llama.
+func turnEnv(t Turn) []string {
+	if t.AgentID == "opencode" {
+		return opencodeEnv(t.Cwd)
+	}
+	return nil
 }
 
 // withImagePaths nombra las imágenes adjuntas dentro del prompt, para los
@@ -680,6 +711,43 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		if t.Model != "" {
 			args = append(args, "--model", t.Model)
 		}
+		return args, nil
+
+	case "opencode":
+		// `run --format json` es su modo headless. `--standalone` levanta un
+		// servidor propio para el turno en vez de usar el servicio en segundo
+		// plano: ese ya arrancó con su entorno e ignoraría la configuración de
+		// permisos que va por variable (turnEnv). Se comprobó que arranca en
+		// un par de segundos y que retoma igual las sesiones del servicio.
+		args := append(base, "run", "--format", "json", "--standalone", "--thinking")
+		if conversation != "" {
+			args = append(args, "--session", conversation)
+		}
+		// Sin bandera de modo: por defecto (su agente `build`) edita sin
+		// preguntar, así que lo que se elige es el agente. Preguntar usa
+		// `plan`, que no escribe archivos; editar, `build`. Se nombra SIEMPRE,
+		// también el de editar: una sesión retomada conserva el agente con el
+		// que se usó la última vez si no se le dice otro (se vio: un chat que
+		// empezó preguntando seguía sin poder escribir en modo editar). En los
+		// dos le falta la herramienta de comandos (opencodeEnv). `--auto` no se
+		// pasa nunca: aprueba todo lo que no esté denegado.
+		agent := "plan"
+		if t.Mode == ModeEdit {
+			agent = "build"
+		}
+		args = append(args, "--agent", agent)
+		// El esfuerzo no se pasa: OpenCode lo expresa como variante del modelo
+		// (`proveedor/modelo#variante`) y las variantes dependen de cada modelo.
+		if t.Model != "" {
+			args = append(args, "--model", t.Model)
+		}
+		// Los adjuntos van nombrados en el prompt y los abre su herramienta de
+		// lectura, que lee imágenes (verificado). `--file` acepta uno solo: con
+		// dos, el segundo pisa al primero en silencio.
+		//
+		// El `--` va antes del prompt para que un mensaje que empieza con un
+		// guion no se lea como bandera.
+		args = append(args, "--", withAttachmentPaths(t.Prompt, t.Images, nil, attachmentNames(t.Attachments)))
 		return args, nil
 	}
 	return nil, i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)

@@ -112,8 +112,8 @@ func TestScanReportsMissingInstructions(t *testing.T) {
 			t.Errorf("%s no existe y se reportó como presente", missing)
 		}
 	}
-	if got := byFile["AGENTS.md"].Agents; len(got) != 1 || got[0] != "codex" {
-		t.Errorf("AGENTS.md debería atribuirse a codex, dice %v", got)
+	if got := byFile["AGENTS.md"].Agents; len(got) != 2 || got[0] != "codex" || got[1] != "opencode" {
+		t.Errorf("AGENTS.md debería atribuirse a codex y opencode, dice %v", got)
 	}
 	// La ruta anidada se normaliza con "/" en todas las plataformas.
 	if _, ok := byFile[".github/copilot-instructions.md"]; !ok {

@@ -29,6 +29,7 @@ func Scan(repoRoot string) Config {
 		// versiona y viaja con el repositorio — el resto es de la máquina.
 		add(readJSONServers(filepath.Join(repoRoot, ".mcp.json"), "claude", ScopeProject))
 		add(readJSONServers(filepath.Join(repoRoot, ".gemini", "settings.json"), "antigravity", ScopeProject))
+		readOpencodeDir(repoRoot, ScopeProject, add)
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
@@ -45,6 +46,7 @@ func Scan(repoRoot string) Config {
 		// mirar de más solo cuesta un stat que falla.
 		add(readJSONServers(filepath.Join(home, ".gemini", "config", "mcp_config.json"), "antigravity", ScopeUser))
 		add(readJSONServers(filepath.Join(home, ".gemini", "settings.json"), "antigravity", ScopeUser))
+		readOpencodeDir(filepath.Join(home, ".config", "opencode"), ScopeUser, add)
 	}
 
 	// Primero lo del proyecto y después lo de la máquina; dentro de cada

@@ -328,11 +328,32 @@ var msgAgentFailed = i18n.Msg{ES: "el agente terminó con error", EN: "the agent
 // --- Registro -------------------------------------------------------------
 
 // adapters son los agentes con adaptador VERIFICADO contra una corrida real.
-// Codex no está: ver el doc del paquete.
 var adapters = map[string]adapter{
 	"claude":      claudeAdapter,
 	"antigravity": antigravityAdapter,
 	"codex":       codexAdapter,
+}
+
+// finisher cierra un turno cuyo CLI terminó bien sin emitir un evento final
+// propio. Corre después de que el proceso salió, así que puede leer lo que el
+// CLI dejó guardado (el uso del turno, por ejemplo).
+type finisher func(t Turn) []Event
+
+// turnAdapters son los adaptadores que necesitan estado DURANTE un turno: uno
+// nuevo por turno, porque las sesiones corren en paralelo. Hoy solo OpenCode,
+// que no cierra el turno en su stream (ver opencode.go).
+var turnAdapters = map[string]func() (adapter, finisher){
+	"opencode": newOpencodeTurn,
+}
+
+// adapterFor devuelve el adaptador de un turno nuevo y, si lo tiene, su cierre.
+func adapterFor(agentID string) (adapter, finisher, bool) {
+	if mk, ok := turnAdapters[agentID]; ok {
+		a, f := mk()
+		return a, f, true
+	}
+	a, ok := adapters[agentID]
+	return a, nil, ok
 }
 
 // Supports informa si un agente puede usar el chat nativo. La UI lo necesita
@@ -344,7 +365,7 @@ func Supports(agentID string) bool {
 	if IsLLM(agentID) {
 		return true
 	}
-	_, ok := adapters[agentID]
+	_, _, ok := adapterFor(agentID)
 	return ok
 }
 

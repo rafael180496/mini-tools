@@ -429,7 +429,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li class="chip">Oracle</li><li class="chip">PostgreSQL</li><li class="chip">SQLite</li>
     <li class="chip">SQL Server</li><li class="chip">Redis</li><li class="chip">MongoDB</li>
     <li class="chip">HTTP</li><li class="chip">SSH · SFTP</li><li class="chip">Git</li>
-    <li class="chip">Claude Code</li><li class="chip">Codex</li><li class="chip">Antigravity</li>
+    <li class="chip">Claude Code</li><li class="chip">Codex</li><li class="chip">OpenCode</li><li class="chip">Antigravity</li>
   </ul>
 
   <figure>
@@ -445,7 +445,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <div class="card"><h3>One binary, zero install</h3><p>Go + Wails: it uses the system WebView. No Electron, no JVM, no Node running in the background.</p></div>
     <div class="card"><h3>Your credentials, yours</h3><p>Every DSN, SSH password and private key is encrypted with AES-256-GCM. The key is derived from your master password with Argon2id and is never stored anywhere.</p></div>
     <div class="card"><h3>No telemetry, no account</h3><p>No sign-up, no app server, nothing is sent. The only thing that goes out to the internet is what you point it at: your database, your server, your API.</p></div>
-    <div class="card"><h3>Your agents, inside</h3><p>Claude Code, Codex and Antigravity with their full terminal or a native chat, with context from the module you're in.</p></div>
+    <div class="card"><h3>Your agents, inside</h3><p>Claude Code, Codex, OpenCode and Antigravity with their full terminal or a native chat, with context from the module you're in.</p></div>
     <div class="card"><h3>Production warns you</h3><p>Mark a connection as production and every destructive statement asks for explicit confirmation before it runs.</p></div>
     <div class="card"><h3>English and Spanish</h3><p>Interface, error messages and documentation. Tooltips explain the consequence instead of repeating the button's name.</p></div>
   </div>
@@ -1790,7 +1790,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
 <article class="topic" id="utilidades-chat-ia" data-title="AI Chat">
   <h1>AI Chat</h1>
-  <p class="lead">A full-screen chat with Claude Code, Codex, Antigravity or a <a href="#ia-modelos">model server</a>,
+  <p class="lead">A full-screen chat with Claude Code, Codex, OpenCode, Antigravity or a <a href="#ia-modelos">model server</a>,
   with the history of every conversation on the left and a search box that looks inside the messages.</p>
 
   <p>It lives in the <strong>Utilities</strong> module. Click <em>AI Chat</em> and it opens in <strong>its own tab</strong>;
@@ -1853,7 +1853,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p><strong>Continue with another provider.</strong> If a conversation's provider was <strong>disabled</strong> or <strong>deleted</strong>, its row in the history is marked in orange with the provider's name (or <em>Deleted provider</em>) and it still opens: you can read everything that was said, the message box stays locked and a strip above it offers
   <strong>Continue with another provider</strong>. Pick one of the enabled ones and the conversation carries on there, with no new conversation. If no other provider of models is enabled, the strip offers to add one.</p>
   <div class="note"><span class="lbl">CLIs are different</span>
-  A CLI (Claude Code, Codex, Antigravity) keeps its thread in its own storage, and there is no honest way for another provider to continue what it was doing. Switching to or from a CLI opens a new conversation, as before.</div>
+  A CLI (Claude Code, Codex, OpenCode, Antigravity) keeps its thread in its own storage, and there is no honest way for another provider to continue what it was doing. Switching to or from a CLI opens a new conversation, as before.</div>
   <figure>
     <div class="shot"><img src="docs/screenshots/ai-chat-lost.png" alt="AI Chat open on a conversation whose provider was disabled: the history row is marked in orange, a strip under the header says the provider is disabled and offers a selector with Continue with another provider, and the message box is locked"></div>
     <figcaption>A conversation whose provider is no longer available: readable, with a strip to continue with another one.</figcaption>
@@ -2154,7 +2154,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <!-- ----------------------------------------------------------------- IA -->
 <article class="topic" id="ia-chat" data-title="The chat, in every module">
   <h1>The chat, in every module</h1>
-  <p class="lead">Claude Code, Codex CLI and Antigravity CLI, detected automatically on the PATH, plus any
+  <p class="lead">Claude Code, Codex CLI, OpenCode and Antigravity CLI, detected automatically on the PATH, plus any
   <a href="#ia-modelos">model server</a> you add. The same chat from the SQL editor, an SSH terminal, a note,
   a repository or an HTTP request.</p>
 
@@ -2193,6 +2193,15 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>SSH and local terminal</td><td>Explain what's failing in the terminal output, with the server's operating system as context. A single-command block from the answer can be sent <strong>To terminal</strong>: it's typed in, without Enter</td></tr>
     <tr><td>Notes</td><td>Query your knowledge base, and —with explicit permission— write down what it found out</td></tr>
   </table></div>
+
+  <h2 id="ia-chat--opencode">OpenCode</h2>
+  <p><a href="https://opencode.ai/">OpenCode</a> is detected on the PATH or in <code>~/.opencode/bin</code>, where its installer
+  leaves it. It signs in per provider with <code>opencode auth login</code>, and the model picker lists the models of the
+  providers you're signed in to, as <code>provider/model</code>. Two modes: <strong>Read-only</strong> uses its <em>plan</em>
+  agent, which doesn't write files; <strong>Apply edits</strong> uses its <em>build</em> agent, which edits the folder without
+  asking. <strong>In both it can't run shell commands</strong>: on its own it would run them without asking, and in the
+  chat there's nobody to ask. Its MCP servers (<code>opencode.json</code>, in the project and in
+  <code>~/.config/opencode</code>) are shown read-only, and it reads the project's <code>AGENTS.md</code>.</p>
 
   <h2 id="ia-chat--adjuntos">Attach files</h2>
   <p>The <strong>Attach</strong> button, dragging onto the chat or <kbd>⌘V</kbd> add images, PDFs and text or code files to your message,
@@ -2416,6 +2425,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>OpenAI-compatible: any other</td><td>Assumed, unconfirmed</td><td>No</td><td>Yes</td></tr>
     <tr><td>Claude Code</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
     <tr><td>Codex CLI</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+    <tr><td>OpenCode</td><td>Yes</td><td>No</td><td>Yes</td></tr>
     <tr><td>Antigravity CLI</td><td>Assumed, not verified</td><td>No</td><td>Yes</td></tr>
   </table></div>
   <p><strong>Text and code are read by everyone</strong>: their contents are pasted into the message inside a block with
@@ -2802,7 +2812,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li><strong>Folders</strong> (with a folder icon) — any folder you've opened. A folder that no longer exists on disk shows greyed out and can't be picked; hovering it says why.</li>
     <li><strong>Open folder…</strong> and <strong>Manage folders…</strong>, at the end.</li>
   </ul>
-  <p>The CLIs (Claude Code, Codex, Antigravity) also run <em>inside</em> that folder. A conversation remembers its project: when you resume it from the history, its project is the one you see.</p>
+  <p>The CLIs (Claude Code, Codex, OpenCode, Antigravity) also run <em>inside</em> that folder. A conversation remembers its project: when you resume it from the history, its project is the one you see.</p>
 
   <h2 id="ia-proyectos--carpetas">Folders: open and manage</h2>
   <p><strong>Open folder…</strong> shows the system's folder picker. The app only remembers the <strong>path</strong>; it copies nothing. The filesystem root and your home folder
@@ -3193,7 +3203,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p>mini-tools runs real operations: queries and statements against your databases, commands on remote servers, <strong>terminating processes</strong>, <strong>deleting containers, images and volumes</strong>, and purging logs. The confirmations and the production mark are help, not a safeguard; <strong>you decide, and you answer for, what runs and where</strong>. Use it only on systems you are authorized to access, and respect the policies of your organization and of the services you connect to.</p>
 
   <h2 id="terminos--terceros">Third-party tools</h2>
-  <p>The AI agents (Claude Code, Codex CLI, Antigravity CLI), Docker, the database engines and the other programs mini-tools talks to belong to their own authors and are governed by <strong>their own terms</strong> and prices; mini-tools doesn't bundle or resell them. What you send to an AI agent is handled by its provider under its policies.</p>
+  <p>The AI agents (Claude Code, Codex CLI, OpenCode, Antigravity CLI), Docker, the database engines and the other programs mini-tools talks to belong to their own authors and are governed by <strong>their own terms</strong> and prices; mini-tools doesn't bundle or resell them. What you send to an AI agent is handled by its provider under its policies.</p>
 
   <h2 id="terminos--cambios">Changes</h2>
   <p>These terms can change from one version to the next, and this page describes the version shown in the top bar. Questions, reports and contributions go to the <a href="https://github.com/rafael180496/mini-tools">project's repository</a>.</p>

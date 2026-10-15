@@ -24,7 +24,7 @@ const en: Messages<typeof es> = {
             'VISIBLE TO AI (the default): agents can read this note if you reference it or they search for it. Click to hide it.',
         private: 'Private',
         aiAllowed: 'AI access allowed',
-        noAgent: 'No agentic CLI is installed. mini-tools uses Claude Code, Codex or Antigravity.',
+        noAgent: 'No agentic CLI is installed. mini-tools uses Claude Code, Codex, OpenCode or Antigravity.',
         chatPrivate:
             "Opens the chat with this note as context. Since it is marked PRIVATE, its content isn't sent: you can still ask, but the agent won't read it.",
         chatVisible:
@@ -68,7 +68,7 @@ const en: Messages<typeof es> = {
         saved: 'Saved',
         shareConfirmTitle: 'Share this note with agents again',
         shareConfirmDescription: (p) =>
-            `The full content of «${p.title}» can be read by Claude Code, Codex or Antigravity when you reference it with @note or when they search for it. Any credentials, keys and personal data in it go along with it. You can hide it again at any time.`,
+            `The full content of «${p.title}» can be read by Claude Code, Codex, OpenCode or Antigravity when you reference it with @note or when they search for it. Any credentials, keys and personal data in it go along with it. You can hide it again at any time.`,
         share: 'Share',
         deleteConfirmTitle: 'Delete note',
         deleteConfirmDescription: (p) =>

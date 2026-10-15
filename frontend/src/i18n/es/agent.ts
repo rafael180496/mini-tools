@@ -355,7 +355,7 @@ export default {
         closeTitle: 'Cierra el panel. La conversación queda como está: volver a abrirlo la retoma.',
         emptyNoAgent: 'No hay ningún agente instalado',
         emptyNoAgentHint:
-            'mini-tools usa los CLIs que ya tengas (Claude Code, Codex o Antigravity) o un servidor de modelos (Ollama u otro compatible con OpenAI). Instalá un CLI o agregá un servidor en Configuración → IA y aparecerá acá.',
+            'mini-tools usa los CLIs que ya tengas (Claude Code, Codex, OpenCode o Antigravity) o un servidor de modelos (Ollama u otro compatible con OpenAI). Instalá un CLI o agregá un servidor en Configuración → IA y aparecerá acá.',
         emptyPick: 'Elegí un agente arriba para empezar.',
         resizeTitle: 'Arrastrar para cambiar el tamaño del panel — queda guardado',
         renameTitle: 'Cambiar el nombre de la conversación',
@@ -365,7 +365,7 @@ export default {
             `Abre el chat con ${p.agent} (${p.shortcut}). Hay una conversación por conexión, servidor o nota: cambiar de módulo cambia de hilo, sin reiniciar ni cortar el que dejás atrás, aunque esté respondiendo.`,
         theAgent: 'el agente',
         noCliTitle:
-            'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity — instalá uno para habilitar el chat.',
+            'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex, OpenCode o Antigravity — instalá uno para habilitar el chat.',
     },
     // Lista de conversaciones de la pestaña Git (AgentChatHistory).
     history: {
@@ -606,11 +606,13 @@ export default {
         claudeNote: 'Queda disponible en todos tus proyectos. Con `claude mcp list` se verifica que quedó.',
         codexHow: 'Agregá esto a ~/.codex/config.toml:',
         codexNote: 'Si el archivo no existe, crealo con ese contenido.',
+        opencodeHow: 'Agregá esto a ~/.config/opencode/opencode.json:',
+        opencodeNote: 'Si ya tenés otros servidores, agregá solo la entrada "mini-tools" adentro de "mcp". Con `opencode mcp list` se verifica que quedó.',
         antigravityHow: 'Agregá esto a ~/.gemini/config/mcp_config.json:',
         antigravityNote: 'Si ya tenés otros servidores, agregá solo la entrada "mini-tools" adentro de "mcpServers".',
         heading: 'Acceso de la IA',
         server: 'Servidor MCP',
-        intro: 'Deja que Claude Code, Codex o Antigravity le **pidan** datos a mini-tools desde su propia conversación: buscar en tus notas, leer el esquema de una tabla, mirar las últimas líneas de una terminal. **Mientras esté apagado no hay nada escuchando** — ni socket, ni proceso, ni consumo.',
+        intro: 'Deja que Claude Code, Codex, OpenCode o Antigravity le **pidan** datos a mini-tools desde su propia conversación: buscar en tus notas, leer el esquema de una tabla, mirar las últimas líneas de una terminal. **Mientras esté apagado no hay nada escuchando** — ni socket, ni proceso, ni consumo.',
         turnOffTitle:
             'Apagar el servidor: se cierra el canal y se borra el socket. Los agentes dejan de poder pedir datos al instante.',
         turnOnTitle:
@@ -630,7 +632,7 @@ export default {
             'Quitarle el permiso: la herramienta desaparece de su catálogo y una llamada en curso se rechaza. Las notas que ya creó quedan como están.',
         grantTitle:
             'Darle permiso para crear notas nuevas. Seguirá sin poder modificar ni borrar las tuyas, y vas a ver cada alta en el registro de acceso de abajo.',
-        howToTitle: 'Los pasos exactos para que Claude Code, Codex o Antigravity vean este servidor',
+        howToTitle: 'Los pasos exactos para que Claude Code, Codex, OpenCode o Antigravity vean este servidor',
         howTo: 'Cómo conectar tu agente a este servidor',
         steps: '3 pasos',
         step1: 'Encendé el servidor con el interruptor de arriba. **Tiene que quedar encendido** mientras uses el agente: apagado no hay nada escuchando.',

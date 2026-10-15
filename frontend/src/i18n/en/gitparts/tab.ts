@@ -247,7 +247,7 @@ const en: Messages<typeof es> = {
         terminalTitle:
             "Opens a real terminal at the root of this repository: you can cd, run the tests, an interactive rebase or any command the UI doesn't cover, without leaving the app. It can be docked at the bottom, left or right, and the shell (zsh, bash, PowerShell, Git Bash…) is chosen in Settings → Terminal.",
         agentsTitle:
-            "Coding assistants for this repository: chat with Claude Code, Codex or Antigravity, see which skills and instructions the repo has ready, which MCP servers each agent sees, and how many tokens you've used.",
+            "Coding assistants for this repository: chat with Claude Code, Codex, OpenCode or Antigravity, see which skills and instructions the repo has ready, which MCP servers each agent sees, and how many tokens you've used.",
         agents: 'Agents',
     },
     viewMenu: {

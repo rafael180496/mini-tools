@@ -19,7 +19,7 @@ function toolLabel(t: Dict, tool: string): string {
     return labels[tool] ?? tool
 }
 
-// Cómo se conecta cada CLI. Son tres formatos distintos porque cada uno guarda
+// Cómo se conecta cada CLI. Son cuatro formatos distintos porque cada uno guarda
 // su configuración a su manera — es la misma razón por la que la solapa Agentes
 // tiene que leer cinco archivos para responder "qué MCP ve este agente".
 //
@@ -44,6 +44,12 @@ function connectSnippets(exe: string, t: Dict) {
             how: a.codexHow,
             code: `[mcp_servers.mini-tools]\ncommand = "${path}"\nargs = ["--mcp"]`,
             note: a.codexNote,
+        },
+        {
+            agent: 'OpenCode',
+            how: a.opencodeHow,
+            code: `{\n  "mcp": {\n    "mini-tools": {\n      "type": "local",\n      "command": ["${path}", "--mcp"]\n    }\n  }\n}`,
+            note: a.opencodeNote,
         },
         {
             agent: 'Antigravity CLI',

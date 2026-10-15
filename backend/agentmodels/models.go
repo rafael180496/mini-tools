@@ -18,6 +18,10 @@
 //     nombre, descripción y **los niveles de esfuerzo soportados por cada
 //     modelo**.
 //   - **Antigravity**: `agy models`, que los lista.
+//   - **OpenCode**: su catálogo `~/.cache/opencode/models.json`, filtrado a los
+//     proveedores con credenciales en `~/.local/share/opencode/auth.json`.
+//     `opencode models` los lista, pero solo cuando escribe a una terminal: a
+//     un pipe no imprime nada.
 //
 // Si algo falla, se devuelve solo "por defecto": el turno corre igual con el
 // modelo que el CLI tenga configurado, que es exactamente lo que pasaba antes
@@ -32,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -123,6 +128,10 @@ func build(agentID string) Catalog {
 		// combinaciones contradictorias. Se comprobó listando sus modelos
 		// reales.
 		return Catalog{Models: append([]Model{def}, antigravityModels()...)}
+	case "opencode":
+		// Sin niveles de esfuerzo: en OpenCode son variantes de cada modelo
+		// (`proveedor/modelo#variante`), no un valor común a todos.
+		return Catalog{Models: append([]Model{def}, opencodeModels()...)}
 	}
 	return Catalog{Models: []Model{def}}
 }
@@ -204,4 +213,106 @@ func antigravityModels() []Model {
 		models = append(models, Model{ID: slug, Label: strings.TrimSpace(label)})
 	}
 	return models
+}
+
+// opencodeModels lee el catálogo que el propio CLI descarga y lo recorta a los
+// proveedores en los que hay una sesión iniciada: el catálogo trae cientos de
+// proveedores, y ofrecer un modelo sin credenciales es ofrecer un turno que va
+// a fallar. Los modelos usados hace poco (`model.json`) van primero, en ese
+// orden, que es como el CLI los presenta.
+func opencodeModels() []Model {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	return opencodeModelsFrom(
+		filepath.Join(home, ".cache", "opencode", "models.json"),
+		filepath.Join(home, ".local", "share", "opencode", "auth.json"),
+		filepath.Join(home, ".local", "state", "opencode", "model.json"),
+	)
+}
+
+func opencodeModelsFrom(catalogPath, authPath, statePath string) []Model {
+	raw, err := os.ReadFile(catalogPath)
+	if err != nil {
+		return nil
+	}
+	var providers map[string]struct {
+		Name   string `json:"name"`
+		Models map[string]struct {
+			Name      string `json:"name"`
+			Reasoning bool   `json:"reasoning"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &providers); err != nil {
+		return nil
+	}
+
+	// Proveedores habilitados: los que tienen credenciales guardadas. Solo se
+	// leen las CLAVES del archivo; los valores son secretos y no se tocan.
+	enabled := map[string]bool{}
+	if raw, err := os.ReadFile(authPath); err == nil {
+		var auth map[string]json.RawMessage
+		if json.Unmarshal(raw, &auth) == nil {
+			for k := range auth {
+				enabled[k] = true
+			}
+		}
+	}
+	// Los recientes también cuentan como habilitados: un proveedor gratuito
+	// (OpenCode Zen) se usa sin credenciales guardadas.
+	var recent []string
+	if raw, err := os.ReadFile(statePath); err == nil {
+		var st struct {
+			Recent []struct {
+				ProviderID string `json:"providerID"`
+				ModelID    string `json:"modelID"`
+			} `json:"recent"`
+		}
+		if json.Unmarshal(raw, &st) == nil {
+			for _, r := range st.Recent {
+				if r.ProviderID != "" && r.ModelID != "" {
+					enabled[r.ProviderID] = true
+					recent = append(recent, r.ProviderID+"/"+r.ModelID)
+				}
+			}
+		}
+	}
+	if len(enabled) == 0 {
+		return nil
+	}
+
+	byID := map[string]Model{}
+	var ids []string
+	for pid, p := range providers {
+		if !enabled[pid] {
+			continue
+		}
+		pname := p.Name
+		if pname == "" {
+			pname = pid
+		}
+		for mid, m := range p.Models {
+			id := pid + "/" + mid
+			label := m.Name
+			if label == "" {
+				label = mid
+			}
+			byID[id] = Model{ID: id, Label: label, Description: pname}
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+
+	out := make([]Model, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range append(recent, ids...) {
+		m, ok := byID[id]
+		if !ok || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, m)
+	}
+	return out
 }

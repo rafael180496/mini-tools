@@ -245,7 +245,7 @@ export default {
         terminalTitle:
             'Abre una terminal de verdad en la raíz de este repositorio: podés hacer cd, correr los tests, un rebase interactivo o cualquier comando que la interfaz no cubra, sin salir de la app. Se puede anclar abajo, a la izquierda o a la derecha, y el intérprete (zsh, bash, PowerShell, Git Bash…) se elige en Configuración → Terminal.',
         agentsTitle:
-            'Asistentes de código sobre este repositorio: chatear con Claude Code, Codex o Antigravity, ver qué skills e instrucciones tiene preparadas el repo, qué servidores MCP ve cada agente, y cuántos tokens llevás gastados.',
+            'Asistentes de código sobre este repositorio: chatear con Claude Code, Codex, OpenCode o Antigravity, ver qué skills e instrucciones tiene preparadas el repo, qué servidores MCP ve cada agente, y cuántos tokens llevás gastados.',
         agents: 'Agentes',
     },
     viewMenu: {

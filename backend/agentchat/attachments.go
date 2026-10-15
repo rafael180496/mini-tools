@@ -126,6 +126,8 @@ func CapsFromLLM(c llm.AttachCaps) AttachmentCaps {
 //   - codex: imágenes con `-i`; el PDF no tiene camino documentado.
 //   - antigravity: imágenes por ruta en el prompt; con el PDF no hay nada
 //     verificado, así que se trata como no soportado en vez de prometerlo.
+//   - opencode: imágenes por ruta en el prompt (su herramienta de lectura las
+//     abre, verificado); el PDF no se probó, así que no se promete.
 func CLIAttachmentCaps(agentID string) AttachmentCaps {
 	switch agentID {
 	case "claude":
@@ -142,6 +144,11 @@ func CLIAttachmentCaps(agentID string) AttachmentCaps {
 		return withLimits(AttachmentCaps{Images: true, Known: false, Note: i18n.T(i18n.Msg{
 			ES: "Antigravity recibe las imágenes por su ruta (no está verificado que las abra) y los archivos de texto pegados en el mensaje. Los PDF no se soportan.",
 			EN: "Antigravity receives images by path (it is not verified that it opens them) and text files pasted into the message. PDFs are not supported.",
+		})})
+	case "opencode":
+		return withLimits(AttachmentCaps{Images: true, Known: true, Note: i18n.T(i18n.Msg{
+			ES: "OpenCode lee las imágenes por su ruta; los archivos de texto van pegados en el mensaje. No lee PDF.",
+			EN: "OpenCode reads images by path; text files are pasted into the message. It does not read PDFs.",
 		})})
 	}
 	return withLimits(AttachmentCaps{Images: false, Known: false, Note: i18n.T(i18n.Msg{

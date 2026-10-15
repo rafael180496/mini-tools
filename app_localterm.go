@@ -768,10 +768,14 @@ func (a *App) GitUpsertMCPServer(path string, in mcpconf.ServerInput) error {
 
 // agentForPath deduce el agente de la ruta, solo para la comprobación de
 // escritura: lo único que cambia el resultado es si es el config.toml de
-// Codex, que se reconoce por su extensión.
+// Codex, que se reconoce por su extensión, o un config de OpenCode, por su
+// nombre.
 func agentForPath(path string) string {
 	if strings.EqualFold(filepath.Ext(path), ".toml") {
 		return "codex"
+	}
+	if mcpconf.IsOpencodeConfig(path) {
+		return "opencode"
 	}
 	return ""
 }

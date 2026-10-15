@@ -162,7 +162,7 @@ func TestAdaptersIgnoreUnknownLines(t *testing.T) {
 // real, guardada en testdata/. Gemini CLI queda afuera hasta poder capturarlo:
 // la regla es la captura, no la reputación del CLI.
 func TestSupportsOnlyVerifiedAgents(t *testing.T) {
-	for _, id := range []string{"claude", "antigravity", "codex"} {
+	for _, id := range []string{"claude", "antigravity", "codex", "opencode"} {
 		if !Supports(id) {
 			t.Errorf("%s tiene adaptador verificado contra una captura real", id)
 		}

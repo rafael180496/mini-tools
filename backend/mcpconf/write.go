@@ -34,6 +34,8 @@ import (
 //     para leer y NO para escribir, porque escribir exige preservar
 //     exactamente lo desconocido. Traer un parser TOML completo es una
 //     dependencia nueva y esa decisión no se toma de costado (regla 12).
+//   - **No: `opencode.json(c)`.** Su formato es otro (`mcp`, no `mcpServers`)
+//     y admite comentarios, que una reescritura desde mapas borraría.
 //
 // Lo que no se puede escribir se informa como tal, así que la UI ofrece el
 // botón solo donde funciona en vez de fallar al tocarlo.
@@ -53,7 +55,7 @@ import (
 
 // Writable informa si este archivo se puede escribir desde la app.
 func Writable(f File) bool {
-	if f.Agent == "codex" {
+	if f.Agent == "codex" || f.Agent == "opencode" || IsOpencodeConfig(f.Path) {
 		return false
 	}
 	// El archivo de estado de Claude Code se reconoce por su nombre: es el

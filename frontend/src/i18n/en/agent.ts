@@ -326,7 +326,7 @@ const en: Messages<typeof es> = {
         closeTitle: 'Closes the panel. The conversation stays as it is: reopening it picks it up.',
         emptyNoAgent: 'No agent installed',
         emptyNoAgentHint:
-            'mini-tools uses the CLIs you already have (Claude Code, Codex or Antigravity) or a model server (Ollama or any OpenAI-compatible one). Install a CLI or add a server in Settings → AI and it will show up here.',
+            'mini-tools uses the CLIs you already have (Claude Code, Codex, OpenCode or Antigravity) or a model server (Ollama or any OpenAI-compatible one). Install a CLI or add a server in Settings → AI and it will show up here.',
         emptyPick: 'Pick an agent above to get started.',
         resizeTitle: 'Drag to resize the panel — it is remembered',
         renameTitle: 'Rename the conversation',
@@ -335,7 +335,7 @@ const en: Messages<typeof es> = {
         openChatTitle: (p) =>
             `Opens the chat with ${p.agent} (${p.shortcut}). There's one conversation per connection, server or note: switching modules switches threads, without restarting or cutting off the one you leave behind, even mid-answer.`,
         theAgent: 'the agent',
-        noCliTitle: 'No agentic CLI is installed. mini-tools uses Claude Code, Codex or Antigravity — install one to enable the chat.',
+        noCliTitle: 'No agentic CLI is installed. mini-tools uses Claude Code, Codex, OpenCode or Antigravity — install one to enable the chat.',
     },
     history: {
         untitled: 'Untitled',
@@ -569,11 +569,13 @@ const en: Messages<typeof es> = {
         claudeNote: 'It becomes available in all your projects. Check it with `claude mcp list`.',
         codexHow: 'Add this to ~/.codex/config.toml:',
         codexNote: "If the file doesn't exist, create it with that content.",
+        opencodeHow: 'Add this to ~/.config/opencode/opencode.json:',
+        opencodeNote: 'If you already have other servers, add only the "mini-tools" entry inside "mcp". `opencode mcp list` confirms it took.',
         antigravityHow: 'Add this to ~/.gemini/config/mcp_config.json:',
         antigravityNote: 'If you already have other servers, add only the "mini-tools" entry inside "mcpServers".',
         heading: 'AI access',
         server: 'MCP server',
-        intro: "Lets Claude Code, Codex or Antigravity **ask** mini-tools for data from their own conversation: search your notes, read a table's schema, look at the last lines of a terminal. **While it's off, nothing is listening** — no socket, no process, no resource use.",
+        intro: "Lets Claude Code, Codex, OpenCode or Antigravity **ask** mini-tools for data from their own conversation: search your notes, read a table's schema, look at the last lines of a terminal. **While it's off, nothing is listening** — no socket, no process, no resource use.",
         turnOffTitle: 'Turn the server off: the channel closes and the socket is deleted. Agents can no longer ask for data, instantly.',
         turnOnTitle:
             'Turn the server on. Opens a local channel (never a network port) so the agents you launch can ask for data. Turn it off whenever you want.',
@@ -591,7 +593,7 @@ const en: Messages<typeof es> = {
             'Revoke the permission: the tool disappears from its catalog and an in-flight call is rejected. Notes it already created stay as they are.',
         grantTitle:
             "Allow it to create new notes. It still can't modify or delete yours, and you'll see each new note in the access log below.",
-        howToTitle: 'The exact steps for Claude Code, Codex or Antigravity to see this server',
+        howToTitle: 'The exact steps for Claude Code, Codex, OpenCode or Antigravity to see this server',
         howTo: 'How to connect your agent to this server',
         steps: '3 steps',
         step1: 'Turn the server on with the switch above. **It has to stay on** while you use the agent: when off, nothing is listening.',

@@ -82,6 +82,8 @@ func Conversations(agentID, repoRoot string) ([]Conversation, error) {
 		return claudeConversations(home, repoRoot)
 	case "codex":
 		return codexConversations(home, repoRoot)
+	case "opencode":
+		return opencodeConversations(repoRoot)
 	default:
 		return nil, nil
 	}

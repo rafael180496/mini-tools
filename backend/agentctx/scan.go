@@ -86,7 +86,8 @@ var instructionFiles = []struct {
 	agents []string
 }{
 	{"CLAUDE.md", []string{"claude"}},
-	{"AGENTS.md", []string{"codex"}},
+	// AGENTS.md es el estándar compartido: lo leen Codex y OpenCode.
+	{"AGENTS.md", []string{"codex", "opencode"}},
 	// GEMINI.md lo lee Antigravity, que es como se llama ahora el CLI de
 	// Google: el archivo conservó el nombre viejo aunque el producto se
 	// renombró. Atribuirlo a un agente "gemini" que ya no existe en el

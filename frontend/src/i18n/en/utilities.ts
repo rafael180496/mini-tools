@@ -42,7 +42,7 @@ const en: Messages<typeof es> = {
         },
         aiChat: {
             name: 'AI Chat',
-            hint: 'talk to Claude, Codex, Antigravity or a local model, with history and search',
+            hint: 'talk to Claude, Codex, OpenCode, Antigravity or a local model, with history and search',
         },
         modelManager: {
             name: 'AI providers',
@@ -178,7 +178,7 @@ const en: Messages<typeof es> = {
             titleEditTitle: 'Type the new name. Enter saves, Esc cancels; leaving it empty changes nothing (up to 120 characters).',
             providerLabel: 'Provider',
             providerTitle:
-                "Who you talk to: an installed CLI (Claude Code, Codex, Antigravity) or a model provider (a server of your own or a cloud API). Between model providers you can switch mid-conversation: it stays the same one, and the new provider receives what was said as context. Switching to or from a CLI opens a new conversation, because a CLI's thread belongs to the CLI itself.",
+                "Who you talk to: an installed CLI (Claude Code, Codex, OpenCode, Antigravity) or a model provider (a server of your own or a cloud API). Between model providers you can switch mid-conversation: it stays the same one, and the new provider receives what was said as context. Switching to or from a CLI opens a new conversation, because a CLI's thread belongs to the CLI itself.",
             providerPlaceholder: 'Pick a provider',
             modelLabel: 'Model',
             modelTitle: "Model that answers from now on. The provider reports the list itself; «Default» uses whichever it has configured.",

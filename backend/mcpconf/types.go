@@ -1,6 +1,6 @@
 // Package mcpconf lee la configuración de servidores MCP de los CLIs
-// agénticos que esta app sabe abrir (Claude Code, Codex, Antigravity — antes
-// llamado Gemini CLI, de ahí que sus rutas cuelguen de ~/.gemini).
+// agénticos que esta app sabe abrir (Claude Code, Codex, OpenCode, Antigravity
+// — antes llamado Gemini CLI, de ahí que sus rutas cuelguen de ~/.gemini).
 //
 // Qué problema resuelve: MCP es cómo un agente gana herramientas —una base de
 // datos, un issue tracker, un navegador— y hoy cada CLI lo configura en su

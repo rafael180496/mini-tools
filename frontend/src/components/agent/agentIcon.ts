@@ -7,5 +7,6 @@ export function agentIconName(agentId: string): string {
     if (isModelServerAgent(agentId)) return 'dns'
     if (agentId === 'claude') return 'auto_awesome'
     if (agentId === 'codex') return 'terminal'
+    if (agentId === 'opencode') return 'code'
     return 'rocket_launch'
 }
