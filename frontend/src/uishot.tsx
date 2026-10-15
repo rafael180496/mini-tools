@@ -33,6 +33,7 @@ import './styles/globals.css'
 import {normalizeLang, setLanguage, t} from './i18n'
 import GitOutputNotice from './components/git/GitOutputNotice'
 import {requestOpenAiChat} from './lib/appBus'
+import {buildReviewBlocks} from './lib/gitReview'
 import {useEffect, useState} from 'react'
 
 // --- Bindings simulados ---------------------------------------------------
@@ -88,6 +89,49 @@ const chatCodeTurns = [
         role: 'agent',
         text: '## Qué encontré\n\nEl problema está en la **validación del token**: expira antes de que se renueve la sesión.\n\n- `accounts_controller.rb` valida contra `Time.now` sin margen\n- El refresh corre en un job que puede demorar hasta 30s\n\n> Con la carga de producción esa ventana se abre en casi todos los logins.\n\n```ruby\nreturn if token.expires_at > Time.now + GRACE\n```\n\nSi te parece, lo cambio y agrego el test.',
         tools: [{name: 'Read', input: '{"file_path":"app/controllers/api/v1/accounts_controller.rb"}', summary: 'app/controllers/api/v1/accounts_controller.rb', detail: ''}],
+    },
+]
+
+// Fase 6: tarjetas de herramientas de OpenCode (`shell`, `patch`, `todowrite`,
+// `webfetch`, `execute`, `list`) y un bloque ```diff con fondo por línea.
+const chatPolishTurns = [
+    {role: 'user', text: 'Corregí la validación del token y mostrame el cambio', tools: []},
+    {
+        role: 'agent',
+        text: [
+            'Listo. El margen de gracia ya se aplica antes de comparar la expiración:',
+            '',
+            '```diff',
+            'diff --git a/app/controllers/api/v1/accounts_controller.rb b/app/controllers/api/v1/accounts_controller.rb',
+            '--- a/app/controllers/api/v1/accounts_controller.rb',
+            '+++ b/app/controllers/api/v1/accounts_controller.rb',
+            '@@ -41,7 +41,8 @@ class Api::V1::AccountsController < ApplicationController',
+            '   def authenticate_token!',
+            '     token = current_session.token',
+            '-    return if token.expires_at > Time.now',
+            '+    # Margen para el refresh, que puede demorar hasta 30s.',
+            '+    return if token.expires_at > Time.now + GRACE',
+            ' ',
+            '     render_unauthorized',
+            '   end',
+            '```',
+            '',
+            'Un cambio de una línea no lleva números:',
+            '',
+            '```diff',
+            '-const ttl = 20',
+            '+const ttl = 30',
+            '```',
+        ].join('\n'),
+        tools: [
+            {name: 'todowrite', input: '{"todos":[{"content":"Revisar la validación","status":"completed","priority":"high"},{"content":"Aplicar el margen de gracia","status":"in_progress","priority":"high"},{"content":"Correr los tests","status":"pending","priority":"medium"}]}', summary: 'Aplicar el margen de gracia', detail: '1/3'},
+            {name: 'list', input: '{"path":"/repo/app/controllers/api/v1"}', summary: '/repo/app/controllers/api/v1', detail: ''},
+            {name: 'webfetch', input: '{"url":"https://guides.rubyonrails.org/security.html","format":"markdown"}', summary: 'https://guides.rubyonrails.org/security.html', detail: ''},
+            {name: 'patch', input: '{"patchText":"*** Begin Patch\\n*** Update File: app/controllers/api/v1/accounts_controller.rb\\n@@\\n-    return if token.expires_at > Time.now\\n+    return if token.expires_at > Time.now + GRACE\\n*** End Patch"}', summary: 'app/controllers/api/v1/accounts_controller.rb', detail: ''},
+            {name: 'execute', input: '{"code":"const grace = 30\\nreturn Date.now() + grace * 1000"}', summary: 'const grace = 30', detail: '2 líneas'},
+            {name: 'shell', input: '{"command":"bundle exec rspec spec/controllers/accounts_spec.rb","workdir":"/repo"}', summary: 'bundle exec rspec spec/controllers/accounts_spec.rb', detail: ''},
+            {name: 'Edit', input: '{"file_path":"app/models/token.rb"}', summary: 'app/models/token.rb', detail: ''},
+        ],
     },
 ]
 
@@ -162,6 +206,10 @@ const aiChatMessages: Record<string, unknown[]> = {
     // Adjuntos (fase 8): `attachments` trae nombre, tipo y tamaño de cada
     // archivo —nunca contenido ni rutas— y se dibuja como fichas sobre el
     // mensaje del usuario. Un mensaje puede ser solo archivos (sin texto).
+    // Vista `chatrecall`: la pregunta que precede al turno con el recuerdo del cerebro.
+    'chat-recall': [
+        {seq: 1, role: 'user', content: '¿Cómo resuelvo un bloqueo de filas en Oracle durante el batch de facturación?', toolName: '', createdAt: aiNow - 60},
+    ],
     'chat-att': [
         {seq: 1, role: 'user', content: 'No me deja entrar y sale este error. ¿Qué pasó? Te paso también el informe del trimestre por si ayuda.', toolName: '', attachments: [{name: 'captura-login.png', kind: 'image', size: 184320}, {name: 'informe-q3.pdf', kind: 'pdf', size: 1843200}], createdAt: aiNow - 900},
         {
@@ -421,6 +469,7 @@ const fixtures: Record<string, unknown> = {
         {id: 'claude', label: 'Claude Code', vendor: 'Anthropic', command: 'claude', defaultCommand: 'claude', path: '/usr/local/bin/claude', available: true, keyEnv: 'ANTHROPIC_API_KEY', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'codex', label: 'Codex CLI', vendor: 'OpenAI', command: 'codex', defaultCommand: 'codex', path: '/usr/local/bin/codex', available: true, keyEnv: 'OPENAI_API_KEY', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'antigravity', label: 'Antigravity CLI', vendor: 'Google', command: 'agy', defaultCommand: 'agy', path: '/usr/local/bin/agy', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
+        {id: 'opencode', label: 'OpenCode', vendor: 'SST', command: 'opencode', defaultCommand: 'opencode', path: '/Users/ana/.opencode/bin/opencode', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         // Servidores de modelos: id `llm:<id>`, sin comando, key ni login.
         {id: 'llm:ms1', label: 'Ollama local', vendor: 'Ollama', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'llm:ms2', label: 'vLLM en el servidor GPU', vendor: 'OpenAI-compatible', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
@@ -487,6 +536,16 @@ const fixtures: Record<string, unknown> = {
             source: '~/.gemini/antigravity-cli',
             plan: '',
             queryable: true,
+            measuredAt: '',
+            windows: [],
+        },
+        {
+            agent: 'opencode',
+            known: false,
+            note: 'OpenCode no expone una cuota ni un saldo, ni en el disco ni por línea de comandos: el límite, si existe, lo lleva cada proveedor (se mira en su consola). Lo medido —tokens y costo— está en el consumo.',
+            source: '~/.local/share/opencode',
+            plan: '',
+            queryable: false,
             measuredAt: '',
             windows: [],
         },
@@ -591,7 +650,7 @@ const fixtures: Record<string, unknown> = {
     // donde se ve lo nuevo — la consulta adjunta y la barra de cada bloque de
     // SQL con "Al editor".
     AgentChatHistory: (_agentID: string, conversationID: string) =>
-        conversationID === 'conv-db' ? chatDbTurns : chatCodeTurns,
+        conversationID === 'conv-db' ? chatDbTurns : conversationID === 'conv-polish' ? chatPolishTurns : chatCodeTurns,
     GitAgentContext: {
         skills: [{name: 'chatwoot-dev', description: 'Chatwoot full-stack development workflow. Use when: creating a new feature, adding an API endpoint.', path: '.claude/skills/chatwoot-dev/SKILL.md', scope: 'repo'}],
         agents: [],
@@ -605,6 +664,7 @@ const fixtures: Record<string, unknown> = {
             {file: 'GEMINI.md', path: 'GEMINI.md', present: false, size: 0, agents: ['antigravity']},
         ],
     },
+    GitCreateInstructionPointer: 'CLAUDE.md',
     GitMCPConfig: {
         servers: [
             {name: 'codegraph', agent: 'claude', scope: 'project', transport: 'stdio', command: 'codegraph', args: ['mcp'], url: '', envKeys: [], source: '/repo/.mcp.json'},
@@ -620,11 +680,13 @@ const fixtures: Record<string, unknown> = {
         agents: [
             {agent: 'claude', available: true, note: '', source: '', all: {input: 37210, output: 8646915, cacheWrite: 60985113, cacheRead: 3604530546, total: 3674199784, messages: 9309}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 323200000, messages: 800}, firstDay: '2026-07-15', lastDay: '2026-08-14', byModel: [{key: 'claude-opus-5', total: 2055073573, percent: 60.1, messages: 5119}, {key: 'claude-opus-4-8', total: 834401643, percent: 21.5, messages: 1789}], byDay: [], cacheHitPercent: 98.4, activity: null},
             {agent: 'antigravity', available: false, note: 'El CLI no deja los tokens en disco: se muestra la actividad registrada.', source: '~/.gemini', all: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '', lastDay: '', byModel: [], byDay: [], cacheHitPercent: 0, activity: {conversations: 1, steps: 4, repoConversations: 0, repoSteps: 0, lastUsed: '2026-08-14'}},
+            {agent: 'opencode', available: true, note: '', source: 'opencode stats --days 30', all: {input: 169865, output: 86940, cacheWrite: 699489, cacheRead: 13768678, total: 14724972, messages: 270}, repo: {input: 17811, output: 2354, cacheWrite: 0, cacheRead: 52032, total: 72197, messages: 7}, firstDay: '2026-09-23', lastDay: '2026-10-15', byModel: [{key: 'opencode-go/gpt-6-luna', total: 14356784, percent: 97.5, messages: 228}, {key: 'opencode/nemotron-3.5-super-vl-free', total: 343960, percent: 2.3, messages: 36}, {key: 'opencode-go/mimo-v2.5', total: 24228, percent: 0.2, messages: 3}], byDay: [], cacheHitPercent: 94.1, activity: null},
         ],
     },
     AgentPlans: [
         {agent: 'claude', known: true, label: 'Claude Max 5x', detail: 'claude_max', note: ''},
         {agent: 'codex', known: true, label: 'Free', detail: 'chatgpt', note: ''},
+        {agent: 'opencode', known: true, label: 'OpenCode Go', detail: 'Proveedores con sesión iniciada: OpenCode Go. OpenCode no publica un plan: depende de cada proveedor.', note: ''},
     ],
     ListAgentChats: [
         {id: 'chat-1', repoId: 'r1', agentId: 'claude', title: 'Potenciar el editor Git con CodeMirror y agentes', conversationId: 'conv-1', createdAt: 1786700000, updatedAt: 1786741440, model: 'opus', effort: 'high', mode: ''},
@@ -1189,6 +1251,7 @@ const fixtures: Record<string, unknown> = {
             {agent: 'claude', available: true, note: '', source: '', all: {input: 37210, output: 8646915, cacheWrite: 60985113, cacheRead: 3604530546, total: 3674199784, messages: 9309}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '2026-07-15', lastDay: '2026-08-14', byModel: [{key: 'claude-opus-5', total: 2055073573, percent: 60.1, messages: 5119}, {key: 'claude-opus-4-8', total: 834401643, percent: 21.5, messages: 1789}, {key: 'claude-haiku-4-5', total: 384744568, percent: 18.4, messages: 2401}], byDay: [], cacheHitPercent: 98.4, activity: null},
             {agent: 'codex', available: true, note: '', source: '', all: {input: 412300, output: 1204880, cacheWrite: 0, cacheRead: 8221400, total: 9838580, messages: 412}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '2026-07-28', lastDay: '2026-08-15', byModel: [{key: 'gpt-5-codex', total: 9838580, percent: 100, messages: 412}], byDay: [], cacheHitPercent: 83.5, activity: null},
             {agent: 'antigravity', available: false, note: 'El CLI no deja los tokens en disco: se muestra la actividad registrada.', source: '~/.gemini', all: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '', lastDay: '', byModel: [], byDay: [], cacheHitPercent: 0, activity: {conversations: 34, steps: 291, repoConversations: 0, repoSteps: 0, lastUsed: 'hace 2 h'}},
+            {agent: 'opencode', available: true, note: '', source: 'opencode stats --days 30', all: {input: 169865, output: 86940, cacheWrite: 699489, cacheRead: 13768678, total: 14724972, messages: 270}, repo: {input: 17811, output: 2354, cacheWrite: 0, cacheRead: 52032, total: 72197, messages: 7}, firstDay: '2026-09-23', lastDay: '2026-10-15', byModel: [{key: 'opencode-go/gpt-6-luna', total: 14356784, percent: 97.5, messages: 228}, {key: 'opencode/nemotron-3.5-super-vl-free', total: 343960, percent: 2.3, messages: 36}, {key: 'opencode-go/mimo-v2.5', total: 24228, percent: 0.2, messages: 3}], byDay: [], cacheHitPercent: 94.1, activity: null},
         ],
     },
 
@@ -1255,6 +1318,16 @@ const fixtures: Record<string, unknown> = {
     })(),
 
     // --- Servidor MCP ------------------------------------------------------
+    // Uno de cada estado: Claude Code conectado, Antigravity apuntando a otro
+    // ejecutable, Codex instalado pero que se conecta copiando, OpenCode sin
+    // instalar.
+    MCPConnections: [
+        {agent: 'claude', label: 'Claude Code', installed: true, connected: true, stale: false, source: '/Users/tu-usuario/.claude.json', canConnect: true},
+        {agent: 'codex', label: 'Codex CLI', installed: true, connected: false, stale: false, source: '', canConnect: false},
+        {agent: 'opencode', label: 'OpenCode', installed: false, connected: false, stale: false, source: '', canConnect: false},
+        {agent: 'antigravity', label: 'Antigravity CLI', installed: true, connected: true, stale: true, source: '/Users/tu-usuario/.gemini/config/mcp_config.json', canConnect: true},
+    ],
+    ConnectMCP: null,
     MCPServerStatus: {
         enabled: true,
         socketPath: '/Users/tu-usuario/Library/Application Support/mini-tools/mcp.sock',
@@ -1582,6 +1655,18 @@ anyWindow.runtime = {
             setTimeout(() => cb(APPROVAL_RISKY), 2600)
             return () => {}
         }
+        if (name === 'chat-recall' && new URLSearchParams(location.search).get('view') === 'chatrecall') {
+            // El turno del agente con el recuerdo del cerebro en el primer start.
+            const recalled = ['_Índice SGC', 'Bloqueos de fila en Oracle', 'Batch de facturación - orden de módulos', 'Sesiones bloqueantes: cómo matarlas sin perder el lote']
+            const text =
+                uiLang === 'es'
+                    ? 'Según tus notas, el bloqueo viene de la sesión que quedó con el `UPDATE` sin confirmar. Buscá al bloqueante con `V$SESSION.BLOCKING_SESSION` y, si es del propio batch, esperá al `COMMIT` del lote antes de matarla.'
+                    : 'According to your notes, the lock comes from the session that left its `UPDATE` uncommitted. Find the blocker with `V$SESSION.BLOCKING_SESSION` and, if it belongs to the batch itself, wait for the batch `COMMIT` before killing it.'
+            setTimeout(() => cb({kind: 'start', text: '', model: 'claude-opus-5-5', tools: ['Read', 'Bash'], mcpServers: ['mini-tools'], recalled, seq: 1}), 800)
+            setTimeout(() => cb({kind: 'text', text, seq: 2}), 900)
+            setTimeout(() => cb({kind: 'done', text: '', usage: {input: 3120, output: 84, cacheRead: 0, thinking: 0, total: 3204, costUsd: 0.0094}, seq: 3}), 1000)
+            return () => {}
+        }
         if (name.startsWith('docker-logs-')) {
             setTimeout(() => cb({lines: DOCKER_LOGS}), 300)
             return () => {}
@@ -1836,6 +1921,16 @@ const views_chatdb = (
     />
 )
 
+const views_chatpolish = (
+    <AgentChat
+        sessionId="chat-polish"
+        context={{kind: 'git', id: 'r1', label: 'mini-tools'}}
+        agentId="opencode"
+        agentLabel="OpenCode"
+        resumeConversationId="conv-polish"
+    />
+)
+
 // Las filas de la grilla editable. Son las mismas columnas que declara la
 // fixture de ResultEditTarget: si no coincidieran, la captura mostraría una
 // grilla que la app real no permitiría editar.
@@ -1902,6 +1997,63 @@ const pullOutput = [
     ' create mode 100644 app/controllers/api/v1/accounts/calls_controller_1.rb',
     ' delete mode 100644 app/controllers/api/v1/accounts/forms_controller_3.rb',
 ].join('\n')
+
+// «Validar con otro»: el chat del revisor recién sembrado con las dos fichas
+// (lo que hizo el primer agente y los cambios sin commitear). Las fichas salen
+// de la misma función que usa el módulo Git, con un GitReviewContext de ejemplo.
+function ChatReviewShot() {
+    const es = uiLang === 'es'
+    const [seed] = useState(() => {
+        const diff = [
+            es ? '# Preparado (staged)' : '# Staged',
+            'diff --git a/app_gitreview.go b/app_gitreview.go',
+            'new file mode 100644',
+            '--- /dev/null',
+            '+++ b/app_gitreview.go',
+            '@@ -0,0 +1,6 @@',
+            '+func (a *App) GitReviewContext(repoID string) (ReviewContext, error) {',
+            '+\tpath, err := a.gitRepo(repoID)',
+            '+\tif err != nil {',
+            '+\t\treturn ReviewContext{}, err',
+            '+\t}',
+            '+\treturn rc, nil',
+            '',
+            es ? '# Sin preparar (árbol de trabajo)' : '# Unstaged (working tree)',
+            'diff --git a/frontend/src/components/git/GitRepoTab.tsx b/frontend/src/components/git/GitRepoTab.tsx',
+            '--- a/frontend/src/components/git/GitRepoTab.tsx',
+            '+++ b/frontend/src/components/git/GitRepoTab.tsx',
+            '@@ -3655,7 +3655,4 @@',
+            '-    askAgent(other.id, g.review.prompt, g.review.about)',
+            '+    void validateWithAnother(other.id, lastTurn)',
+        ].join('\n')
+        const blocks = buildReviewBlocks(
+            {
+                agentLabel: 'Claude Code',
+                text: es
+                    ? 'Agregué `GitReviewContext` en `app_gitreview.go`: arma el diff preparado y el sin preparar con un tope de 48 KB, y lista los archivos sin seguimiento por nombre. Conecté el botón «Validar con otro» para que el revisor reciba el resumen y el diff como fichas.'
+                    : 'I added `GitReviewContext` in `app_gitreview.go`: it builds the staged and unstaged diff with a 48 KB cap, and lists untracked files by name. I wired the "Validate with another" button so the reviewer gets the summary and the diff as cards.',
+                tools: ['Read: app_gitagent.go', 'Write: app_gitreview.go', 'Edit: frontend/src/components/git/GitRepoTab.tsx', 'Bash: go build ./...'],
+            },
+            {
+                files: ['A  app_gitreview.go', ' M frontend/src/components/git/GitRepoTab.tsx', '?? app_gitreview_test.go'],
+                diff,
+                truncated: false,
+                insertions: 8,
+                deletions: 1,
+            },
+        )
+        return {text: t().git.tab.review.prompt, token: 1, attachments: blocks}
+    })
+    return (
+        <AgentChat
+            sessionId="chat-review"
+            context={{kind: 'git', id: 'r1', label: 'mini-tools'}}
+            agentId="codex"
+            agentLabel="Codex"
+            seed={seed}
+        />
+    )
+}
 
 const views: Record<string, React.ReactNode> = {
     // pullnoticeopen: la misma, con la lista desplegada.
@@ -2052,6 +2204,19 @@ const views: Record<string, React.ReactNode> = {
     agents: <GitAgentPanel repoId="r1" onOpenFile={() => {}} onAskAgent={() => {}} defaultAgent="" onSetDefaultAgent={() => {}} />,
     chat: views_chat,
     chatdb: views_chatdb,
+    chatpolish: views_chatpolish,
+    // El turno del agente con «Recordó N notas»: el primer start trae los títulos.
+    chatreview: <ChatReviewShot />,
+    chatreviewopen: <ChatReviewShot />,
+    chatrecall: (
+        <AgentChat
+            sessionId="chat-recall"
+            context={{kind: 'git', id: 'r1', label: 'mini-tools'}}
+            agentId="claude"
+            agentLabel="Claude Code"
+            resumeChatId="chat-recall"
+        />
+    ),
     // La base de conocimiento: el editor con el Markdown ya formateado, la
     // barra de formato, los enlaces entre notas y el panel lateral.
     http: views_http,
@@ -2757,6 +2922,10 @@ if (view.startsWith('aichatfilters')) {
     if (view !== 'aichatfilters' && view !== 'aichatfiltersmany') {
         autoClick(() => document.querySelector<HTMLButtonElement>('[data-filters-toggle]') ?? undefined)
     }
+}
+if (view === 'chatreviewopen') {
+    // Despliega la ficha del diff (la segunda): es lo que se lee antes de enviar.
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title.includes(t().git.tab.review.changesLabel)))
 }
 if (view === 'aichatrename') {
     autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-1"]') ?? undefined)

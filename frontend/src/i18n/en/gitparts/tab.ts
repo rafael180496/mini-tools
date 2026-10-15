@@ -429,8 +429,20 @@ const en: Messages<typeof es> = {
     },
     review: {
         noOther: 'No other assistant with chat is installed to review.',
-        prompt: "Review this repository's uncommitted changes (git diff) as if you were a peer: tell me what's wrong, what's missing and what you wouldn't do this way. ",
+        prompt:
+            "Review another agent's work in this repository. I'm attaching what it did (its last reply and the tools it used) and the uncommitted changes (diff): you don't need to run git. Review it as a peer: tell me what's wrong, what's missing and what you wouldn't do this way, with file and line references. ",
         about: 'cross review',
+        workLabel: (p) => `What ${p.agent} did`,
+        workAnswer: 'Last reply',
+        workTools: 'Tools used',
+        andMore: (p) => `… and ${p.n} more`,
+        workEmpty: '(it wrote no text in its last reply)',
+        changesLabel: 'Uncommitted changes',
+        changesFiles: (p) => `Changed files (${p.n}):`,
+        changesDiff: 'Diff:',
+        changesNoPatch: '(only untracked files: they have no diff, so they are listed by name)',
+        changesTruncated: (p) =>
+            `WARNING: the diff was cut at ${p.kb} KB, so it is NOT complete. The files above are all listed: read the missing ones.`,
     },
     pending: {
         before: 'Prompt ready about ',

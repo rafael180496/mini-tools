@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react'
-import {MCPServerStatus, SetMCPNotesWrite, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
+import {ConnectMCP, MCPConnections, MCPServerStatus, SetMCPNotesWrite, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import Toggle from './Toggle'
@@ -23,41 +23,111 @@ function toolLabel(t: Dict, tool: string): string {
 // su configuración a su manera — es la misma razón por la que la solapa Agentes
 // tiene que leer cinco archivos para responder "qué MCP ve este agente".
 //
-// Se ofrecen para COPIAR y no se escriben solas. Dos motivos: `~/.claude.json`
-// no es un archivo de configuración sino el archivo de ESTADO de Claude Code
-// —historial por proyecto y mucho más, típicamente enorme— y reescribirlo
-// entero para agregar una clave es un riesgo desproporcionado; y el lector de
-// TOML de esta app está acotado a lo que necesita leer, así que no alcanza para
-// escribir el `config.toml` de Codex preservando lo que no entiende.
+// Se ofrecen siempre para COPIAR, y además el backend conecta solo donde es
+// seguro (`ConnectMCP`): Claude Code con su propio comando —`~/.claude.json` es
+// su archivo de ESTADO y no se reescribe desde afuera— y Antigravity editando
+// solo su entrada. Codex (TOML) y OpenCode (JSONC) no: reescribirlos perdería lo
+// que esta app no entiende, así que ahí el fragmento es la única vía.
 function connectSnippets(exe: string, t: Dict) {
     const a = t.agent.aiAccess
     const path = exe || a.examplePath
     return [
         {
+            id: 'claude',
             agent: 'Claude Code',
             how: a.claudeHow,
             code: `claude mcp add mini-tools -- "${path}" --mcp`,
             note: a.claudeNote,
         },
         {
+            id: 'codex',
             agent: 'Codex CLI',
             how: a.codexHow,
             code: `[mcp_servers.mini-tools]\ncommand = "${path}"\nargs = ["--mcp"]`,
             note: a.codexNote,
         },
         {
+            id: 'opencode',
             agent: 'OpenCode',
             how: a.opencodeHow,
             code: `{\n  "mcp": {\n    "mini-tools": {\n      "type": "local",\n      "command": ["${path}", "--mcp"]\n    }\n  }\n}`,
             note: a.opencodeNote,
         },
         {
+            id: 'antigravity',
             agent: 'Antigravity CLI',
             how: a.antigravityHow,
             code: `{\n  "mcpServers": {\n    "mini-tools": {\n      "command": "${path}",\n      "args": ["--mcp"]\n    }\n  }\n}`,
             note: a.antigravityNote,
         },
     ]
+}
+
+// Estado de mini-tools en UN agente y, donde la app puede escribirlo sola, el
+// botón para conectarlo. Un agente conectado y al día no lleva botón: no hay
+// nada que hacer.
+function ConnectionRow({
+    conn,
+    busy,
+    disabled,
+    onConnect,
+}: {
+    conn: main.MCPConnection
+    busy: boolean
+    disabled: boolean
+    onConnect: () => void
+}) {
+    const a = useT().agent.aiAccess
+    let icon = 'link_off'
+    let tone = 'text-on-surface-variant'
+    let label = a.statusNotConnected
+    let title = conn.canConnect || !conn.installed ? a.notConnectedTitle : a.manualTitle
+    if (!conn.installed && !conn.connected) {
+        icon = 'block'
+        tone = 'text-on-surface-variant/70'
+        label = a.statusNotInstalled
+        title = a.notInstalledTitle
+    } else if (conn.connected && conn.stale) {
+        icon = 'warning'
+        tone = 'text-tertiary'
+        label = a.statusStale
+        title = a.staleTitle({source: conn.source})
+    } else if (conn.connected) {
+        icon = 'check_circle'
+        tone = 'text-secondary'
+        label = a.statusConnected
+        title = a.connectedTitle({source: conn.source})
+    }
+    const canAct = conn.canConnect && conn.installed && (!conn.connected || conn.stale)
+    return (
+        <div className="mb-1 flex items-center gap-1.5">
+            <span className={`flex min-w-0 items-center gap-1 ${tone}`} title={title}>
+                <Icon name={icon} size={13} className="shrink-0" />
+                <span className="truncate">{label}</span>
+            </span>
+            {canAct && (
+                <button
+                    onClick={onConnect}
+                    disabled={disabled}
+                    title={
+                        busy
+                            ? a.connectBusyTitle
+                            : conn.stale
+                              ? a.reconnectTitle({agent: conn.label})
+                              : a.connectTitle({agent: conn.label})
+                    }
+                    className="ml-auto flex shrink-0 items-center gap-1 rounded bg-secondary px-2 py-0.5 font-medium text-on-secondary hover:opacity-90 disabled:opacity-40"
+                >
+                    {busy ? (
+                        <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-on-secondary" />
+                    ) : (
+                        <Icon name={conn.stale ? 'sync' : 'add_link'} size={12} />
+                    )}
+                    {busy ? a.connecting : conn.stale ? a.reconnect : a.connect}
+                </button>
+            )}
+        </div>
+    )
 }
 
 export default function AiAccessPanel() {
@@ -68,6 +138,9 @@ export default function AiAccessPanel() {
     const [error, setError] = useState('')
     const [howTo, setHowTo] = useState(false)
     const [copied, setCopied] = useState('')
+    const [connections, setConnections] = useState<main.MCPConnection[]>([])
+    const [connecting, setConnecting] = useState('')
+    const [connectedMsg, setConnectedMsg] = useState('')
 
     const refresh = useCallback(() => {
         MCPServerStatus()
@@ -76,6 +149,29 @@ export default function AiAccessPanel() {
     }, [])
 
     useEffect(refresh, [refresh])
+
+    // Estado por agente. Se lee al abrir la guía y después de cada Conectar; no
+    // se sondea: cambia solo cuando alguien toca la configuración de un CLI.
+    const refreshConnections = useCallback(() => {
+        MCPConnections()
+            .then((list) => setConnections(list ?? []))
+            .catch((e) => setError(String(e)))
+    }, [])
+
+    useEffect(refreshConnections, [refreshConnections])
+
+    const connect = (c: main.MCPConnection) => {
+        setConnecting(c.agent)
+        setError('')
+        setConnectedMsg('')
+        ConnectMCP(c.agent)
+            .then(() => setConnectedMsg(a.connectedOk({agent: c.label})))
+            .catch((e) => setError(String(e)))
+            .finally(() => {
+                setConnecting('')
+                refreshConnections()
+            })
+    }
 
     // Mientras está encendido se refresca solo, para que el registro se vea
     // llenarse. **Apagado no hay ningún intervalo corriendo**: sería gastar
@@ -105,6 +201,11 @@ export default function AiAccessPanel() {
             .catch((e) => setError(String(e)))
             .finally(() => setBusy(false))
     }
+
+    const snippets = connectSnippets(status?.executable ?? '', t)
+    // Conectados y apuntando a ESTE ejecutable: uno desactualizado no cuenta,
+    // porque el agente lanzaría otro binario.
+    const upToDate = connections.filter((c) => c.connected && !c.stale).length
 
     return (
         <section className="flex flex-col gap-2">
@@ -211,18 +312,29 @@ export default function AiAccessPanel() {
                         <Icon name={howTo ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0" />
                         <Icon name="help" size={13} className="shrink-0 text-primary" />
                         <span className="font-medium">{a.howTo}</span>
-                        <span className="ml-auto text-on-surface-variant/70">{a.steps}</span>
+                        <span className="ml-auto text-on-surface-variant/70">
+                            {upToDate > 0 ? a.connectedCount({n: upToDate, total: snippets.length}) : a.steps}
+                        </span>
                     </button>
 
                     {howTo && (
                         <div className="flex flex-col gap-2 border-t border-outline-variant p-2 text-ui-11">
                             <ol className="ml-4 list-decimal space-y-1 text-on-surface-variant">
                                 <li>{rich(a.step1, (s) => <strong className="text-on-surface">{s}</strong>)}</li>
-                                <li>{a.step2}</li>
+                                <li>{rich(a.step2, (s) => <strong className="text-on-surface">{s}</strong>)}</li>
                                 <li>{rich(a.step3)}</li>
                             </ol>
 
-                            {connectSnippets(status?.executable ?? '', t).map((s2) => (
+                            {connectedMsg && (
+                                <p className="flex items-center gap-1.5 rounded bg-secondary-container/40 px-2 py-1 text-on-surface">
+                                    <Icon name="check_circle" size={13} className="shrink-0 text-secondary" />
+                                    {connectedMsg}
+                                </p>
+                            )}
+
+                            {snippets.map((s2) => {
+                                const conn = connections.find((c) => c.agent === s2.id)
+                                return (
                                 <div key={s2.agent} className="rounded border border-outline-variant bg-surface p-1.5">
                                     <p className="mb-1 flex items-center gap-1.5">
                                         <Icon name="smart_toy" size={12} className="shrink-0 text-primary" />
@@ -240,12 +352,21 @@ export default function AiAccessPanel() {
                                             {copied === s2.agent ? a.copied : a.copy}
                                         </button>
                                     </p>
+                                    {conn && (
+                                        <ConnectionRow
+                                            conn={conn}
+                                            busy={connecting === conn.agent}
+                                            disabled={!!connecting}
+                                            onConnect={() => connect(conn)}
+                                        />
+                                    )}
                                     <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-10 text-on-surface">
                                         {s2.code}
                                     </pre>
                                     <p className="mt-1 text-ui-10 text-on-surface-variant/70">{rich(s2.note)}</p>
                                 </div>
-                            ))}
+                                )
+                            })}
 
                             <p className="text-ui-10 leading-4 text-on-surface-variant/70">
                                 {rich(a.copyNotWrite)}

@@ -274,6 +274,10 @@ export function CompleteSQL(arg1) {
   return window['go']['main']['App']['CompleteSQL'](arg1);
 }
 
+export function ConnectMCP(arg1) {
+  return window['go']['main']['App']['ConnectMCP'](arg1);
+}
+
 export function ConnectionEnvironment(arg1) {
   return window['go']['main']['App']['ConnectionEnvironment'](arg1);
 }
@@ -662,6 +666,10 @@ export function GitCreateBranch(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitCreateBranch'](arg1, arg2, arg3, arg4);
 }
 
+export function GitCreateInstructionPointer(arg1, arg2) {
+  return window['go']['main']['App']['GitCreateInstructionPointer'](arg1, arg2);
+}
+
 export function GitCreateTag(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitCreateTag'](arg1, arg2, arg3, arg4);
 }
@@ -880,6 +888,10 @@ export function GitResolveConflictFile(arg1, arg2, arg3) {
 
 export function GitRevert(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitRevert'](arg1, arg2, arg3);
+}
+
+export function GitReviewContext(arg1) {
+  return window['go']['main']['App']['GitReviewContext'](arg1);
 }
 
 export function GitSaveCredential(arg1, arg2, arg3) {
@@ -1312,6 +1324,10 @@ export function ListTools() {
 
 export function LocalShellLabel(arg1) {
   return window['go']['main']['App']['LocalShellLabel'](arg1);
+}
+
+export function MCPConnections() {
+  return window['go']['main']['App']['MCPConnections']();
 }
 
 export function MCPServerStatus() {

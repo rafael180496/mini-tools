@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.1 |
-| Archivo | `mini-tools-v2.10.1.dmg` |
-| Tamaño | ~27 MB (26,9 MB; 26 896 149 bytes) — el binario suelto dentro del `.dmg` pesa 72,6 MB, bajo el techo de 100 MB |
-| SHA-256 | `85348831fed68c00d2ccd92f33a8205afc8942232767816bfa640f8c02af0dcc` |
+| Versión | 2.10.2 |
+| Archivo | `mini-tools-v2.10.2.dmg` |
+| Tamaño | ~27 MB (27,0 MB; 26 984 237 bytes) — el binario suelto dentro del `.dmg` pesa 72,8 MB (72 838 272 bytes), bajo el techo de 100 MB |
+| SHA-256 | `d8e7f2d2cb04848e811cd01c1ac853473401da05e86db7fde8c40d9ad7275ee4` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v2.10.1.dmg
+shasum -a 256 mini-tools-v2.10.2.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -33,14 +33,12 @@ shasum -a 256 mini-tools-v2.10.1.dmg
 
 ## Compatibilidad del sistema
 
-- **Esta versión agrega la migración 65 del vault** (conversaciones de IA
-  persistentes y fijadas, y las pestañas de Chat de IA que se reabren al
-  arrancar). Es **aditiva**: un `vault.db` de la 2.10.0 migra solo la primera
-  vez que se abre, sin pasos manuales. **No hay rollback**: una vez migrado, el
-  vault no se puede abrir con la 2.10.0 ni con una anterior; si pensás volver
-  atrás conviene hacer antes un backup (Configuración → Backup del vault). Para
-  pasar desde la 2.9.0 o anterior, el vault migra solo (las migraciones 57 a 65
-  son aditivas).
+- **Esta versión no agrega migraciones del vault.** El esquema sigue en la
+  migración 65 (la de la 2.10.1), así que un `vault.db` de la 2.10.1 abre tal
+  cual y también se puede volver a la 2.10.1 sin tocarlo. Para pasar desde la
+  2.10.0 o anterior, el vault migra solo la primera vez (las migraciones 57 a 65
+  son aditivas y **no tienen rollback**: conviene un backup antes, en
+  Configuración → Backup del vault).
 - **Solo Apple Silicon (M1/M2/M3/M4 — arquitectura `arm64`).** Este build
   se compiló en un Mac `arm64` con `wails build` sin el flag de binario
   universal, así que **no corre en Mac Intel** (`x86_64`) ni bajo Rosetta —
@@ -62,7 +60,7 @@ shasum -a 256 mini-tools-v2.10.1.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v2.10.1.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v2.10.2.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:

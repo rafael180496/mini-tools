@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.10.1. Lo que está acá existe en ese binario.">2.10.1 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.2. Lo que está acá existe en ese binario.">2.10.2 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -310,6 +310,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   </div>
   <a class="tlink" href="https://github.com/rafael180496/mini-tools/releases">Descargas</a>
   <a class="tlink" href="https://github.com/rafael180496/mini-tools">Código</a>
+  <a class="tlink" href="https://www.patreon.com/16966547/join" title="Apoyá mini-tools con una suscripción mensual en Patreon, o con un café">Apoyar</a>
   <a class="iconbtn" id="langsw" href="../index.html" data-base="../index.html" hreflang="en" lang="en" title="Read this help in English">English</a>
   <button class="iconbtn" id="tgl" title="Cambiar entre tema claro y oscuro">Tema</button>
 </div>
@@ -462,6 +463,16 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <a class="btn" href="https://github.com/rafael180496/mini-tools/releases">Descargar</a>
     <a class="btn ghost" href="https://github.com/rafael180496/mini-tools">Ver el código</a>
     <a class="btn ghost" href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a>
+  </div>
+
+  <h2 id="introduccion--apoyar">Apoyá el proyecto</h2>
+  <p>mini-tools es gratis, de código abierto y sin telemetría, y va a seguir así. Si te ahorra trabajo y querés que siga creciendo,
+  podés apoyarlo con un aporte único en <strong>Buy Me a Coffee</strong> o con una suscripción mensual en <strong>Patreon</strong>.
+  Los dos están también a un clic desde la app, en el pie de <strong>Configuración</strong>.</p>
+  <div class="cta">
+    <a class="btn" href="https://buymeacoffee.com/rhidalgo">☕ Invitame un café</a>
+    <a class="btn ghost" href="https://www.patreon.com/16966547/join">Suscribite en Patreon</a>
+    <a class="btn ghost" href="https://www.patreon.com/cw/TotoLab2026">Página de Patreon</a>
   </div>
 </article>
 
@@ -1832,6 +1843,9 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   con márgenes vacíos. Para que se siga leyendo bien en una ventana grande, solo el <em>texto corrido</em> de una respuesta (párrafos, listas,
   citas) se topa en unos <strong>100 caracteres por línea</strong>; los <strong>bloques de código y las tablas</strong> usan el ancho entero, y una
   respuesta corta ocupa lo que mide en vez de estirarse.</p>
+  <p>Los <strong>bloques de código</strong> de una respuesta se pintan con los colores del editor (según la etiqueta que puso el modelo: <code>sql</code>, <code>ts</code>,
+  <code>bash</code>…), y la cabecera dice el lenguaje por su nombre. Desde cuatro líneas llevan <strong>numeración</strong>, que no se copia al seleccionar; los de más de
+  30 líneas arrancan plegados con <em>Ver N líneas más</em>. Un bloque <code>diff</code> pinta de verde lo agregado y de rojo lo quitado.</p>
   <ul>
     <li><strong>Historial ajustable</strong> — arrastrá el borde derecho de la lista para ensancharla (aparece el ancho en píxeles mientras arrastrás).
     Con el foco en el borde, las flechas <kbd>←</kbd> <kbd>→</kbd> lo mueven (con <kbd>Shift</kbd>, más rápido; <kbd>Inicio</kbd> y <kbd>Fin</kbd> van al mínimo y al máximo) y
@@ -2209,6 +2223,14 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
   </table></div>
 
+  <h2 id="ia-chat--validar">Validar con otro agente</h2>
+  <p>En el chat de un repositorio, <strong>Validar con otro</strong> abre un chat con otro agente para que revise lo que hizo el primero.
+  El revisor recibe dos fichas adjuntas: <em>Lo que hizo &lt;agente&gt;</em> (su última respuesta y las herramientas que usó) y
+  <em>Cambios sin commitear</em> (los archivos con cambios, también los nuevos sin seguimiento, y el diff preparado más el sin preparar).
+  Se pueden desplegar para leerlas y quitar con la ✕ antes de enviar: nada viaja a escondidas. Si el diff supera 48&nbsp;KB se recorta y la
+  ficha lo avisa; si no hay cambios, solo se adjunta lo que hizo el primer agente. El prompt le pide revisar como un par: qué está mal,
+  qué falta y qué no haría así, con referencias a archivo y línea.</p>
+
   <h2 id="ia-chat--opencode">OpenCode</h2>
   <p><a href="https://opencode.ai/">OpenCode</a> se detecta en el PATH o en <code>~/.opencode/bin</code>, donde lo deja su
   instalador. Se autentica por proveedor con <code>opencode auth login</code>, y el selector de modelos lista los de los
@@ -2217,6 +2239,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   sin preguntar. <strong>En los dos no puede correr comandos de terminal</strong>: por su cuenta los correría sin preguntar, y
   en el chat no hay a quién preguntarle. Sus servidores MCP (<code>opencode.json</code>, en el proyecto y en
   <code>~/.config/opencode</code>) se muestran en modo lectura, y lee el <code>AGENTS.md</code> del proyecto.</p>
+  <p>Sus herramientas (<code>shell</code>, <code>patch</code>, <code>list</code>, <code>todowrite</code>, <code>webfetch</code>,
+  <code>execute</code>) aparecen como tarjetas con su propio ícono y un resumen de una línea, igual que las de los demás agentes.</p>
 
   <h2 id="ia-chat--adjuntos">Adjuntar archivos</h2>
   <p>El botón <strong>Adjuntar</strong>, arrastrar sobre el chat o <kbd>⌘V</kbd> suman imágenes, PDF y archivos de texto o código a tu mensaje,
@@ -2238,7 +2262,12 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>La solapa <strong>Consumo</strong> lee lo que cada CLI ya guarda de sus propias sesiones. Es una
   estimación de <em>ellos</em>, no una cuenta paralela de la app: inventar el número sería peor que no
   mostrarlo.</p>
-</article>
+
+  <p><strong>OpenCode</strong> se mide preguntándole a su propio CLI (<code>opencode stats</code>), así que los tokens, el caché y
+  el reparto por modelo son números reales, y «este repo» se calcula sobre el repositorio abierto. Los tokens de razonamiento
+  cuentan como salida, igual que en Claude Code, para que los totales se puedan comparar. No tiene un plan propio: la etiqueta
+  lista los proveedores con los que iniciaste sesión (solo se leen sus nombres, nunca las credenciales). No expone una cuota ni
+  un saldo, por eso Límites lo dice en vez de mostrar 0%; el límite, si existe, lo lleva cada proveedor en su consola.</p></article>
 
 <article class="topic" id="ia-sesiones" data-title="Chats en segundo plano y sesiones de IA">
   <h1>Chats en segundo plano y sesiones de IA</h1>
@@ -2858,6 +2887,13 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <figcaption>El popover de contexto: qué se carga, de dónde y cuánto.</figcaption>
   </figure>
 
+  <h2 id="ia-proyectos--crear-instrucciones">Las mismas reglas para todos los agentes</h2>
+  <p>Cada CLI lee solo su archivo de instrucciones: Claude Code <code>CLAUDE.md</code>, Codex y OpenCode <code>AGENTS.md</code>,
+  Antigravity <code>GEMINI.md</code>. La solapa Agentes del módulo Git lista los que le faltan a tu repositorio y, si existe al menos uno,
+  cada archivo ausente tiene un botón <strong>Crear</strong>. Escribe un puntero corto al archivo existente, no una copia, así las reglas
+  viven en un solo lugar: <code>CLAUDE.md</code> y <code>GEMINI.md</code> importan el original (<code>@archivo</code>) y traen su contenido
+  real, y <code>AGENTS.md</code> lo enlaza, porque Codex y OpenCode no importan. Nunca se pisa un archivo existente.</p>
+
   <h2 id="ia-proyectos--skills">Skills y carga progresiva</h2>
   <p>Las skills son carpetas con un <code>SKILL.md</code> (en <code>.claude/skills</code>, <code>.github/skills</code>, <code>.opencode/skills</code> o <code>.agents/skills</code>, en el proyecto o en tu carpeta personal).
   Se <strong>cargan de a poco</strong>: el modelo empieza viendo solo el <em>nombre y la descripción</em> de cada skill, y cuando una sirve para la tarea llama a la herramienta <code>skill</code> para leer sus instrucciones completas —
@@ -2945,6 +2981,14 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   </ul>
   <p>Los nombres de las carpetas y del índice son fijos; solo cambia la <strong>carpeta raíz</strong> (<code>Cerebro</code> por defecto), en <em>Configuración → IA → Cerebro</em>. Cambiarla no mueve las notas que ya existan.</p>
 
+  <h2 id="ia-cerebro--recordar">Recuerda solo</h2>
+  <p>Con <em>Guardar en mi cerebro</em> encendido, cada mensaje lleva además las notas de tu cerebro que se parecen a lo que escribiste:
+  las de la carpeta del proyecto (con su <code>_Índice</code> primero) o, si la conversación no tiene proyecto, las de <code>Temas</code>. Se
+  buscan por las palabras de tu mensaje y gana la nota que coincide en más de ellas. Entran como máximo cinco, recortadas. Las notas que
+  marcaste como privadas nunca entran. Sobre la respuesta del agente ves <em>Recordó N notas: …</em>; hacé clic en un título para abrir la
+  nota. Lo recordado no se guarda en el historial: ahí queda solo lo que escribiste. Ejemplo: preguntar <em>«¿cómo resuelvo un bloqueo de
+  filas en el batch?»</em> en un proyecto que ya tiene la nota <em>Bloqueos de fila</em> la trae sin que la nombres.</p>
+
   <h2 id="ia-cerebro--herramientas">Las herramientas de notas</h2>
   <p>El cerebro usa las herramientas de notas del MCP, mejoradas para que el agente se oriente (valen también para los CLIs):</p>
   <ul>
@@ -2996,6 +3040,16 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="ia-mcp--que-hace">Qué expone</h2>
   <p>Encendelo y cualquier CLI compatible puede pedirle a la app el esquema de una tabla, buscar en tus
   notas o leer las últimas líneas de una terminal — <strong>por un socket local</strong>, no por la red.</p>
+
+  <h2 id="ia-mcp--conectar-agente">Conectar tu agente</h2>
+  <p>En <strong>Cómo conectar tu agente</strong> cada CLI muestra su estado: <strong>Conectado</strong>, <strong>Desactualizado</strong>
+  (figura configurado, pero apunta a otro mini-tools: una copia movida de lugar o una compilación de desarrollo), <strong>Sin conectar</strong>
+  o <strong>No instalado</strong>. Con Claude Code y Antigravity aparece un botón <strong>Conectar</strong> (o <strong>Reconectar</strong>
+  si quedó desactualizado): mini-tools registra el servidor por vos, sin que copies nada. Con Claude Code lo hace con su propio comando
+  (<code>claude mcp add --scope user</code>); con Antigravity agrega solo la entrada de mini-tools a
+  <code>~/.gemini/config/mcp_config.json</code>, respetando el resto y dejando una copia de respaldo. Después reiniciá el CLI para que lo
+  tome. Codex y OpenCode se conectan copiando el fragmento que se muestra debajo: sus archivos de configuración tienen comentarios y
+  formatos que mini-tools no reescribe.</p>
 
   <h2 id="ia-mcp--control">Control de acceso</h2>
   <ul>
@@ -3245,7 +3299,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.10.1; esta página no hace una sola petición externa.
+  v2.10.2; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

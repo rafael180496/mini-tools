@@ -431,6 +431,10 @@ const en: Messages<typeof es> = {
         updatePage: (p) => `A new version is available (v${p.latest}, yours is v${p.current}) — click to open its download page`,
         updateAvailable: (p) => `mini-tools v${p.current} · New version v${p.latest} available`,
         docs: 'Documentation',
+        coffee: 'Buy me a coffee',
+        coffeeTitle: 'Opens Buy Me a Coffee in the browser to support mini-tools with a one-off contribution',
+        patreon: 'Subscribe on Patreon',
+        patreonTitle: 'Opens Patreon in the browser to support mini-tools with a monthly subscription',
     },
 }
 export default en

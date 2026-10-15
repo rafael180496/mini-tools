@@ -29,6 +29,12 @@ const CLI_ALIASES: Record<string, string> = {
     edit: 'edit_file',
     multiedit: 'edit_file',
     bash: 'run_command',
+    // OpenCode: `shell` corre un comando, `patch`/`apply_patch` editan archivos
+    // con un parche y `list` lista una carpeta.
+    shell: 'run_command',
+    patch: 'edit_file',
+    apply_patch: 'edit_file',
+    list: 'list_dir',
 }
 
 export function canonicalToolName(name: string): string {
@@ -46,6 +52,12 @@ const ICONS: Record<string, string> = {
     write_file: 'edit_document',
     edit_file: 'edit',
     run_command: 'terminal',
+    // OpenCode: la lista de tareas del agente, una página web y un script de
+    // JavaScript en un sandbox sin sistema de archivos (por eso no está en
+    // CHANGING: no toca nada de lo que el usuario ve).
+    todowrite: 'checklist',
+    webfetch: 'public',
+    execute: 'code',
     vault_search_notes: 'search',
     vault_read_note: 'menu_book',
     vault_list_folders: 'folder_special',

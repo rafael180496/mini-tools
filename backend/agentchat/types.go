@@ -133,6 +133,11 @@ type Event struct {
 	Model      string   `json:"model,omitempty"`
 	Tools      []string `json:"tools,omitempty"`
 	MCPServers []string `json:"mcpServers,omitempty"`
+	// Recalled son los títulos de las notas del cerebro que se le recordaron al
+	// agente en este turno. Solo lo lleva el PRIMER KindStart del turno: es lo
+	// que deja ver en la conversación qué contexto recibió, en vez de dárselo
+	// a escondidas. No se graba en el historial.
+	Recalled []string `json:"recalled,omitempty"`
 	// Error acompaña a KindError.
 	Error string `json:"error,omitempty"`
 	// Seq numera los eventos que el Manager publica: crece de a uno por

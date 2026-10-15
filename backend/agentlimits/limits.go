@@ -32,6 +32,8 @@
 //     contesta el servidor y solo se ve con `/usage` dentro de la sesión — se
 //     dice eso en vez de mostrar un cero que se leería como "no consumiste
 //     nada".
+//   - **OpenCode**: no hay nada que leer ni a quién preguntarle (ver
+//     opencode.go); se declara no disponible con su razón.
 package agentlimits
 
 import (
@@ -98,14 +100,14 @@ type AgentLimits struct {
 	Windows []Window `json:"windows"`
 }
 
-// All devuelve los límites de los tres agentes. Siempre los tres: uno ausente
+// All devuelve los límites de los cuatro agentes. Siempre los cuatro: uno ausente
 // del listado y uno sin dato se verían igual, y solo el segundo es información.
 func All() []AgentLimits {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	out := []AgentLimits{claudeLimits(home), codexLimits(home), antigravityLimits(home)}
+	out := []AgentLimits{claudeLimits(home), codexLimits(home), antigravityLimits(home), opencodeLimits(home)}
 	// Lo que ya contestó un CLI en esta sesión de la app pisa al lector de
 	// disco: para Antigravity el disco no tiene nada que decir, y volver a
 	// mostrar "no publica su cuota" después de haberla consultado sería perder

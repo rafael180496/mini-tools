@@ -3,6 +3,7 @@ import {AppVersion, DefaultShellID, ListShells} from '../../wailsjs/go/main/App'
 import {localterm, updatecheck} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import {BrowserOpenURL} from '../../wailsjs/runtime'
+import {BUY_ME_A_COFFEE_URL, PATREON_URL} from '../lib/support'
 import {docsUrl} from './sidebar/Sidebar'
 import Select, {type SelectOption} from './Select'
 import Toggle from './Toggle'
@@ -825,6 +826,28 @@ export default function SettingsDialog({
                     >
                         <Icon name="help" size={14} />
                         {st.footer.docs}
+                        <Icon name="open_in_new" size={12} />
+                    </button>
+                    {/* Apoyar el proyecto: al final y con el mismo peso que la
+                        documentación, nunca como un aviso que interrumpe. */}
+                    <span aria-hidden className="text-outline-variant">·</span>
+                    <button
+                        onClick={() => BrowserOpenURL(BUY_ME_A_COFFEE_URL)}
+                        title={st.footer.coffeeTitle}
+                        className="flex items-center gap-1.5 hover:text-on-surface hover:underline"
+                    >
+                        <Icon name="local_cafe" size={14} />
+                        {st.footer.coffee}
+                        <Icon name="open_in_new" size={12} />
+                    </button>
+                    <span aria-hidden className="text-outline-variant">·</span>
+                    <button
+                        onClick={() => BrowserOpenURL(PATREON_URL)}
+                        title={st.footer.patreonTitle}
+                        className="flex items-center gap-1.5 hover:text-on-surface hover:underline"
+                    >
+                        <Icon name="favorite" size={14} />
+                        {st.footer.patreon}
                         <Icon name="open_in_new" size={12} />
                     </button>
                 </div>

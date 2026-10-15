@@ -164,6 +164,8 @@ export function CommitTransaction(arg1:string):Promise<void>;
 
 export function CompleteSQL(arg1:sqlintel.Request):Promise<sqlintel.Response>;
 
+export function ConnectMCP(arg1:string):Promise<void>;
+
 export function ConnectionEnvironment(arg1:string):Promise<string>;
 
 export function CountMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:string):Promise<number>;
@@ -358,6 +360,8 @@ export function GitContinue(arg1:string,arg2:string):Promise<void>;
 
 export function GitCreateBranch(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
+export function GitCreateInstructionPointer(arg1:string,arg2:string):Promise<string>;
+
 export function GitCreateTag(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function GitCredentialHelper(arg1:string):Promise<git.CredentialCache>;
@@ -467,6 +471,8 @@ export function GitReset(arg1:string,arg2:string,arg3:string):Promise<void>;
 export function GitResolveConflictFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function GitRevert(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitReviewContext(arg1:string):Promise<main.ReviewContext>;
 
 export function GitSaveCredential(arg1:string,arg2:string,arg3:string):Promise<vault.GitCredential>;
 
@@ -683,6 +689,8 @@ export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
 export function ListTools():Promise<Array<mcpserver.ToolInfo>>;
 
 export function LocalShellLabel(arg1:string):Promise<string>;
+
+export function MCPConnections():Promise<Array<main.MCPConnection>>;
 
 export function MCPServerStatus():Promise<main.MCPStatus>;
 

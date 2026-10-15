@@ -240,6 +240,7 @@ export namespace agentchat {
 	    model?: string;
 	    tools?: string[];
 	    mcpServers?: string[];
+	    recalled?: string[];
 	    error?: string;
 	    seq: number;
 	
@@ -257,6 +258,7 @@ export namespace agentchat {
 	        this.model = source["model"];
 	        this.tools = source["tools"];
 	        this.mcpServers = source["mcpServers"];
+	        this.recalled = source["recalled"];
 	        this.error = source["error"];
 	        this.seq = source["seq"];
 	    }
@@ -3668,6 +3670,30 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class MCPConnection {
+	    agent: string;
+	    label: string;
+	    installed: boolean;
+	    connected: boolean;
+	    stale: boolean;
+	    source: string;
+	    canConnect: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPConnection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	        this.label = source["label"];
+	        this.installed = source["installed"];
+	        this.connected = source["connected"];
+	        this.stale = source["stale"];
+	        this.source = source["source"];
+	        this.canConnect = source["canConnect"];
+	    }
+	}
 	export class mcpAudit {
 	    tool: string;
 	    resource: string;
@@ -4011,6 +4037,26 @@ export namespace main {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.isPrivate = source["isPrivate"];
+	    }
+	}
+	export class ReviewContext {
+	    files: string[];
+	    diff: string;
+	    truncated: boolean;
+	    insertions: number;
+	    deletions: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReviewContext(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = source["files"];
+	        this.diff = source["diff"];
+	        this.truncated = source["truncated"];
+	        this.insertions = source["insertions"];
+	        this.deletions = source["deletions"];
 	    }
 	}
 	export class SQLSuggestion {

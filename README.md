@@ -1,18 +1,20 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.1-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.2-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 ![Binario](https://img.shields.io/badge/binario-78MB-success)
 ![Sin telemetría](https://img.shields.io/badge/telemetr%C3%ADa-ninguna-informational)
 [![Documentación](https://img.shields.io/badge/documentaci%C3%B3n-leer%20online-6750A4)](https://rafael180496.github.io/mini-tools/)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-apoyar-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/rhidalgo)
+[![Patreon](https://img.shields.io/badge/Patreon-suscribirse-F96854?logo=patreon&logoColor=white)](https://www.patreon.com/16966547/join)
 
 ### Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de menos de 80 MB.
 
 Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en tu máquina y nada saliendo a ningún lado.
 
-**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · HTTP · SSH · SFTP · Git · Claude Code · Codex · Antigravity · Ollama · Anthropic**
+**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · HTTP · SSH · SFTP · Git · Claude Code · Codex · OpenCode · Antigravity · Ollama · Anthropic**
 
 📖 **[Documentación completa →](https://rafael180496.github.io/mini-tools/)** — qué hace cada módulo,
 ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nunca la usaste
@@ -23,6 +25,48 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 </p>
 
 ---
+
+## Novedades — 2.10.2
+
+**OpenCode como cuarto asistente de código, y el cerebro que recuerda solo.**
+OpenCode se suma a Claude Code, Codex y Antigravity —terminal y chat nativo, con
+consumo y límites—, el servidor MCP se conecta a tu agente con un clic, las notas
+del cerebro llegan al chat sin pedirlas y el editor SQL trae varios gestos de
+DataGrip.
+
+- **OpenCode** se detecta solo y funciona en la terminal y en el **chat nativo**
+  (respuestas, razonamiento, herramientas y diffs pintados), con el mismo formato de
+  **Consumo, Plan y Límites** que los demás.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-chat--opencode)
+- **Conectar el servidor MCP con un clic**: *Acceso de la IA* dice, agente por
+  agente, si mini-tools figura en su configuración (*Conectado*, *Desactualizado*…)
+  y lo registra por vos.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-mcp--conectar-agente)
+- **El cerebro recuerda solo**: con «Guardar en mi cerebro» encendido, cada mensaje
+  lleva las notas que se parecen a lo que escribiste (nunca las privadas), y sobre
+  la respuesta ves *Recordó N notas: …*, que abren la nota.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-cerebro--recordar)
+- **«Validar con otro»** le entrega al revisor lo que necesita para revisar de
+  verdad, en vez de pedirle que mire un `git diff` que no recibe.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-chat--validar)
+- **Las mismas reglas para todos los agentes, con un clic**: el botón **Crear** de
+  la solapa Agentes genera el `CLAUDE.md`, `AGENTS.md` o `GEMINI.md` que falta a
+  partir de los que ya tiene el repositorio.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-proyectos--crear-instrucciones)
+- **Pulidos del chat**: los bloques de código de las respuestas se pintan con los
+  colores del editor y llevan números de línea; los `diff` colorean lo agregado y
+  lo quitado; el panel de buscar y reemplazar sigue el tema de la app.
+- **Editor y grilla SQL**: tiempo de ejecución junto a cada sentencia, formatear SQL
+  (<kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd>), <kbd>⌘</kbd>+clic para abrir el DDL, expresiones SQL
+  al editar una celda, tablas agrupadas por prefijo, filtro rápido, estadísticas de
+  columna y vista de registro; el autocompletado entiende los bloques PL/SQL.
+- **Apoyar el proyecto**: mini-tools sigue siendo gratis, y ahora se puede apoyar con
+  un aporte único o una suscripción mensual.
+  [Ver cómo →](https://rafael180496.github.io/mini-tools/es/#introduccion--apoyar)
+
+No agrega migraciones del vault: una instalación de la 2.10.1 abre sin pasos
+manuales. La **2.10.2 se verificó en Windows 10 y Windows 11** (probada por el
+usuario). Todo el detalle en el [CHANGELOG](CHANGELOG.md).
 
 ## Novedades — 2.10.1
 
@@ -704,8 +748,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.1.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.10.1-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **No verificada todavía en Windows real** (la 2.10.0 sí se probó en Windows 10 y 11), ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.2.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.2/mini-tools-v2.10.2.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.10.2-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.2/mini-tools-v2.10.2-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Verificada en Windows 10 y Windows 11** (probada por el usuario), ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -885,11 +929,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.10.1.dmg releases/macos/
-cp build/bin/mini-tools-v2.10.1-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.10.2.dmg releases/macos/
+cp build/bin/mini-tools-v2.10.2-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.10.1"
-git tag v2.10.1 && git push origin main --tags
+git add -A && git commit -m "release: v2.10.2"
+git tag v2.10.2 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -944,11 +988,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.1 |
+| Versión | 2.10.2 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.1.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1.dmg)** |
-| SHA-256 | `85348831fed68c00d2ccd92f33a8205afc8942232767816bfa640f8c02af0dcc` |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.2.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.2/mini-tools-v2.10.2.dmg)** |
+| SHA-256 | `d8e7f2d2cb04848e811cd01c1ac853473401da05e86db7fde8c40d9ad7275ee4` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -960,7 +1004,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.10.1 no se verificó todavía en una Windows real.** La 2.10.0 se corrió en Windows 10 y Windows 11 reales, y eso no se extrapola: la 2.10.1 solo cambia la interfaz (sesiones de IA dentro de Utilidades, barra de filtros del historial, renombrar chats, conversaciones persistentes y fijadas con pestañas que se reabren al arrancar) y cambios en Go (títulos de las conversaciones, persistencia; migración 65 del vault). Qué mirar primero está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.10.2 se verificó en Windows 10 y Windows 11.** El usuario la corrió en Windows 10 y en Windows 11. Es un `.exe` cross-compilado desde macOS y sin firma Authenticode, así que SmartScreen igual avisa la primera vez. Detalle y qué conviene mirar en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -968,10 +1012,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.1 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **no verificado todavía en Windows real** (la 2.10.0 sí, en 10 y 11) |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.1-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1-windows-amd64.exe)** |
-| SHA-256 | `3f0dd07d121a7a4a17acd08e87615dcb7fb04097889a40525d7f245797963a06` |
+| Versión | 2.10.2 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **verificado en Windows 10 y Windows 11** (probado por el usuario) |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.2-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.2/mini-tools-v2.10.2-windows-amd64.exe)** |
+| SHA-256 | `7b3f200cd9d855f2624f482cc081a4002e3d9df9d234c751d0e1188e180c7de6` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).
@@ -1049,6 +1093,21 @@ también la razón por la que ninguna está borroneada: no hay nada que tapar.
 - Sin clave maestra correcta, la app no arranca — no hay bypass, ni siquiera desde las bindings internas.
 - El DSN (y las credenciales SSH) nunca llegan al frontend ni se loguean, tampoco en modo debug — "Exportar configuración" redacta password/private key/passphrase antes de escribir el archivo.
 - Los backups del vault están atados a la clave maestra: generarlos y restaurarlos piden la clave, verificada contra el propio archivo de backup — no contra la instalación local, porque un backup puede restaurarse en otra máquina.
+
+## Apoyá el proyecto
+
+mini-tools es gratis, de código abierto y sin telemetría, y va a seguir así. Si te
+ahorra trabajo y querés que siga creciendo, podés apoyarlo:
+
+<p>
+  <a href="https://buymeacoffee.com/rhidalgo"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-invitame%20un%20caf%C3%A9-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
+  <a href="https://www.patreon.com/16966547/join"><img src="https://img.shields.io/badge/Patreon-suscribite-F96854?style=for-the-badge&logo=patreon&logoColor=white" alt="Patreon"></a>
+</p>
+
+- **Buy Me a Coffee** — un aporte único: [buymeacoffee.com/rhidalgo](https://buymeacoffee.com/rhidalgo)
+- **Patreon** — una suscripción mensual: [suscribirse](https://www.patreon.com/16966547/join) · [ver la página](https://www.patreon.com/cw/TotoLab2026)
+
+También está a un clic desde la app: el pie de **Configuración**.
 
 ## Licencia
 

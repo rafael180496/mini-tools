@@ -42,7 +42,7 @@ export default {
         mcpCount: (p: {n: number}) => `· MCP: ${p.n}`,
         cost: (p: {usd: string}) => ` · US$${p.usd}`,
         validateTitle:
-            'Abre un chat con OTRO agente para que revise los cambios sin commitear. Corre en paralelo: este chat sigue como está.',
+            'Abre un chat con OTRO agente para que revise los cambios sin commitear. Le llegan, como fichas que podés leer y quitar antes de enviar, lo que hizo este agente en su última respuesta y el diff. Corre en paralelo: este chat sigue como está.',
         validate: 'Validar con otro',
         searchTitle:
             'Buscar en esta conversación. Filtra los mensajes que contienen lo que escribas — útil para volver a un comando o a una explicación de hace media hora.',
@@ -238,6 +238,12 @@ export default {
             blockedNotes:
                 'No disponible: falta el permiso de escritura de notas. Se da en Configuración → IA → Acceso de la IA. Hacé clic para abrirla.',
             applyFailed: (p: {error: string}) => `No se pudo guardar el ajuste «Guardar en mi cerebro»: ${p.error}`,
+            // Línea sobre el turno del agente: qué notas del cerebro se le
+            // recordaron (contexto que recibió, no a escondidas).
+            recalled: (p: {count: number}) => (p.count === 1 ? 'Recordó 1 nota:' : `Recordó ${p.count} notas:`),
+            recalledTitle:
+                'Notas de tu cerebro que se le sumaron a este mensaje porque se parecen a lo que escribiste. Solo notas que no marcaste como privadas.',
+            recalledOpen: (p: {title: string}) => `Abre la nota «${p.title}» en una pestaña`,
         },
         // Arranques del chat vacío, por módulo. El texto visible es el mismo
         // que se escribe en la caja, así que sigue el idioma de la interfaz.
@@ -556,6 +562,8 @@ export default {
         copyTitle: 'Copia el bloque entero al portapapeles',
         copy: 'Copiar',
         copied: 'Copiado',
+        expand: (p: {n: number}) => (p.n === 1 ? 'Ver 1 línea más' : `Ver ${p.n} líneas más`),
+        collapse: 'Plegar',
     },
     // Configuración → IA → Cerebro: carpeta raíz y qué falta para encenderlo.
     brainPanel: {
@@ -636,13 +644,34 @@ export default {
         howTo: 'Cómo conectar tu agente a este servidor',
         steps: '3 pasos',
         step1: 'Encendé el servidor con el interruptor de arriba. **Tiene que quedar encendido** mientras uses el agente: apagado no hay nada escuchando.',
-        step2: 'Pegá la configuración de tu CLI (abajo). Se hace una sola vez.',
+        step2: 'Tocá **Conectar** en tu CLI (abajo) o, si no tiene el botón, pegá su configuración. Se hace una sola vez.',
         step3: 'Reiniciá el CLI. Preguntale *"¿qué herramientas de mini-tools tenés?"* para confirmar.',
         copyTitle: 'Copia el comando al portapapeles',
         copy: 'Copiar',
         copied: 'Copiado',
+        connectedCount: (p: {n: number; total: number}) => `${p.n} de ${p.total} conectados`,
+        statusConnected: 'Conectado',
+        statusStale: 'Desactualizado: apunta a otro ejecutable',
+        statusNotConnected: 'Sin conectar',
+        statusNotInstalled: 'No instalado',
+        connect: 'Conectar',
+        reconnect: 'Reconectar',
+        connecting: 'Conectando…',
+        connectedTitle: (p: {source: string}) =>
+            `mini-tools ya figura en la configuración de este agente${p.source ? ` (${p.source})` : ''}.`,
+        staleTitle: (p: {source: string}) =>
+            `Figura configurado${p.source ? ` en ${p.source}` : ''}, pero apunta a otro mini-tools (una versión movida de lugar o una compilación de desarrollo). Reconectá para que apunte a esta.`,
+        notConnectedTitle: 'Este agente todavía no sabe que existe el servidor de mini-tools.',
+        notInstalledTitle: 'No se encontró este CLI en tu máquina. Instalalo para poder conectarlo.',
+        manualTitle: 'Este CLI se conecta copiando la configuración de abajo: la app no reescribe su archivo.',
+        connectTitle: (p: {agent: string}) =>
+            `Registra mini-tools en ${p.agent} sin que copies nada. Después reiniciá el CLI para que lo tome.`,
+        reconnectTitle: (p: {agent: string}) =>
+            `Reemplaza la entrada de mini-tools de ${p.agent} para que apunte a este ejecutable. Después reiniciá el CLI.`,
+        connectBusyTitle: 'Conectando…',
+        connectedOk: (p: {agent: string}) => `${p.agent} quedó conectado. Reiniciá el CLI para que lo tome.`,
         copyNotWrite:
-            '**Se copia y no se escribe solo**, a propósito: el archivo de Claude Code es su archivo de *estado* —con el historial de todos tus proyectos adentro— y reescribirlo entero para agregar una línea es un riesgo desproporcionado.',
+            '**Codex y OpenCode se copian y no se escriben solos**, a propósito: su configuración es TOML y JSONC con comentarios, y reescribirla entera para agregar una entrada perdería lo que esta app no entiende. Claude Code se conecta con su propio comando y Antigravity editando solo la entrada de mini-tools (con copia de respaldo).',
         recent: 'Últimos accesos',
         noAccessYet: 'Todavía ningún agente pidió nada.',
         serverOff: 'El servidor está apagado, así que no hay accesos posibles.',

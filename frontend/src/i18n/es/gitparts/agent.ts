@@ -12,6 +12,10 @@ export default {
         missingTitle: (p: {file: string; agents: string}) =>
             `${p.file} no existe en este repositorio, así que ${p.agents} abre acá sin ninguna instrucción del proyecto. Al abrirlo se crea vacío y podés escribirlo.`,
         missingTag: ' — falta',
+        create: 'Crear',
+        creating: 'Creando…',
+        createTitle: (p: {file: string; source: string; agents: string; agentCount: number}) =>
+            `Crea ${p.file} apuntando a ${p.source}, para que ${p.agents} ${p.agentCount > 1 ? 'lean' : 'lea'} las mismas reglas. Es un puntero: no copia el contenido y nunca pisa un archivo existente.`,
         noneAtAll: 'Este repositorio no tiene ningún archivo de instrucciones: cualquier agente que abras acá arranca sin contexto del proyecto.',
         someMissing: (p: {files: string; fileCount: number; agents: string; agentCount: number}) =>
             `Falta${p.fileCount > 1 ? 'n' : ''} ${p.files} — ${p.agents} no lee${p.agentCount > 1 ? 'n' : ''} los archivos de los otros.`,

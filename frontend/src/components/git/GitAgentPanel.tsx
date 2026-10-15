@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useState} from 'react'
 import {
     GitAgentContext,
     GitAgentUsage,
+    GitCreateInstructionPointer,
     GitMCPConfig,
     GitRemoveMCPServer,
     GitUpsertMCPServer,
@@ -12,10 +13,11 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {agentctx, agentlimits, agentplan, agents as agentsNs, agentusage, mcpconf} from '../../../wailsjs/go/models'
 import AgentLimitBars from '../agent/AgentLimitBars'
+import {agentIconName} from '../agent/agentIcon'
 import {isModelServerAgent} from '../../lib/modelServers'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
-import {formatNumber, useT} from '../../i18n'
+import {formatList, formatNumber, useT} from '../../i18n'
 
 // Solapa "Agentes" del panel de la pestaña Git: qué le ofrece ESTE
 // repositorio a un CLI agéntico.
@@ -65,6 +67,9 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
     const [installed, setInstalled] = useState<agentsNs.Agent[]>([])
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(true)
+    // Archivo de instrucciones que se está creando, y por qué falló el último.
+    const [creating, setCreating] = useState('')
+    const [createError, setCreateError] = useState('')
 
     const reload = useCallback(() => {
         setLoading(true)
@@ -91,12 +96,30 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
     // lee un archivo de instrucciones.
     const agentLabel = (id: string) => installed.find((a) => a.id === id)?.label ?? id
 
+    // Crea el archivo ausente como puntero al primero presente. Recarga el
+    // contexto al terminar: la fila pasa a "presente" sin que el usuario tenga
+    // que refrescar.
+    const createPointer = (file: string) => {
+        setCreating(file)
+        setCreateError('')
+        GitCreateInstructionPointer(repoId, file)
+            .then(() => reload())
+            .catch((e) => setCreateError(String(e)))
+            .finally(() => setCreating(''))
+    }
+
     if (error) return <p className="p-3 text-xs text-error">{error}</p>
     if (loading && !ctx) return <p className="p-3 text-xs text-on-surface-variant">{t.git.agent.loading}</p>
     if (!ctx) return null
 
     const nothing = ctx.skills.length === 0 && ctx.agents.length === 0 && ctx.commands.length === 0
     const missing = ctx.instructions.filter((i) => !i.present)
+    // Fuente de un puntero: el primero presente de los tres que se pueden
+    // crear (el mismo orden que usa el backend). Copilot tiene otro formato y
+    // no ofrece botón.
+    const pointerFiles = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md']
+    const pointerSource = (file: string) =>
+        pointerFiles.includes(file) ? ctx.instructions.find((i) => i.present && i.file !== file && pointerFiles.includes(i.file))?.file : undefined
 
     return (
         <div className="h-full overflow-y-auto p-2 text-xs">
@@ -136,30 +159,46 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
 
             {/* Instrucciones: lo primero, porque es lo que más seguido falta */}
             <Section title={t.git.agent.instructions.title} count={ctx.instructions.filter((i) => i.present).length}>
-                {ctx.instructions.map((i) => (
-                    <button
-                        key={i.file}
-                        onClick={() => onOpenFile(i.path)}
-                        title={
-                            i.present
-                                ? t.git.agent.instructions.openTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
-                                : t.git.agent.instructions.missingTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
-                        }
-                        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-surface-container-high"
-                    >
-                        <Icon
-                            name={i.present ? 'description' : 'add_circle'}
-                            size={13}
-                            className={i.present ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant/60'}
-                        />
-                        <span className={i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}>{i.file}</span>
-                        <span className="ml-auto shrink-0 text-ui-10 text-on-surface-variant">
-                            {i.agents.map(agentLabel).join(' · ')}
-                            {i.present ? null : t.git.agent.instructions.missingTag}
-                        </span>
-                    </button>
-                ))}
+                {ctx.instructions.map((i) => {
+                    const source = i.present ? undefined : pointerSource(i.file)
+                    return (
+                        <div key={i.file} className="flex items-center gap-1 rounded hover:bg-surface-container-high">
+                            <button
+                                onClick={() => onOpenFile(i.path)}
+                                title={
+                                    i.present
+                                        ? t.git.agent.instructions.openTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
+                                        : t.git.agent.instructions.missingTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
+                                }
+                                className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left"
+                            >
+                                <Icon
+                                    name={i.present ? 'description' : 'add_circle'}
+                                    size={13}
+                                    className={i.present ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant/60'}
+                                />
+                                <span className={i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}>{i.file}</span>
+                                <span className="ml-auto shrink-0 text-ui-10 text-on-surface-variant">
+                                    {i.agents.map(agentLabel).join(' · ')}
+                                    {i.present ? null : t.git.agent.instructions.missingTag}
+                                </span>
+                            </button>
+                            {source && (
+                                <button
+                                    onClick={() => createPointer(i.file)}
+                                    disabled={creating !== ''}
+                                    title={t.git.agent.instructions.createTitle({file: i.file, source, agents: formatList(i.agents.map(agentLabel)), agentCount: i.agents.length})}
+                                    className="mr-1 shrink-0 rounded border border-outline-variant px-1.5 py-0.5 text-ui-10 text-primary hover:bg-surface-variant disabled:opacity-50"
+                                >
+                                    {creating === i.file ? t.git.agent.instructions.creating : t.git.agent.instructions.create}
+                                </button>
+                            )}
+                        </div>
+                    )
+                })}
             </Section>
+
+            {createError && <p className="mb-2 px-1.5 text-ui-11 text-error">{createError}</p>}
 
             {missing.length > 0 && (
                 <p className="mb-2 px-1.5 text-ui-11 text-on-surface-variant">
@@ -288,7 +327,7 @@ function UsageSection({
             {usage.agents.filter((a) => !isModelServerAgent(a.agent)).map((a) => (
                 <div key={a.agent} className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
                     <div className="flex items-center gap-1.5">
-                        <Icon name="monitoring" size={13} className="shrink-0 text-on-surface-variant" />
+                        <Icon name={agentIconName(a.agent)} size={13} className="shrink-0 text-on-surface-variant" />
                         <span className="font-medium text-on-surface">{agentLabel(a.agent)}</span>
                         {/* El plan al lado del consumo: sin él, un total de
                             tokens es un número sin escala. */}

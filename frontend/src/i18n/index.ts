@@ -92,6 +92,12 @@ export function formatNumber(n: number, opts?: Intl.NumberFormatOptions): string
     return new Intl.NumberFormat(locale(), opts).format(n)
 }
 
+// formatList une una lista como se escribe en el idioma activo: «Codex y
+// OpenCode», «Codex and OpenCode». Un `join(', ')` dejaba «Codex, OpenCode lean».
+export function formatList(items: string[]): string {
+    return new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(items)
+}
+
 // Códigos de error del backend (backend/i18n.NewCoded). Viajan al principio del
 // mensaje entre dos U+2063 (invisibles), porque un error de Go cruza el
 // binding de Wails como string sin tipo. Con esto una pantalla reacciona a UN

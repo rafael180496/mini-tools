@@ -428,8 +428,20 @@ export default {
     },
     review: {
         noOther: 'No hay otro asistente con chat instalado para revisar.',
-        prompt: 'Revisá los cambios sin commitear de este repositorio (git diff) como si fueras otro par: decime qué está mal, qué falta y qué no haría así. ',
+        prompt:
+            'Revisá el trabajo de otro agente en este repositorio. Te adjunto lo que hizo (su última respuesta y las herramientas que usó) y los cambios sin commitear (diff): no hace falta que corras git. Revisalo como un par: decime qué está mal, qué falta y qué no harías así, con referencias a archivo y línea. ',
         about: 'revisión cruzada',
+        workLabel: (p: {agent: string}) => `Lo que hizo ${p.agent}`,
+        workAnswer: 'Última respuesta',
+        workTools: 'Herramientas usadas',
+        andMore: (p: {n: number}) => `… y ${p.n} más`,
+        workEmpty: '(no escribió texto en su última respuesta)',
+        changesLabel: 'Cambios sin commitear',
+        changesFiles: (p: {n: number}) => `Archivos con cambios (${p.n}):`,
+        changesDiff: 'Diff:',
+        changesNoPatch: '(solo hay archivos sin seguimiento: no tienen diff, se listan por nombre)',
+        changesTruncated: (p: {kb: number}) =>
+            `AVISO: el diff se recortó a ${p.kb} KB, así que NO está completo. Los archivos de arriba sí van todos: leé los que falten.`,
     },
     pending: {
         before: 'Prompt listo sobre ',

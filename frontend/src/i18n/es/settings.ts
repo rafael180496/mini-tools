@@ -435,5 +435,9 @@ export default {
             `Hay una versión nueva disponible (v${p.latest}, la tuya es v${p.current}) — clic para abrir su página de descarga`,
         updateAvailable: (p: {current: string; latest: string}) => `mini-tools v${p.current} · Nueva versión v${p.latest} disponible`,
         docs: 'Documentación',
+        coffee: 'Invitame un café',
+        coffeeTitle: 'Abre Buy Me a Coffee en el navegador para apoyar mini-tools con un aporte único',
+        patreon: 'Suscribite en Patreon',
+        patreonTitle: 'Abre Patreon en el navegador para apoyar mini-tools con una suscripción mensual',
     },
 }

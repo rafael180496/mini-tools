@@ -132,7 +132,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 	}
 	// ConversationID = id de la sesión: no hay un id propio del servidor, pero
 	// el frontend guarda el que llegue para marcar el chat como retomable.
-	m.emit(t.SessionID, Event{Kind: KindStart, Model: model, ConversationID: t.SessionID})
+	m.emit(t.SessionID, Event{Kind: KindStart, Model: model, ConversationID: t.SessionID, Recalled: t.Recalled})
 
 	msgs := append(withSystem(history, t.System), llm.Message{Role: llm.RoleUser, Content: t.Prompt, Images: t.Images, PDFs: t.PDFs})
 

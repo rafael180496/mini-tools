@@ -1,0 +1,82 @@
+{
+  "range": {
+    "from": 1789538400000,
+    "to": 1792090990821
+  },
+  "sessions": 1,
+  "subagents": 0,
+  "prompts": 3,
+  "steps": 7,
+  "tokens": {
+    "input": 17811,
+    "output": 742,
+    "reasoning": 1612,
+    "cache": {
+      "read": 52032,
+      "write": 0
+    }
+  },
+  "cost": 0,
+  "tools": {
+    "mode": "detail",
+    "totals": {
+      "calls": 5,
+      "succeeded": 3,
+      "failed": 2,
+      "unfinished": 0
+    },
+    "usage": [
+      {
+        "name": "read",
+        "calls": 2,
+        "succeeded": 1,
+        "failed": 1,
+        "unfinished": 0,
+        "durationP50": 19
+      },
+      {
+        "name": "execute",
+        "calls": 2,
+        "succeeded": 2,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 14
+      },
+      {
+        "name": "write",
+        "calls": 1,
+        "succeeded": 0,
+        "failed": 1,
+        "unfinished": 0,
+        "durationP50": 6
+      }
+    ]
+  },
+  "activeDays": 1,
+  "streak": 1,
+  "activity": [
+    {
+      "date": "2026-10-15",
+      "steps": 7
+    }
+  ],
+  "models": [
+    {
+      "model": {
+        "id": "nemotron-3.5-super-vl-free",
+        "providerID": "opencode"
+      },
+      "steps": 7,
+      "tokens": {
+        "input": 17811,
+        "output": 742,
+        "reasoning": 1612,
+        "cache": {
+          "read": 52032,
+          "write": 0
+        }
+      },
+      "cost": 0
+    }
+  ]
+}

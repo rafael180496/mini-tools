@@ -56,6 +56,7 @@ import {
     GitSetDiffPrefs,
     GitSetPaneWidths,
     GitSetPinnedBranches,
+    GitReviewContext,
     GitStatus,
     GitRepoWorkspace,
     GitSetOpenFiles,
@@ -82,6 +83,7 @@ import type {TerminalThemeId} from '../../xterm/terminalThemes'
 import InlineDiff, {type InlineDiffState} from './InlineDiff'
 import {applyPrefix, buildCommitPrefix, currentPrefixOf} from '../../lib/gitCommitMessage'
 import {isModelServerAgent} from '../../lib/modelServers'
+import {buildReviewBlocks} from '../../lib/gitReview'
 import {EMPTY_SEARCH, parseGitSearch, type GitSearch} from '../../lib/gitSearch'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
@@ -105,7 +107,7 @@ import {onGitRequest, takePendingGit, type GitRequest} from '../../lib/gitBus'
 import GitFileEditor from './GitFileEditor'
 import GitAgentPanel from './GitAgentPanel'
 import GitOutputNotice from './GitOutputNotice'
-import AgentChat from '../agent/AgentChat'
+import AgentChat, {type ChatContextBlock, type ChatLastTurn} from '../agent/AgentChat'
 import type {WorkContext} from '../agent/workContext'
 import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
 import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
@@ -359,7 +361,7 @@ export default function GitRepoTab({
     const [pendingPrompt, setPendingPrompt] = useState<{sessionId: string; text: string; about: string} | null>(null)
     // Prompt para una sesión de CHAT. A diferencia de pendingPrompt no hay
     // nada que esperar: se llena la caja de texto y listo.
-    const [chatSeed, setChatSeed] = useState<{sessionId: string; text: string; token: number} | null>(null)
+    const [chatSeed, setChatSeed] = useState<{sessionId: string; text: string; token: number; attachments?: ChatContextBlock[]} | null>(null)
     // Agentes con chat nativo verificado (backend/agentchat). Los que no
     // están siguen abriéndose como terminal, en vez de ofrecer un chat que se
     // quedaría mudo.
@@ -858,7 +860,7 @@ export default function GitRepoTab({
     // que además terminaría ejecutándolo como un comando cuando el agente
     // arranque.
     const askAgent = useCallback(
-        (agentId: string, prompt: string, about: string) => {
+        (agentId: string, prompt: string, about: string, attachments?: ChatContextBlock[]) => {
             // Con chat nativo el problema del arranque desaparece: no hay un
             // CLI que esté levantando y al que no se le pueda escribir, solo
             // una caja de texto que se llena. Por eso se prefiere el chat
@@ -871,7 +873,7 @@ export default function GitRepoTab({
                 const existingChat = sessions.find((s) => s.kind === 'chat' && s.agentId === agentId)
                 if (existingChat) {
                     setActiveChatId(existingChat.id)
-                    setChatSeed({sessionId: existingChat.id, text: prompt, token: Date.now()})
+                    setChatSeed({sessionId: existingChat.id, text: prompt, token: Date.now(), attachments})
                     return
                 }
                 const agent = agentList.find((a) => a.id === agentId)
@@ -890,7 +892,7 @@ export default function GitRepoTab({
                 // título: es lo que después permite reconocerlo en la lista y
                 // retomarlo.
                 void CreateAgentChat(session.id, repoId, agentId, about, 'git', repoId).catch(() => {})
-                setChatSeed({sessionId: session.id, text: prompt, token: Date.now()})
+                setChatSeed({sessionId: session.id, text: prompt, token: Date.now(), attachments})
                 void agent // el label ya quedó en el título
                 return
             }
@@ -922,6 +924,28 @@ export default function GitRepoTab({
             setPendingPrompt({sessionId: session.id, text: prompt, about})
         },
         [sessions, agentList, chatCapable, repoId, persistLayout, persistSessions, enterAgentMode],
+    )
+
+    // «Validar con otro»: abre el chat del revisor con el prompt y, ADJUNTO y a
+    // la vista, lo que necesita para revisar de verdad — qué hizo el primer
+    // agente y qué quedó cambiado en el árbol de trabajo. En modo consulta un
+    // CLI muchas veces no puede ni correr git, así que decirle «mirá el diff»
+    // sin dárselo era pedirle que adivinara. Las fichas se leen y se quitan
+    // antes de enviar: nada viaja a escondidas.
+    const validateWithAnother = useCallback(
+        async (reviewerId: string, lastTurn: ChatLastTurn) => {
+            // Sin cambios no hay diff que adjuntar y el revisor recibe solo lo
+            // que hizo el primero. Un fallo REAL con cambios presentes sí se
+            // avisa: seguir en silencio mandaría una revisión sin diff.
+            const changes = await GitReviewContext(repoId).catch(async (e) => {
+                const st = await GitStatus(repoId).catch(() => null)
+                if (st && st.files.length > 0) setError(String(e))
+                return null
+            })
+            const r = i18n().git.tab.review
+            askAgent(reviewerId, r.prompt, r.about, buildReviewBlocks(lastTurn, changes))
+        },
+        [repoId, askAgent],
     )
 
 
@@ -3652,7 +3676,7 @@ export default function GitRepoTab({
                                             return st?.files.length ?? 0
                                         }}
                                         onReviewChanges={() => setView('changes')}
-                                        onValidateWithAnother={(exclude) => {
+                                        onValidateWithAnother={(exclude, lastTurn) => {
                                             // Otro agente, no el mismo: el
                                             // valor de que revise otro está en
                                             // que no comparte los puntos ciegos
@@ -3664,11 +3688,7 @@ export default function GitRepoTab({
                                                 setError(g.review.noOther)
                                                 return
                                             }
-                                            askAgent(
-                                                other.id,
-                                                g.review.prompt,
-                                                g.review.about,
-                                            )
+                                            void validateWithAnother(other.id, lastTurn)
                                         }}
                                         onConversation={(conversationId) => {
                                             void TouchAgentChat(s.id, conversationId)

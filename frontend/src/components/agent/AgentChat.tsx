@@ -37,7 +37,7 @@ import {ComposerAttachments, DropOverlay, MessageAttachments} from './Attachment
 import {useChatAttachments} from './useChatAttachments'
 import {formatBytes} from '../../lib/formatBytes'
 import {ATTACH_ACCEPT, type SentAttachment} from '../../lib/chatAttachments'
-import {requestOpenSettings} from '../../lib/appBus'
+import {requestOpenNote, requestOpenSettings} from '../../lib/appBus'
 import {onModelsChangedFor} from '../../lib/modelsChanged'
 import {ackProjectMode, isProjectModeAcked, readProjectPrefs, writeProjectPrefs} from '../../lib/projectPrefs'
 import {registerVisibleChat, toMillis, useSessionFlag} from '../../lib/agentSessions'
@@ -74,6 +74,9 @@ interface ChatEvent {
     model?: string
     tools?: string[]
     mcpServers?: string[]
+    // Títulos de las notas del cerebro que se le recordaron al agente en este
+    // turno; solo el primer 'start' los trae.
+    recalled?: string[]
     error?: string
 }
 
@@ -238,6 +241,14 @@ export interface ChatContextBlock {
     icon?: string
 }
 
+// Lo que hizo el agente en su última respuesta, para pasárselo a quien lo
+// valida: el texto que escribió y una línea por herramienta que usó.
+export interface ChatLastTurn {
+    agentLabel: string
+    text: string
+    tools: string[]
+}
+
 interface Turn {
     role: 'user' | 'agent'
     text: string
@@ -257,6 +268,9 @@ interface Turn {
     // Aviso de la propia app (no del modelo) que va al comienzo del turno. Hoy,
     // el de servidor remoto al usar herramientas por primera vez. No se guarda.
     notice?: string
+    // Notas del cerebro que se le recordaron al agente en este turno (títulos).
+    // No se guarda: el historial conserva lo que escribió la persona.
+    recalled?: string[]
     // Quién contestó este turno, cuando el proveedor de la conversación cambió a
     // mitad de camino (Chat de IA): sin esto, todo el hilo pasaría a firmarlo el
     // proveedor nuevo. Vacío = el vigente.
@@ -330,7 +344,9 @@ interface AgentChatProps {
     onSessionUsage?: (usage: {total: number; output: number; cost: number}) => void
     // Abre OTRO chat, con otro agente, para que revise lo que este viene
     // haciendo. Es el caso de trabajar en paralelo: uno propone, otro valida.
-    onValidateWithAnother?: (excludeAgentId: string) => void
+    // Además de a quién excluir, informa qué hizo este en su última respuesta:
+    // el revisor no tiene por qué adivinarlo.
+    onValidateWithAnother?: (excludeAgentId: string, lastTurn: ChatLastTurn) => void
     // «Cerrar chat»: da la conversación por terminada (corta lo que corra y la
     // saca de Chat de IA → Activas). Distinto de «Detener» (corta el turno y deja el
     // chat abierto) y de cerrar la pestaña (no toca el chat). Solo lo ofrece el
@@ -493,6 +509,22 @@ export default function AgentChat({
         const name = canonicalToolName(tool.name)
         return tool.summary ? `${name} · ${tool.summary}` : `${name}…`
     }, [turns, agentLabel, t])
+
+    // La última respuesta del agente que dijo o hizo algo (se saltan los avisos
+    // y errores sueltos de la propia app). Las herramientas van con el nombre
+    // que les dio el CLI —`Edit`, `Bash`— y su resumen, una por línea.
+    const lastAgentTurn = (): ChatLastTurn => {
+        for (let i = turns.length - 1; i >= 0; i--) {
+            const turn = turns[i]
+            if (turn.role !== 'agent' || (!turn.text.trim() && turn.tools.length === 0)) continue
+            return {
+                agentLabel: turn.by ?? agentLabel,
+                text: turn.text.trim(),
+                tools: turn.tools.map((c) => (c.summary ? `${c.name}: ${c.summary}` : c.name)),
+            }
+        }
+        return {agentLabel, text: '', tools: []}
+    }
 
     const sessionUsage = useMemo(
         () =>
@@ -802,6 +834,7 @@ export default function AgentChat({
             switch (ev.kind) {
                 case 'start':
                     setInfo({model: ev.model ?? '', tools: ev.tools?.length ?? 0, mcp: ev.mcpServers ?? []})
+                    if (ev.recalled?.length) last.recalled = ev.recalled
                     break
                 case 'text':
                     // Se concatena: Antigravity manda deltas incrementales
@@ -1034,8 +1067,13 @@ export default function AgentChat({
 
     // Lo que llega de afuera se SUMA: pisar lo que el usuario estaba
     // escribiendo por abrir el chat desde otro botón borra trabajo sin avisar.
+    //
+    // Cada seed se aplica UNA vez por token: sumar texto no es idempotente, y
+    // en desarrollo (StrictMode) el efecto corre dos veces y lo duplicaba.
+    const appliedSeedRef = useRef<number | null>(null)
     useEffect(() => {
-        if (!seed) return
+        if (!seed || appliedSeedRef.current === seed.token) return
+        appliedSeedRef.current = seed.token
         if (seed.attachments?.length) {
             setContextBlocks((prev) => {
                 const fresh = seed.attachments!.filter(
@@ -1188,9 +1226,13 @@ export default function AgentChat({
         setQueueHeld(false)
         // El contexto de trabajo se antepone al mensaje, no lo reemplaza: el
         // agente ve primero qué estás mirando y después qué le preguntás.
-        const fence = '```'
-        const block = (label: string, body: string, lang?: string) =>
-            `${label}:\n\n${fence}${lang ?? ''}\n${body}\n${fence}\n\n`
+        // La valla es más larga que cualquier racha de ``` del cuerpo: la
+        // respuesta de otro agente o un diff de un .md traen sus propios
+        // bloques de código, y con una valla fija cerraban la ficha a la mitad.
+        const block = (label: string, body: string, lang?: string) => {
+            const fence = '`'.repeat(Math.max(3, ...(body.match(/`{3,}/g) ?? []).map((m) => m.length + 1)))
+            return `${label}:\n\n${fence}${lang ?? ''}\n${body}\n${fence}\n\n`
+        }
         const outgoing =
             blocks.map((b) => block(b.label, b.text, b.language)).join('') +
             (attachWorking && working?.text.trim() ? block(working.label, working.text, working.language) : '') +
@@ -1363,7 +1405,7 @@ export default function AgentChat({
                     arrastra los mismos puntos ciegos. */}
                 {onValidateWithAnother && (
                     <button
-                        onClick={() => onValidateWithAnother(agentId)}
+                        onClick={() => onValidateWithAnother(agentId, lastAgentTurn())}
                         title={t.agent.chat.validateTitle}
                         className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
@@ -1571,6 +1613,31 @@ export default function AgentChat({
                                 </span>
                             )}
                         </div>
+
+                        {/* Qué notas del cerebro se le recordaron al agente en
+                            este turno: contexto que recibió, a la vista y no a
+                            escondidas. Cada título abre la nota. */}
+                        {turn.recalled && turn.recalled.length > 0 && (
+                            <p
+                                data-turn-recalled
+                                title={t.agent.chat.brain.recalledTitle}
+                                className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-ui-10 text-on-surface-variant"
+                            >
+                                <Icon name="psychology" size={12} className="shrink-0 text-primary" />
+                                <span className="shrink-0">{t.agent.chat.brain.recalled({count: turn.recalled.length})}</span>
+                                {turn.recalled.map((title, ri) => (
+                                    <button
+                                        key={ri}
+                                        type="button"
+                                        onClick={() => requestOpenNote({title})}
+                                        title={t.agent.chat.brain.recalledOpen({title})}
+                                        className={`max-w-[16rem] truncate rounded px-1 text-primary hover:bg-primary/10 hover:underline ${FOCUS}`}
+                                    >
+                                        {title}
+                                    </button>
+                                ))}
+                            </p>
+                        )}
 
                         {/* Cada acción del agente como una tarjeta de terminal:
                             qué herramienta, sobre qué, y de qué tamaño. Plegada

@@ -14,6 +14,10 @@ const en: Messages<typeof es> = {
         missingTitle: (p) =>
             `${p.file} doesn’t exist in this repository, so ${p.agents} starts here without any project instructions. Opening it creates it empty so you can write it.`,
         missingTag: ' — missing',
+        create: 'Create',
+        creating: 'Creating…',
+        createTitle: (p) =>
+            `Creates ${p.file} pointing to ${p.source}, so ${p.agents} ${p.agentCount > 1 ? 'read' : 'reads'} the same rules. It is a pointer: it does not copy the content and never overwrites an existing file.`,
         noneAtAll: 'This repository has no instruction files: any agent you open here starts without project context.',
         someMissing: (p) =>
             `${p.files} ${p.fileCount > 1 ? 'are' : 'is'} missing — ${p.agents} ${p.agentCount > 1 ? 'don’t' : 'doesn’t'} read the other agents’ files.`,

@@ -20,6 +20,8 @@
 //     modelo y la fecha. El slug del directorio es la ruta del proyecto con
 //     `/`, `_` y `.` reemplazados por `-`, que es lo que permite atribuir el
 //     consumo AL REPOSITORIO abierto.
+//   - **OpenCode: verificado** (v2.0.22), preguntándole al CLI con
+//     `opencode stats --json`; ver opencode.go.
 //   - **Codex y Antigravity: no verificados.** En la máquina donde se
 //     implementó esto no están instalados (`~/.codex` no existe, ninguno de
 //     los dos binarios está en el PATH), así que no hubo forma de mirar un

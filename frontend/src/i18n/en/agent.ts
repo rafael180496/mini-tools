@@ -31,7 +31,7 @@ const en: Messages<typeof es> = {
         mcpCount: (p) => `· MCP: ${p.n}`,
         cost: (p) => ` · US$${p.usd}`,
         validateTitle:
-            'Opens a chat with ANOTHER agent to review the uncommitted changes. It runs in parallel: this chat stays as it is.',
+            'Opens a chat with ANOTHER agent to review the uncommitted changes. It receives, as cards you can read and remove before sending, what this agent did in its last reply and the diff. It runs in parallel: this chat stays as it is.',
         validate: 'Validate with another',
         searchTitle:
             'Search this conversation. Filters the messages that contain what you type — handy for getting back to a command or an explanation from half an hour ago.',
@@ -215,6 +215,10 @@ const en: Messages<typeof es> = {
             blockedNotes:
                 'Not available: note writing is not allowed yet. Grant it in Settings → AI → AI access. Click to open it.',
             applyFailed: (p) => `Could not save the “Save to my brain” setting: ${p.error}`,
+            recalled: (p) => (p.count === 1 ? 'Recalled 1 note:' : `Recalled ${p.count} notes:`),
+            recalledTitle:
+                'Notes from your brain added to this message because they resemble what you wrote. Only notes you have not marked as private.',
+            recalledOpen: (p) => `Opens the note «${p.title}» in a tab`,
         },
         starters: {
             db: ['Explain this query', 'Optimize this query', 'What tables does this connection have?'],
@@ -520,6 +524,8 @@ const en: Messages<typeof es> = {
         copyTitle: 'Copies the whole block to the clipboard',
         copy: 'Copy',
         copied: 'Copied',
+        expand: (p) => (p.n === 1 ? 'Show 1 more line' : `Show ${p.n} more lines`),
+        collapse: 'Collapse',
     },
     brainPanel: {
         heading: 'Brain',
@@ -597,13 +603,34 @@ const en: Messages<typeof es> = {
         howTo: 'How to connect your agent to this server',
         steps: '3 steps',
         step1: 'Turn the server on with the switch above. **It has to stay on** while you use the agent: when off, nothing is listening.',
-        step2: "Paste your CLI's configuration (below). You only do this once.",
+        step2: "Click **Connect** on your CLI (below) or, if it has no button, paste its configuration. You only do this once.",
         step3: 'Restart the CLI. Ask it *"what mini-tools tools do you have?"* to confirm.',
         copyTitle: 'Copies the command to the clipboard',
         copy: 'Copy',
         copied: 'Copied',
+        connectedCount: (p: {n: number; total: number}) => `${p.n} of ${p.total} connected`,
+        statusConnected: 'Connected',
+        statusStale: 'Out of date: points to another executable',
+        statusNotConnected: 'Not connected',
+        statusNotInstalled: 'Not installed',
+        connect: 'Connect',
+        reconnect: 'Reconnect',
+        connecting: 'Connecting…',
+        connectedTitle: (p: {source: string}) =>
+            `mini-tools is already in this agent's configuration${p.source ? ` (${p.source})` : ''}.`,
+        staleTitle: (p: {source: string}) =>
+            `It's configured${p.source ? ` in ${p.source}` : ''}, but points to a different mini-tools (a moved install or a development build). Reconnect to point it at this one.`,
+        notConnectedTitle: "This agent doesn't know the mini-tools server exists yet.",
+        notInstalledTitle: "This CLI wasn't found on your machine. Install it to be able to connect it.",
+        manualTitle: "This CLI is connected by copying the configuration below: the app doesn't rewrite its file.",
+        connectTitle: (p: {agent: string}) =>
+            `Registers mini-tools in ${p.agent} without you copying anything. Restart the CLI afterwards so it picks it up.`,
+        reconnectTitle: (p: {agent: string}) =>
+            `Replaces the mini-tools entry in ${p.agent} so it points to this executable. Restart the CLI afterwards.`,
+        connectBusyTitle: 'Connecting…',
+        connectedOk: (p: {agent: string}) => `${p.agent} is connected. Restart the CLI so it picks it up.`,
         copyNotWrite:
-            "**It's copied, not written for you**, on purpose: Claude Code's file is its *state* file —with the history of all your projects inside— and rewriting the whole thing to add one line is a disproportionate risk.",
+            "**Codex and OpenCode are copied, not written for you**, on purpose: their configuration is TOML and JSONC with comments, and rewriting the whole file to add one entry would lose what this app doesn't understand. Claude Code is connected with its own command, and Antigravity by editing only the mini-tools entry (with a backup copy).",
         recent: 'Recent access',
         noAccessYet: 'No agent has asked for anything yet.',
         serverOff: 'The server is off, so no access is possible.',

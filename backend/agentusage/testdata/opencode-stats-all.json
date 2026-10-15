@@ -1,0 +1,242 @@
+{
+  "range": {
+    "from": 1789538400000,
+    "to": 1792090990682
+  },
+  "sessions": 29,
+  "subagents": 0,
+  "prompts": 53,
+  "steps": 270,
+  "tokens": {
+    "input": 169865,
+    "output": 41653,
+    "reasoning": 45287,
+    "cache": {
+      "read": 13768678,
+      "write": 699489
+    }
+  },
+  "cost": 0.2620726298000001,
+  "tools": {
+    "mode": "detail",
+    "totals": {
+      "calls": 440,
+      "succeeded": 427,
+      "failed": 13,
+      "unfinished": 0
+    },
+    "usage": [
+      {
+        "name": "shell",
+        "calls": 152,
+        "succeeded": 152,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 42
+      },
+      {
+        "name": "read",
+        "calls": 101,
+        "succeeded": 99,
+        "failed": 2,
+        "unfinished": 0,
+        "durationP50": 12
+      },
+      {
+        "name": "grep",
+        "calls": 71,
+        "succeeded": 66,
+        "failed": 5,
+        "unfinished": 0,
+        "durationP50": 32
+      },
+      {
+        "name": "bash",
+        "calls": 42,
+        "succeeded": 42,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 80.5
+      },
+      {
+        "name": "patch",
+        "calls": 21,
+        "succeeded": 18,
+        "failed": 3,
+        "unfinished": 0,
+        "durationP50": 9
+      },
+      {
+        "name": "todowrite",
+        "calls": 16,
+        "succeeded": 16,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 1
+      },
+      {
+        "name": "glob",
+        "calls": 13,
+        "succeeded": 12,
+        "failed": 1,
+        "unfinished": 0,
+        "durationP50": 58
+      },
+      {
+        "name": "skill",
+        "calls": 9,
+        "succeeded": 9,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 9
+      },
+      {
+        "name": "execute",
+        "calls": 6,
+        "succeeded": 6,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 8
+      },
+      {
+        "name": "apply_patch",
+        "calls": 5,
+        "succeeded": 5,
+        "failed": 0,
+        "unfinished": 0,
+        "durationP50": 10
+      },
+      {
+        "name": "write",
+        "calls": 4,
+        "succeeded": 2,
+        "failed": 2,
+        "unfinished": 0,
+        "durationP50": 6.5
+      }
+    ]
+  },
+  "activeDays": 7,
+  "streak": 2,
+  "activity": [
+    {
+      "date": "2026-09-23",
+      "steps": 73
+    },
+    {
+      "date": "2026-09-29",
+      "steps": 70
+    },
+    {
+      "date": "2026-09-30",
+      "steps": 2
+    },
+    {
+      "date": "2026-10-02",
+      "steps": 2
+    },
+    {
+      "date": "2026-10-08",
+      "steps": 45
+    },
+    {
+      "date": "2026-10-09",
+      "steps": 28
+    },
+    {
+      "date": "2026-10-15",
+      "steps": 50
+    }
+  ],
+  "models": [
+    {
+      "model": {
+        "id": "gpt-6-luna",
+        "providerID": "opencode-go",
+        "variant": "medium"
+      },
+      "steps": 227,
+      "tokens": {
+        "input": 681,
+        "output": 36208,
+        "reasoning": 39413,
+        "cache": {
+          "read": 13580758,
+          "write": 692698
+        }
+      },
+      "cost": 0.26027343000000014
+    },
+    {
+      "model": {
+        "id": "nemotron-3.5-super-vl-free",
+        "providerID": "opencode"
+      },
+      "steps": 36,
+      "tokens": {
+        "input": 163938,
+        "output": 5284,
+        "reasoning": 5634,
+        "cache": {
+          "read": 169104,
+          "write": 0
+        }
+      },
+      "cost": 0
+    },
+    {
+      "model": {
+        "id": "mimo-v2.5",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "steps": 3,
+      "tokens": {
+        "input": 5243,
+        "output": 89,
+        "reasoning": 80,
+        "cache": {
+          "read": 18816,
+          "write": 0
+        }
+      },
+      "cost": 0.0008340248
+    },
+    {
+      "model": {
+        "id": "gpt-6-luna",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "steps": 1,
+      "tokens": {
+        "input": 3,
+        "output": 72,
+        "reasoning": 160,
+        "cache": {
+          "read": 0,
+          "write": 6791
+        }
+      },
+      "cost": 0.000965175
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-5-5",
+        "providerID": "opencode",
+        "variant": "default"
+      },
+      "steps": 3,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "cost": 0
+    }
+  ]
+}

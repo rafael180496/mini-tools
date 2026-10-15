@@ -179,6 +179,27 @@ func Describe(raw string) (summary, detail string) {
 		}
 		return sk, ""
 	}
+	// Un parche (`apply_patch`/`patch` de OpenCode, `patchText`) no trae
+	// `path`: los archivos van dentro del texto. Se resume por el primero.
+	if patch := str("patchText", "patch"); patch != "" {
+		if files := patchFiles(patch); len(files) > 0 {
+			if len(files) > 1 {
+				return files[0], i18n.T(i18n.Msg{ES: "%d archivos", EN: "%d files"}, len(files))
+			}
+			return files[0], ""
+		}
+	}
+	// `todowrite`: la lista de tareas del agente. Lo útil es la que está en
+	// curso y cuántas van terminadas.
+	if todos, ok := in["todos"].([]any); ok && len(todos) > 0 {
+		return todoSummary(todos)
+	}
+	// Una búsqueda (`grep`/`glob`) trae el patrón Y la carpeta donde buscar. El
+	// patrón es lo que la identifica; la carpeta va de detalle. Sin esto la
+	// carpeta, que `path` hace pasar por «la ruta del archivo», tapaba al patrón.
+	if pat := str("pattern"); pat != "" && str("content", "new_string", "newString", "new_str") == "" {
+		return pat, str("glob", "include", "path", "dir")
+	}
 	if p := str("file_path", "filePath", "path", "notebook_path"); p != "" {
 		if content := str("content", "new_string", "newString", "new_str"); content != "" {
 			return p, i18n.T(i18n.Msg{ES: "%d líneas", EN: "%d lines"}, strings.Count(content, "\n")+1)
@@ -187,6 +208,15 @@ func Describe(raw string) (summary, detail string) {
 	}
 	if c := str("command", "cmd"); c != "" {
 		return c, ""
+	}
+	// `execute` de OpenCode: JavaScript en un sandbox. Su primera línea dice de
+	// qué se trata; el resto queda en el detalle de la tarjeta.
+	if code := str("code", "script"); code != "" {
+		first, n := firstLine(code)
+		if n > 1 {
+			return first, i18n.T(i18n.Msg{ES: "%d líneas", EN: "%d lines"}, n)
+		}
+		return first, ""
 	}
 	if p := str("pattern", "query", "q"); p != "" {
 		if where := str("glob", "include", "dir"); where != "" {
@@ -198,4 +228,67 @@ func Describe(raw string) (summary, detail string) {
 		return u, ""
 	}
 	return str("name", "description", "prompt"), ""
+}
+
+// patchFiles lista los archivos que toca un parche, sin repetir y en orden: los
+// encabezados `*** Add|Update|Delete File: ruta` del formato de OpenCode/Codex y
+// los `+++ b/ruta` de un diff unificado.
+func patchFiles(patch string) []string {
+	var files []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "/dev/null" || seen[p] {
+			return
+		}
+		seen[p] = true
+		files = append(files, p)
+	}
+	for _, line := range strings.Split(patch, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case strings.HasPrefix(line, "*** Add File:"):
+			add(strings.TrimPrefix(line, "*** Add File:"))
+		case strings.HasPrefix(line, "*** Update File:"):
+			add(strings.TrimPrefix(line, "*** Update File:"))
+		case strings.HasPrefix(line, "*** Delete File:"):
+			add(strings.TrimPrefix(line, "*** Delete File:"))
+		case strings.HasPrefix(line, "+++ "):
+			p := strings.TrimPrefix(line, "+++ ")
+			if i := strings.IndexByte(p, '\t'); i >= 0 {
+				p = p[:i]
+			}
+			add(strings.TrimPrefix(p, "b/"))
+		}
+	}
+	return files
+}
+
+// todoSummary resume una lista de tareas: la que está en curso (o, si ninguna
+// lo está, la primera con texto) y «hechas/total».
+func todoSummary(todos []any) (summary, detail string) {
+	done := 0
+	for _, raw := range todos {
+		item, _ := raw.(map[string]any)
+		status, _ := item["status"].(string)
+		content, _ := item["content"].(string)
+		if status == "completed" {
+			done++
+		}
+		if content != "" && (status == "in_progress" || summary == "") {
+			summary = content
+		}
+	}
+	return summary, fmt.Sprintf("%d/%d", done, len(todos))
+}
+
+// firstLine devuelve la primera línea con texto (recortada a 120 caracteres) y
+// cuántas líneas tiene el bloque.
+func firstLine(s string) (string, int) {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	first := strings.TrimSpace(lines[0])
+	if r := []rune(first); len(r) > 120 {
+		first = string(r[:120]) + "…"
+	}
+	return first, len(lines)
 }

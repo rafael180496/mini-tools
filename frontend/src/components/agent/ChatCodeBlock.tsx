@@ -1,6 +1,8 @@
-import {useState} from 'react'
+import {useEffect, useMemo, useState} from 'react'
 import Icon from '../Icon'
 import {useT} from '../../i18n'
+import {languageForFence, languageLabel} from '../../codemirror/languageRegistry'
+import {highlightLines, parserFor, parserIfLoaded} from '../../codemirror/highlightStatic'
 
 // Bloque de código dentro de una respuesta del agente.
 //
@@ -15,6 +17,11 @@ import {useT} from '../../i18n'
 // angosto y una consulta con `SELECT` de ocho columnas se va de ancho: el
 // bloque tiene su propio desplazamiento horizontal, así que la línea larga se
 // puede leer entera sin que el panel entero se desarme.
+//
+// **Con colores y números de línea.** El lenguaje sale de la etiqueta del
+// bloque (```ts, ```bash, ```plsql) y se pinta con el mismo parser del editor
+// (ver codemirror/highlightStatic). Los números van en una columna que no se
+// selecciona: copiar a mano trae solo el código.
 
 interface Props {
     lang: string
@@ -32,6 +39,25 @@ interface Props {
     insertTarget?: 'editor' | 'terminal'
 }
 
+// Un bloque más largo que esto arranca plegado: una respuesta con un archivo
+// entero adentro empujaría fuera de la vista el texto que lo explica.
+const COLLAPSE_LINES = 30
+const COLLAPSED_LINES = 14
+
+// Qué papel juega una línea dentro de un diff, para pintarle el fondo entero:
+// agregada (`+`), quitada (`-`) o encabezado de bloque (`@@`). Las cabeceras de
+// archivo `+++`/`---` no son líneas agregadas ni quitadas y quedan neutras.
+function diffKind(line: string): 'ins' | 'del' | 'hunk' | '' {
+    if (line.startsWith('@@')) return 'hunk'
+    if (line.startsWith('+') && !line.startsWith('+++')) return 'ins'
+    if (line.startsWith('-') && !line.startsWith('---')) return 'del'
+    return ''
+}
+
+// Los números de línea solo aportan cuando hay a qué referirse: en un comando
+// de una línea serían ruido.
+const NUMBER_FROM_LINES = 4
+
 // Líneas que son comando: sin vacías ni comentarios, y sin el `$ ` de un prompt
 // copiado, que el shell rechazaría.
 function commandLines(code: string): string[] {
@@ -47,7 +73,31 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
     const [copied, setCopied] = useState(false)
     const [inserted, setInserted] = useState(false)
 
-    const lines = code.split('\n').length
+    const langId = languageForFence(lang)
+    const [parser, setParser] = useState(() => parserIfLoaded(langId))
+    useEffect(() => {
+        let alive = true
+        void parserFor(langId).then((p) => {
+            if (alive) setParser(() => p)
+        })
+        return () => {
+            alive = false
+        }
+    }, [langId])
+    const highlighted = useMemo(() => highlightLines(code, parser), [code, parser])
+    const lines = highlighted.length
+    const collapsible = lines > COLLAPSE_LINES
+    const [expanded, setExpanded] = useState(false)
+    const shown = collapsible && !expanded ? highlighted.slice(0, COLLAPSED_LINES) : highlighted
+    // Solo un bloque ```diff pinta el fondo de cada línea. Se mira el texto
+    // crudo y no los tokens: el parser agrupa tramos, pero la primera letra de
+    // la línea es lo que dice si se agregó o se quitó.
+    const kinds = useMemo(() => (langId === 'diff' ? code.split('\n').map(diffKind) : null), [langId, code])
+    const numbered = lines >= NUMBER_FROM_LINES
+    const gutter = String(lines).length
+    // Nombre del lenguaje como se escribe (TypeScript, no ts); una etiqueta que
+    // no se reconoce se muestra tal cual.
+    const langName = langId === 'plaintext' ? lang || t.agent.codeBlock.text : languageLabel(langId)
     const toTerminal = insertTarget === 'terminal'
     const commands = toTerminal ? commandLines(code) : []
     const canInsert = !!onInsert && (!toTerminal || commands.length === 1)
@@ -59,7 +109,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                 {/* El lenguaje es lo primero: dice de un vistazo si eso es SQL
                     que se puede correr o un pedazo de configuración. */}
                 <span className="font-mono font-medium text-on-surface">
-                    {lang || t.agent.codeBlock.text}
+                    {langName}
                 </span>
                 <span className="text-on-surface-variant/50">
                     {t.agent.codeBlock.lines({n: lines})}
@@ -105,9 +155,48 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                 información, y partir una línea larga en dos desalinea todo lo
                 que venía debajo. Por eso el bloque se desplaza en horizontal en
                 vez de cortar. */}
-            <pre className="overflow-x-auto px-3 py-2 font-mono text-ui-11 leading-5 text-on-surface">
-                {code}
+            <pre className="syn overflow-x-auto py-2 font-mono text-ui-11 leading-5 text-on-surface">
+                <code className="block min-w-max">
+                    {shown.map((line, i) => (
+                        // min-h-5: una línea vacía conserva su alto sin meter un
+                        // carácter que después se copiaría.
+                        // syn-diff-*: el fondo cubre el ancho entero del
+                        // renglón, incluido lo que queda fuera de la vista
+                        // al desplazar (el <code> es min-w-max).
+                        <div key={i} className={`flex min-h-5 pr-3${kinds?.[i] ? ` syn-diff-${kinds[i]}` : ''}`}>
+                            {numbered && (
+                                <span
+                                    aria-hidden
+                                    className="syn-gutter sticky left-0 shrink-0 select-none bg-surface-container-lowest pr-3 pl-3 text-right text-on-surface-variant/50"
+                                    style={{width: `${gutter + 3}ch`}}
+                                >
+                                    {i + 1}
+                                </span>
+                            )}
+                            <span className={numbered ? '' : 'pl-3'}>
+                                {line.map((tok, j) =>
+                                          tok.cls ? (
+                                              <span key={j} className={tok.cls}>
+                                                  {tok.text}
+                                              </span>
+                                          ) : (
+                                              tok.text
+                                          ),
+                                )}
+                            </span>
+                        </div>
+                    ))}
+                </code>
             </pre>
+            {collapsible && (
+                <button
+                    onClick={() => setExpanded((v) => !v)}
+                    className="flex w-full items-center justify-center gap-1 border-t border-outline-variant bg-surface-container-high py-1 text-ui-10 text-on-surface-variant hover:text-on-surface"
+                >
+                    <Icon name={expanded ? 'expand_less' : 'expand_more'} size={14} />
+                    {expanded ? t.agent.codeBlock.collapse : t.agent.codeBlock.expand({n: lines - COLLAPSED_LINES})}
+                </button>
+            )}
         </div>
     )
 }

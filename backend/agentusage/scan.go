@@ -35,5 +35,9 @@ func Scan(repoRoot string, days int) Usage {
 	// Antigravity tiene lector propio: no deja tokens en el disco, pero sí
 	// actividad — ver el encabezado de antigravity.go para lo que se comprobó.
 	u.Agents = append(u.Agents, readAntigravity(home, repoRoot))
+	// OpenCode se lee preguntándole al propio CLI (`opencode stats --json`):
+	// su base es suya y el comando es la interfaz que publica — ver el
+	// encabezado de opencode.go.
+	u.Agents = append(u.Agents, readOpencode(repoRoot, days))
 	return u
 }

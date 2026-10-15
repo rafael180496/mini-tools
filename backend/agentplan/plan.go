@@ -16,6 +16,12 @@
 //     (`default_claude_max_5x`, …). Es el dato más completo de los tres.
 //   - **Codex**: el `id_token` de `~/.codex/auth.json` es un JWT y su claim
 //     `https://api.openai.com/auth` lleva `chatgpt_plan_type`.
+//   - **OpenCode**: no tiene "plan" propio. Su `auth.json`
+//     (`~/.local/share/opencode/`, o `$XDG_DATA_HOME/opencode/`) tiene como
+//     CLAVES los proveedores con sesión iniciada —`opencode-go` es la
+//     suscripción «OpenCode Go»— y es eso lo que se informa. **Solo se leen
+//     las claves**: los valores son credenciales y se descartan sin
+//     inspeccionarlos (ver openCodeProviders).
 //   - **Antigravity**: **no publica su plan en el disco.** Lo único local es
 //     si completó el onboarding de consumidor o el de empresa, que distingue
 //     el tipo de cuenta pero NO el nivel. Su cuota real la contesta el
@@ -36,6 +42,8 @@ import (
 	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -55,14 +63,14 @@ type Plan struct {
 	Note string `json:"note"`
 }
 
-// All devuelve el plan de los tres agentes. Siempre los tres: uno ausente del
+// All devuelve el plan de los cuatro agentes. Siempre los cuatro: uno ausente del
 // listado y uno sin dato se verían igual, y solo el segundo es información.
 func All() []Plan {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	return []Plan{claudePlan(home), codexPlan(home), antigravityPlan(home)}
+	return []Plan{claudePlan(home), codexPlan(home), antigravityPlan(home), opencodePlan(home)}
 }
 
 func claudePlan(home string) Plan {
@@ -184,6 +192,83 @@ func antigravityPlan(home string) Plan {
 		p.Detail = i18n.T(i18n.Msg{ES: "cuenta personal", EN: "personal account"})
 	}
 	p.Note = i18n.T(i18n.Msg{ES: "Antigravity no publica su plan en el disco: el límite semanal y el de cinco horas los contesta el servidor, y se ven con /usage dentro de la sesión.", EN: "Antigravity does not publish its plan on disk: the weekly and five-hour limits are answered by the server, and are shown with /usage inside the session."})
+	return p
+}
+
+// opencodeProviderLabels nombra los proveedores propios de OpenCode. El resto
+// se muestra con su identificador capitalizado: son nombres que define cada
+// proveedor y una tabla completa quedaría vieja.
+var opencodeProviderLabels = map[string]string{
+	"opencode-go": "OpenCode Go",
+	"opencode":    "OpenCode Zen",
+}
+
+// opencodeAuthPath es dónde OpenCode guarda sus credenciales. Sigue la
+// convención XDG, que OpenCode respeta también fuera de Linux.
+func opencodeAuthPath(home string) string {
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		base = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(base, "opencode", "auth.json")
+}
+
+// opencodeProviders devuelve los identificadores de proveedor con sesión.
+//
+// **Solo las claves del JSON.** El archivo mapea proveedor → credencial, y las
+// credenciales no pueden pasar por este código: se decodifica a
+// `map[string]json.RawMessage` y los valores nunca se leen, se copian ni se
+// loguean. ok es false si el archivo no existe o no es un objeto JSON.
+func opencodeProviders(path string) (ids []string, ok bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, false
+	}
+	ids = make([]string, 0, len(doc))
+	for id := range doc {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, true
+}
+
+func opencodeProviderLabel(id string) string {
+	if l, ok := opencodeProviderLabels[id]; ok {
+		return l
+	}
+	return prettifyTier(strings.NewReplacer("-", " ", ".", " ").Replace(id))
+}
+
+func opencodePlan(home string) Plan {
+	p := Plan{Agent: "opencode"}
+
+	ids, ok := opencodeProviders(opencodeAuthPath(home))
+	if !ok {
+		p.Note = i18n.T(i18n.Msg{ES: "No hay una sesión de OpenCode iniciada en esta máquina.", EN: "There is no OpenCode session signed in on this machine."})
+		return p
+	}
+	if len(ids) == 0 {
+		p.Note = i18n.T(i18n.Msg{ES: "OpenCode no tiene ningún proveedor con sesión iniciada.", EN: "OpenCode has no provider signed in."})
+		return p
+	}
+
+	labels := make([]string, len(ids))
+	for i, id := range ids {
+		labels[i] = opencodeProviderLabel(id)
+	}
+	p.Known = true
+	// La etiqueta es una píldora al lado del nombre: con más de dos
+	// proveedores se corta en "+N" y el detalle los lista todos.
+	if len(labels) > 2 {
+		p.Label = strings.Join(labels[:2], " · ") + " +" + strconv.Itoa(len(labels)-2)
+	} else {
+		p.Label = strings.Join(labels, " · ")
+	}
+	p.Detail = i18n.T(i18n.Msg{ES: "Proveedores con sesión iniciada: %s. OpenCode no publica un plan: depende de cada proveedor.", EN: "Providers signed in: %s. OpenCode does not publish a plan: it depends on each provider."}, strings.Join(labels, ", "))
 	return p
 }
 

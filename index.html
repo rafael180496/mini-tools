@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.10.1. Everything here exists in that binary.">2.10.1 · Help</span>
+  <span class="ver" title="This documentation describes version 2.10.2. Everything here exists in that binary.">2.10.2 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -310,6 +310,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   </div>
   <a class="tlink" href="https://github.com/rafael180496/mini-tools/releases">Downloads</a>
   <a class="tlink" href="https://github.com/rafael180496/mini-tools">Source</a>
+  <a class="tlink" href="https://www.patreon.com/16966547/join" title="Support mini-tools with a monthly subscription on Patreon, or with a one-off coffee">Support</a>
   <a class="iconbtn" id="langsw" href="es/index.html" data-base="es/index.html" hreflang="es" lang="es" title="Leer esta ayuda en español">Español</a>
   <button class="iconbtn" id="tgl" title="Switch between light and dark theme">Theme</button>
 </div>
@@ -462,6 +463,16 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <a class="btn" href="https://github.com/rafael180496/mini-tools/releases">Download</a>
     <a class="btn ghost" href="https://github.com/rafael180496/mini-tools">View the source</a>
     <a class="btn ghost" href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a>
+  </div>
+
+  <h2 id="introduccion--apoyar">Support the project</h2>
+  <p>mini-tools is free, open source and has no telemetry, and it will stay that way. If it saves you work and you want it to keep
+  growing, you can support it with a one-off contribution on <strong>Buy Me a Coffee</strong> or a monthly subscription on
+  <strong>Patreon</strong>. Both are also one click away in the app, at the bottom of <strong>Settings</strong>.</p>
+  <div class="cta">
+    <a class="btn" href="https://buymeacoffee.com/rhidalgo">☕ Buy me a coffee</a>
+    <a class="btn ghost" href="https://www.patreon.com/16966547/join">Subscribe on Patreon</a>
+    <a class="btn ghost" href="https://www.patreon.com/cw/TotoLab2026">Patreon page</a>
   </div>
 </article>
 
@@ -1817,6 +1828,9 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p>The chat <strong>fills the full width of the tab</strong>: messages and the message box go edge to edge, with no narrow column and empty margins. To keep it
   readable in a big window, only the <em>running text</em> of a reply (paragraphs, lists, quotes) is capped at about <strong>100 characters per line</strong>;
   <strong>code blocks and tables</strong> use the whole width, and a short reply takes the room it needs instead of stretching.</p>
+  <p>The <strong>code blocks</strong> in a reply are colored like the editor (from the tag the model gave them: <code>sql</code>, <code>ts</code>, <code>bash</code>…), and the header
+  names the language in full. From four lines up they carry <strong>line numbers</strong>, which are not copied when you select; those over 30 lines start folded with
+  <em>Show N more lines</em>. A <code>diff</code> block paints what was added in green and what was removed in red.</p>
   <ul>
     <li><strong>Adjustable history</strong> — drag the list's right edge to widen it (the width in pixels shows while you drag). With focus on the edge, the
     <kbd>←</kbd> <kbd>→</kbd> arrows move it (<kbd>Shift</kbd> for bigger steps; <kbd>Home</kbd> and <kbd>End</kbd> jump to the minimum and maximum) and a
@@ -2194,6 +2208,14 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>Notes</td><td>Query your knowledge base, and —with explicit permission— write down what it found out</td></tr>
   </table></div>
 
+  <h2 id="ia-chat--validar">Validate with another agent</h2>
+  <p>In a repository chat, <strong>Validate with another</strong> opens a chat with a different agent to review what the first one did.
+  The reviewer gets two attached cards: <em>What &lt;agent&gt; did</em> (its last reply and the tools it used) and <em>Uncommitted
+  changes</em> (the changed files, including new untracked ones, and the staged plus unstaged diff). You can expand them to read them
+  and remove them with the ✕ before sending: nothing travels hidden. If the diff exceeds 48&nbsp;KB it is cut and the card says so; with
+  no changes, only what the first agent did is attached. The prompt asks for a peer review: what's wrong, what's missing and what it
+  wouldn't do this way, with file and line references.</p>
+
   <h2 id="ia-chat--opencode">OpenCode</h2>
   <p><a href="https://opencode.ai/">OpenCode</a> is detected on the PATH or in <code>~/.opencode/bin</code>, where its installer
   leaves it. It signs in per provider with <code>opencode auth login</code>, and the model picker lists the models of the
@@ -2202,6 +2224,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   asking. <strong>In both it can't run shell commands</strong>: on its own it would run them without asking, and in the
   chat there's nobody to ask. Its MCP servers (<code>opencode.json</code>, in the project and in
   <code>~/.config/opencode</code>) are shown read-only, and it reads the project's <code>AGENTS.md</code>.</p>
+  <p>Its tool calls (<code>shell</code>, <code>patch</code>, <code>list</code>, <code>todowrite</code>, <code>webfetch</code>,
+  <code>execute</code>) show up as cards with their own icon and a one-line summary, like the other agents'.</p>
 
   <h2 id="ia-chat--adjuntos">Attach files</h2>
   <p>The <strong>Attach</strong> button, dragging onto the chat or <kbd>⌘V</kbd> add images, PDFs and text or code files to your message,
@@ -2221,6 +2245,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="ia-chat--consumo">How much you've spent</h2>
   <p>The <strong>Usage</strong> tab reads what each CLI already stores about its own sessions. It's <em>their</em>
   estimate, not a parallel count by the app: making the number up would be worse than not showing it.</p>
+  <p><strong>OpenCode</strong> is measured by asking its own CLI (<code>opencode stats</code>), so tokens, cache and the per-model
+  split are real numbers, and "this repo" is computed on the open repository. Reasoning tokens count as output, as in Claude Code,
+  so the totals are comparable. It has no plan of its own: the badge lists the providers you're signed in with (only their names
+  are read, never the credentials). It exposes no quota or balance, so Limits says so instead of showing 0%; the limit, if any,
+  lives in each provider's console.</p>
 </article>
 
 <article class="topic" id="ia-sesiones" data-title="Background chats and AI sessions">
@@ -2843,6 +2872,13 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <figcaption>The context popover: what is loaded, from where, and how much of it.</figcaption>
   </figure>
 
+  <h2 id="ia-proyectos--crear-instrucciones">One set of rules for every agent</h2>
+  <p>Each CLI reads only its own instructions file: Claude Code <code>CLAUDE.md</code>, Codex and OpenCode <code>AGENTS.md</code>,
+  Antigravity <code>GEMINI.md</code>. The Agents tab of the Git module lists the ones your repository is missing, and when at least one of
+  them exists, each missing file gets a <strong>Create</strong> button. It writes a short pointer to the existing file, not a copy, so the
+  rules live in one place: <code>CLAUDE.md</code> and <code>GEMINI.md</code> import the original (<code>@file</code>) and get its real content,
+  and <code>AGENTS.md</code> links to it, because Codex and OpenCode don't import. An existing file is never overwritten.</p>
+
   <h2 id="ia-proyectos--skills">Skills and progressive loading</h2>
   <p>Skills are folders with a <code>SKILL.md</code> (in <code>.claude/skills</code>, <code>.github/skills</code>, <code>.opencode/skills</code> or <code>.agents/skills</code>, in the project or in your home folder).
   They are <strong>loaded progressively</strong>: the model starts out seeing only each skill's <em>name and description</em>, and when one fits the task it calls the <code>skill</code> tool to read its full instructions —
@@ -2930,6 +2966,14 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   </ul>
   <p>The folder and index names are fixed; only the <strong>root folder</strong> (<code>Cerebro</code> by default) changes, in <em>Settings → AI → Brain</em>. Changing it doesn't move existing notes.</p>
 
+  <h2 id="ia-cerebro--recordar">It remembers on its own</h2>
+  <p>With <em>Save to my brain</em> on, every message also carries the notes from your brain that resemble what you wrote: the ones in
+  the project's folder (its <code>_Índice</code> first) or, when the conversation has no project, those under <code>Temas</code>. They are found
+  by the words in your message, and the note matching the most words wins. At most five go in, trimmed. Notes you marked private never
+  go in. Above the agent's reply you see <em>Recalled N notes: …</em>; click a title to open the note. What was recalled isn't saved in the
+  history — only what you typed is. Example: asking <em>"how do I resolve a row lock in the batch?"</em> in a project that already has a
+  <em>Row locks</em> note brings that note in without you mentioning it.</p>
+
   <h2 id="ia-cerebro--herramientas">The notes tools</h2>
   <p>The brain uses the MCP notes tools, improved so the agent can find its way (they also work for the CLIs):</p>
   <ul>
@@ -2981,6 +3025,16 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="ia-mcp--que-hace">What it exposes</h2>
   <p>Turn it on and any compatible CLI can ask the app for a table's schema, search your notes or read the last
   lines of a terminal — <strong>over a local socket</strong>, not over the network.</p>
+
+  <h2 id="ia-mcp--conectar-agente">Connecting your agent</h2>
+  <p>Under <strong>How to connect your agent</strong> each CLI shows its state: <strong>Connected</strong>, <strong>Out of date</strong>
+  (it's configured, but points to a different mini-tools: a moved copy or a development build), <strong>Not connected</strong> or
+  <strong>Not installed</strong>. For Claude Code and Antigravity a <strong>Connect</strong> button appears (or <strong>Reconnect</strong>
+  if it's out of date): mini-tools registers the server for you, with nothing to copy. For Claude Code it uses the CLI's own command
+  (<code>claude mcp add --scope user</code>); for Antigravity it adds only the mini-tools entry to
+  <code>~/.gemini/config/mcp_config.json</code>, keeping everything else and leaving a backup copy. Restart the CLI afterwards so it
+  picks it up. Codex and OpenCode are connected by copying the snippet shown below: their configuration files have comments and
+  formats that mini-tools doesn't rewrite.</p>
 
   <h2 id="ia-mcp--control">Access control</h2>
   <ul>
@@ -3227,7 +3281,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.10.1; this page doesn't make a single external request.
+  v2.10.2; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·

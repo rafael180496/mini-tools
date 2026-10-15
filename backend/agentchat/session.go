@@ -238,6 +238,11 @@ type Turn struct {
 	// system prompt agregado (detrás del idioma de respuesta), `claude`; Codex
 	// y Antigravity lo ignoran (quien llama antepone el texto al prompt).
 	System string
+	// Recalled son los títulos de las notas del cerebro que quien llama sumó a
+	// System (o al prompt) en este turno. El Manager los anota en el primer
+	// KindStart para que la conversación los muestre; no cambian cómo corre el
+	// turno.
+	Recalled []string
 	// Tools son las herramientas que se le declaran al modelo en este turno y
 	// RunTool cómo se ejecuta una. Las arma quien llama (App) con el catálogo
 	// del servidor MCP y las de archivos y comandos que el modo permita; este
@@ -485,6 +490,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 	// salida que llega después es el mismo fallo, y mostrarlo otra vez dejaría
 	// dos errores (y dos filas en el historial) para una sola cosa.
 	failed := false
+	recalled := t.Recalled
 
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
@@ -516,6 +522,10 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 			}
 			if ev.Kind == KindError {
 				failed = true
+			}
+			// Solo el primer KindStart lleva el recuerdo del cerebro.
+			if ev.Kind == KindStart && recalled != nil {
+				ev.Recalled, recalled = recalled, nil
 			}
 			m.emit(t.SessionID, ev)
 		}

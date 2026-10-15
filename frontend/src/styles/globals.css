@@ -412,3 +412,76 @@ body {
 .dark ::-webkit-scrollbar-thumb:hover {
     background-color: rgb(115 115 115 / 0.8); /* neutral-500 */
 }
+
+/* Resaltado de código de solo lectura (bloques de las respuestas de la IA; ver
+   codemirror/highlightStatic.ts). Los tonos son los de GitHub claro/oscuro,
+   que es lo que usa el editor en su tema «auto»: el mismo SQL se ve igual en el
+   chat y en el editor donde se pega. */
+:root {
+    --syn-keyword: #cf222e;
+    --syn-string: #0a3069;
+    --syn-regexp: #116329;
+    --syn-number: #0550ae;
+    --syn-atom: #0550ae;
+    --syn-comment: #6e7781;
+    --syn-function: #8250df;
+    --syn-definition: #953800;
+    --syn-type: #953800;
+    --syn-property: #0550ae;
+    --syn-tag: #116329;
+    --syn-meta: #6e7781;
+    --syn-inserted: #116329;
+    --syn-deleted: #82071e;
+    /* Fondos por línea de un bloque diff. Con transparencia: se apoyan sobre el
+       fondo del bloque, sea cual sea el tema. */
+    --syn-inserted-bg: rgb(46 160 67 / 0.16);
+    --syn-deleted-bg: rgb(207 34 46 / 0.13);
+    --syn-hunk-bg: rgb(9 105 218 / 0.10);
+}
+
+.dark {
+    --syn-keyword: #ff7b72;
+    --syn-string: #a5d6ff;
+    --syn-regexp: #7ee787;
+    --syn-number: #79c0ff;
+    --syn-atom: #79c0ff;
+    --syn-comment: #8b949e;
+    --syn-function: #d2a8ff;
+    --syn-definition: #ffa657;
+    --syn-type: #ffa657;
+    --syn-property: #79c0ff;
+    --syn-tag: #7ee787;
+    --syn-meta: #8b949e;
+    --syn-inserted: #aff5b4;
+    --syn-deleted: #ffdcd7;
+    --syn-inserted-bg: rgb(46 160 67 / 0.24);
+    --syn-deleted-bg: rgb(248 81 73 / 0.22);
+    --syn-hunk-bg: rgb(56 139 253 / 0.16);
+}
+
+.syn .syn-keyword { color: var(--syn-keyword); }
+.syn .syn-string { color: var(--syn-string); }
+.syn .syn-regexp { color: var(--syn-regexp); }
+.syn .syn-number { color: var(--syn-number); }
+.syn .syn-atom { color: var(--syn-atom); }
+.syn .syn-comment { color: var(--syn-comment); font-style: italic; }
+.syn .syn-function { color: var(--syn-function); }
+.syn .syn-definition { color: var(--syn-definition); }
+.syn .syn-type { color: var(--syn-type); }
+.syn .syn-property { color: var(--syn-property); }
+.syn .syn-tag { color: var(--syn-tag); }
+.syn .syn-meta { color: var(--syn-meta); }
+.syn .syn-inserted { color: var(--syn-inserted); }
+.syn .syn-deleted { color: var(--syn-deleted); }
+.syn .syn-invalid { text-decoration: underline wavy var(--md-error); }
+
+/* Renglones de un bloque diff (ChatCodeBlock): el fondo va en el renglón, que
+   ocupa el ancho entero del <code>. El número de línea es pegajoso y opaco para
+   tapar el texto que se desliza por debajo; por eso lleva el tinte como IMAGEN
+   sobre su color de base, y no en lugar de él. */
+.syn .syn-diff-ins { background-color: var(--syn-inserted-bg); }
+.syn .syn-diff-del { background-color: var(--syn-deleted-bg); }
+.syn .syn-diff-hunk { background-color: var(--syn-hunk-bg); }
+.syn .syn-diff-ins .syn-gutter { background-image: linear-gradient(var(--syn-inserted-bg), var(--syn-inserted-bg)); }
+.syn .syn-diff-del .syn-gutter { background-image: linear-gradient(var(--syn-deleted-bg), var(--syn-deleted-bg)); }
+.syn .syn-diff-hunk .syn-gutter { background-image: linear-gradient(var(--syn-hunk-bg), var(--syn-hunk-bg)); }

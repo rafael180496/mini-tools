@@ -4,6 +4,7 @@ import {agentlimits, agentplan, agentusage} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentLimitBars from './AgentLimitBars'
 import AgentModelServersUsage from './AgentModelServersUsage'
+import {agentIconName} from './agentIcon'
 import {isModelServerAgent} from '../../lib/modelServers'
 import {rich} from './rich'
 import {formatNumber, useT} from '../../i18n'
@@ -119,7 +120,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                     return (
                         <div key={a.agent} className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
                             <div className="flex items-center gap-1.5">
-                                <Icon name="smart_toy" size={12} className="shrink-0 text-on-surface-variant" />
+                                <Icon name={agentIconName(a.agent)} size={12} className="shrink-0 text-on-surface-variant" />
                                 <span className="font-medium text-on-surface">{agentLabel(a.agent)}</span>
 
                                 {/* El plan al lado del consumo: sin él, un total

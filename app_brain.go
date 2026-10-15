@@ -38,6 +38,43 @@ type BrainStatus struct {
 type brainState struct {
 	mu      sync.Mutex
 	pending map[string]bool
+	// recalled son las notas que ya se enviaron como recuerdo en cada sesión
+	// (sesión → ids): una nota no se repite en la misma sesión
+	// (app_brain_recall.go). Vive en memoria, como la sesión misma.
+	recalled map[string]map[string]bool
+}
+
+// recalledIDs devuelve una copia de las notas ya enviadas a esa sesión.
+func (b *brainState) recalledIDs(session string) map[string]bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make(map[string]bool, len(b.recalled[session]))
+	for id := range b.recalled[session] {
+		out[id] = true
+	}
+	return out
+}
+
+// markRecalled anota notas como enviadas a esa sesión.
+func (b *brainState) markRecalled(session string, ids []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.recalled == nil {
+		b.recalled = map[string]map[string]bool{}
+	}
+	if b.recalled[session] == nil {
+		b.recalled[session] = map[string]bool{}
+	}
+	for _, id := range ids {
+		b.recalled[session][id] = true
+	}
+}
+
+// forgetRecalled olvida lo enviado a una sesión (ResetAgentChat).
+func (b *brainState) forgetRecalled(session string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.recalled, session)
 }
 
 func (b *brainState) set(id string, on bool) {

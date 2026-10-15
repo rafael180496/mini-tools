@@ -415,3 +415,54 @@ export async function loadLanguage(id: LanguageId): Promise<Extension | null> {
 export function languageIfLoaded(id: LanguageId): Extension | null {
     return loaded.get(id) ?? null
 }
+
+// Nombres con los que los modelos etiquetan un bloque de código (```js) que no
+// son ni el id del registro ni una extensión de archivo.
+const FENCE_ALIASES: Record<string, LanguageId> = {
+    js: 'javascript',
+    node: 'javascript',
+    ts: 'typescript',
+    py: 'python',
+    python3: 'python',
+    golang: 'go',
+    rs: 'rust',
+    kt: 'kotlin',
+    cs: 'csharp',
+    'c#': 'csharp',
+    'c++': 'cpp',
+    c: 'cpp',
+    rb: 'ruby',
+    sh: 'shell',
+    bash: 'shell',
+    zsh: 'shell',
+    console: 'shell',
+    terminal: 'shell',
+    ps: 'powershell',
+    ps1: 'powershell',
+    pwsh: 'powershell',
+    yml: 'yaml',
+    md: 'markdown',
+    docker: 'dockerfile',
+    patch: 'diff',
+    // Los dialectos SQL comparten el parser genérico: alcanza para colorear.
+    plsql: 'sql',
+    psql: 'sql',
+    pgsql: 'sql',
+    postgres: 'sql',
+    postgresql: 'sql',
+    mysql: 'sql',
+    sqlite: 'sql',
+    oracle: 'sql',
+    tsql: 'sql',
+}
+
+// languageForFence resuelve la etiqueta de un bloque de código de markdown
+// (```ts, ```bash, ```plsql). Lo que no se reconoce es texto plano.
+export function languageForFence(tag: string): LanguageId {
+    const name = tag.trim().toLowerCase()
+    if (!name) return 'plaintext'
+    const alias = FENCE_ALIASES[name]
+    if (alias) return alias
+    if (BY_ID.has(name as LanguageId)) return name as LanguageId
+    return BY_EXTENSION.get(name) ?? 'plaintext'
+}

@@ -565,6 +565,9 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 			History: agentchat.SeedHistory(a.llmSeedHistory(sessionID), llmSeedMessages, llmSeedChars),
 		}
 		a.attachLLMTools(&turn, module, contextID)
+		// Recuerdo del cerebro (app_brain_recall.go): se busca con lo que
+		// escribió la persona, no con el prompt ya expandido.
+		brain, turn.Recalled = a.withRecall(brain, agentID, sessionID, module, contextID, typed)
 		turn.System = withBrain(turn.System, brain)
 		return a.sendRecorded(module, contextID, typed, turn)
 	}
@@ -586,10 +589,12 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 	// y Antigravity no tienen un equivalente que no reemplace las suyas, así
 	// que van adelante del mensaje que se le manda al CLI. `typed` —lo que se
 	// graba en el historial— no las lleva.
+	brain, recalled := a.withRecall(brain, agentID, sessionID, module, contextID, typed)
 	system, prompt := brainDelivery(agentID, brain, prompt)
 
 	return a.sendRecorded(module, contextID, typed, agentchat.Turn{
 		SessionID: sessionID,
+		Recalled:  recalled,
 		AgentID:   agentID,
 		Command:   agent.Command,
 		// El ejecutable va resuelto a ruta absoluta: lanzarlo por nombre lo
@@ -730,6 +735,7 @@ func (a *App) ResetAgentChat(sessionID string) error {
 	}
 	a.discardChatTurn(sessionID)
 	a.agentChats.Reset(sessionID)
+	a.brain.forgetRecalled(sessionID)
 	return a.vault.DeleteAgentChatMessages(sessionID)
 }
 
