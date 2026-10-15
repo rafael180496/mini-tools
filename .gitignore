@@ -641,3 +641,7 @@ frontend/dist/
 vault.db
 salt.bin
 
+
+# mini-tools: material de difusión (videos, portadas, textos para redes). Pesa
+# decenas de MB por versión y no es parte del producto: vive solo en la máquina.
+/share/
