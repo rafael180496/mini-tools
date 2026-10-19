@@ -321,6 +321,38 @@ propone el motor. `alias` es el nombre corto para la tabla recién escrita
 no existe en ningún catálogo). `expand` es el `*` reemplazado por su lista de
 columnas.
 
+**`synonym` sí sale del catálogo, pero no es una tabla.** `db.SchemaMetadata.Synonyms`
+(solo Oracle, `backend/db/synonyms.go`, consulta a `ALL_SYNONYMS` acotada a los
+esquemas escaneados y **no fatal**: si el usuario no la puede leer se pierden los
+sinónimos y nada más) se indexa en `SchemaIndex.Synonyms`/`synonymsBy`, **aparte**
+de `Tables`: un sinónimo es otro *nombre* de una tabla, y meterlo en `Tables`
+duplicaría cada sugerencia que camina el grafo de FK. `SchemaIndex.Table()` lo
+consulta solo cuando ninguna tabla real responde a ese nombre, así que agregar
+sinónimos nunca cambia lo que un nombre existente resuelve. Los sinónimos que
+apuntan a algo fuera del índice se descartan (no tendrían columnas que ofrecer),
+y uno escrito igual que una tabla no se lista (`collector.synonyms`). Contrato
+con el frontend: `kind: "synonym"` → `sqlintel-synonym` en `sqlIntel.ts` (ícono
+`link`), y va en `TRACKED_KINDS`.
+
+**Enter inserta, Tab reemplaza.** `sqlCompletionKeys` (Tab, `Prec.highest`, antes
+que la Tab del texto fantasma) acepta la sugerencia con una bandera de módulo
+(`replacing`) que los `apply` de `toCompletion` leen para extender el rango hasta
+el final de la palabra. En un solo tick síncrono: se prende y se apaga alrededor
+de `acceptCompletion`. El pie del popup (`sqlCompletionFooter`) es un `::after`
+del tooltip con el texto de `editor.codemirror.completionHint`.
+
+**Con una conexión vinculada hay UNA fuente de sugerencias**: `autocompletion({override:
+[sqlIntelCompletionSource]})` en `sqlLanguageExtension`. Antes se registraba como
+un `autocomplete` más del dialecto y la de `@codemirror/lang-sql` seguía al lado,
+así que cada palabra clave salía dos veces (mismo texto, `type` distinto, y
+CodeMirror solo deduplica si el `type` coincide). Una pestaña sin conexión
+conserva la de lang-sql.
+
+**Las palabras clave siguen el estilo del buffer** (`keywordsInLowerCase`): gana lo
+que el documento ya usa en `styleKeywords`, después el prefijo tecleado, y sin
+evidencia queda en mayúsculas. Solo afecta a `KindKeyword`; funciones y snippets
+conservan su forma.
+
 **`expand` se ofrece SOLO con `explicit: true`.** CodeMirror ata Enter a
 aceptar la opción seleccionada, y en un popup que se abrió solo (`SELECT |`)
 un Enter para ir a la línea siguiente pegaría la lista entera de columnas en

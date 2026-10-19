@@ -189,6 +189,8 @@ const en: Messages<typeof es> = {
             completions: 'Completions',
             controlCharacter: 'Control character',
         },
+        // Pie del popup de sugerencias del editor SQL (codemirror/sqlIntel.ts).
+        completionHint: '⏎ to insert · ⇥ to replace the rest of the word',
         titles: {
             next: 'Next match (Enter · F3)',
             previous: 'Previous match (Shift+Enter · Shift+F3)',

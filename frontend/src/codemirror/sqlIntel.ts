@@ -14,7 +14,7 @@
 // engine itself measures in microseconds; the bridge hop is the cost, and
 // this is what keeps it off the hot path.
 
-import {snippetCompletion} from '@codemirror/autocomplete'
+import {acceptCompletion, completionStatus, snippetCompletion} from '@codemirror/autocomplete'
 import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete'
 import {StateEffect, StateField, Prec} from '@codemirror/state'
 import type {Extension} from '@codemirror/state'
@@ -22,6 +22,7 @@ import {Decoration, EditorView, ViewPlugin, WidgetType, keymap} from '@codemirro
 import type {ViewUpdate} from '@codemirror/view'
 import {CompleteSQL, PrimeSchemaIndex, RecordCompletionUse, SuggestInlineSQL} from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
+import {t} from '../i18n'
 import type {sqlintel} from '../../wailsjs/go/models'
 
 // Item kinds mirrored from backend/sqlintel/engine.go's Kind* constants —
@@ -48,6 +49,7 @@ const KIND_TO_TYPE: Record<string, string> = {
     variable: 'sqlintel-variable',
     param: 'sqlintel-param',
     package: 'sqlintel-package',
+    synonym: 'sqlintel-synonym',
 }
 
 // Go returns an absolute score (roughly 0-1800). CodeMirror expects a
@@ -64,7 +66,25 @@ function toBoost(score: number): number {
 // A completion is only worth remembering when it names something from the
 // schema — counting keyword and snippet picks would just add noise to a
 // ranking signal meant to learn which TABLES and COLUMNS this session uses.
-const TRACKED_KINDS = new Set(['table', 'column', 'schema', 'routine', 'package'])
+const TRACKED_KINDS = new Set(['table', 'column', 'schema', 'routine', 'package', 'synonym'])
+
+// Enter inserta la sugerencia donde está el cursor; Tab la inserta Y reemplaza
+// lo que quedó de la palabra a la derecha (el "Enter inserta, Tab reemplaza"
+// de IntelliJ). Sin texto a la derecha las dos hacen exactamente lo mismo.
+//
+// Es una bandera de módulo y no un parámetro porque CodeMirror llama a
+// `apply(view, completion, from, to)` con su propio rango y no hay forma de
+// pedirle otro: lo que sí controlamos es quién llama a `acceptCompletion`.
+// Se prende y se apaga en el mismo tick síncrono (ver `replaceCompletion`),
+// así que ninguna otra aceptación la puede ver prendida.
+let replacing = false
+
+function wordEnd(view: EditorView, from: number): number {
+    const line = view.state.doc.lineAt(from)
+    const rest = line.text.slice(from - line.from)
+    const m = /^[\w$#]*/.exec(rest)
+    return from + (m ? m[0].length : 0)
+}
 
 function toCompletion(item: sqlintel.Item, connId: string): Completion {
     const base: Completion = {
@@ -88,7 +108,8 @@ function toCompletion(item: sqlintel.Item, connId: string): Completion {
             ...base,
             apply: (view, completion, from, to) => {
                 record()
-                view.dispatch({changes: {from, to, insert: item.l}, selection: {anchor: from + item.l.length}})
+                const end = replacing ? wordEnd(view, to) : to
+                view.dispatch({changes: {from, to: end, insert: item.l}, selection: {anchor: from + item.l.length}})
             },
         }
     }
@@ -104,7 +125,7 @@ function toCompletion(item: sqlintel.Item, connId: string): Completion {
             ...snippet,
             apply: (view, completion, from, to) => {
                 record()
-                inner(view, completion, from, to)
+                inner(view, completion, from, replacing ? wordEnd(view, to) : to)
             },
         }
     }
@@ -113,7 +134,8 @@ function toCompletion(item: sqlintel.Item, connId: string): Completion {
         ...base,
         apply: (view, completion, from, to) => {
             record()
-            view.dispatch({changes: {from, to, insert: apply}, selection: {anchor: from + apply.length}})
+            const end = replacing ? wordEnd(view, to) : to
+            view.dispatch({changes: {from, to: end, insert: apply}, selection: {anchor: from + apply.length}})
         },
     }
 }
@@ -389,6 +411,12 @@ export const sqlCompletionTheme = EditorView.baseTheme({
         content: "'table'",
         color: 'var(--color-primary)',
     },
+    // A synonym is a name that leads to a table, which is what the link glyph
+    // says; same colour as a table because it is used in the same places.
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-synonym::after': {
+        content: "'link'",
+        color: 'var(--color-primary)',
+    },
     '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-schema::after': {
         content: "'schema'",
         color: 'var(--color-secondary)',
@@ -466,6 +494,45 @@ export const sqlCompletionTheme = EditorView.baseTheme({
         lineHeight: '1.45',
     },
 })
+
+// Pie del popup con las dos teclas. No es un elemento del DOM sino un
+// `::after` del tooltip: CodeMirror no tiene un hueco para un pie, y el
+// pseudo-elemento queda debajo de la lista sin tocar cómo la dibuja. El texto
+// sale del diccionario al armar la extensión, igual que las frases de
+// editorChrome.ts, así que cambia de idioma con el resto de la barra.
+export function sqlCompletionFooter(): Extension {
+    return EditorView.baseTheme({
+        '.cm-tooltip.cm-tooltip-autocomplete::after': {
+            content: JSON.stringify(t().editor.codemirror.completionHint),
+            display: 'block',
+            padding: '4px 10px',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '11px',
+            color: 'var(--color-on-surface-variant)',
+            backgroundColor: 'var(--color-surface-container)',
+            borderTop: '1px solid var(--color-outline-variant)',
+        },
+    })
+}
+
+// replaceCompletion es la Tab del popup: acepta la sugerencia seleccionada
+// reemplazando el resto de la palabra. Devuelve false si no hay popup (o si
+// se abrió hace un instante: CodeMirror ignora la aceptación dentro de su
+// `interactionDelay` para que una tecla ya en vuelo no elija por error), y así
+// la Tab cae al texto fantasma o a la sangría como siempre.
+function replaceCompletion(view: EditorView): boolean {
+    if (completionStatus(view.state) !== 'active') return false
+    replacing = true
+    try {
+        return acceptCompletion(view)
+    } finally {
+        replacing = false
+    }
+}
+
+// Va con la precedencia más alta, igual que la Tab del texto fantasma, y
+// ANTES que ella: con el popup abierto, Tab elige del popup.
+export const sqlCompletionKeys: Extension = Prec.highest(keymap.of([{key: 'Tab', run: replaceCompletion}]))
 
 // --- Inline ghost text ----------------------------------------------------
 

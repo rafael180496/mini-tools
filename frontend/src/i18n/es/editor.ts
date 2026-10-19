@@ -198,6 +198,8 @@ export default {
             completions: 'Sugerencias',
             controlCharacter: 'Carácter de control',
         },
+        // Pie del popup de sugerencias del editor SQL (codemirror/sqlIntel.ts).
+        completionHint: '⏎ inserta · ⇥ reemplaza el resto de la palabra',
         titles: {
             next: 'Siguiente coincidencia (Enter · F3)',
             previous: 'Coincidencia anterior (Shift+Enter · Shift+F3)',

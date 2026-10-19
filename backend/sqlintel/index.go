@@ -43,6 +43,12 @@ type TableEntry struct {
 	// from.
 	FromScript bool
 
+	// SynonymOf is set when this entry is an Oracle synonym: it shares the
+	// columns of the table it points at, so every lookup that resolves a name
+	// to columns works unchanged, but it is NOT part of the table list or the
+	// foreign-key graph — see SchemaIndex.synonymsBy.
+	SynonymOf *TableEntry
+
 	Columns   []*ColumnEntry
 	columnsBy map[string]*ColumnEntry
 	// outgoing groups this table's foreign keys by referenced table (lower
@@ -100,9 +106,17 @@ type SchemaIndex struct {
 	Columns  []*ColumnEntry
 	Routines []RoutineEntry
 	Schemas  []string
+	// Synonyms are the Oracle synonyms that resolve to an indexed table, in
+	// catalog order. Kept apart from Tables on purpose: a synonym is another
+	// NAME for a table, not another table, and folding it into Tables would
+	// double every FK-driven suggestion that walks them.
+	Synonyms []*TableEntry
 
-	tablesBy  map[string][]*TableEntry
-	schemasBy map[string][]*TableEntry
+	tablesBy map[string][]*TableEntry
+	// synonymsBy is the fallback Table consults when no real table answers to
+	// a name, keyed by the lowercased synonym name.
+	synonymsBy map[string][]*TableEntry
+	schemasBy  map[string][]*TableEntry
 	// packageMembers indexes an Oracle package's routines by the lowercased
 	// package name, so "PKG." can be completed without scanning Routines.
 	packageMembers map[string][]RoutineEntry
@@ -158,6 +172,7 @@ func (idx *SchemaIndex) scriptTable(schema, name string) (*TableEntry, bool) {
 func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 	idx := &SchemaIndex{
 		tablesBy:       map[string][]*TableEntry{},
+		synonymsBy:     map[string][]*TableEntry{},
 		schemasBy:      map[string][]*TableEntry{},
 		incoming:       map[string][]*TableEntry{},
 		packageMembers: map[string][]RoutineEntry{},
@@ -219,6 +234,8 @@ func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 		}
 	}
 
+	idx.addSynonyms(meta.Synonyms)
+
 	for _, p := range meta.Procedures {
 		idx.addRoutine(RoutineEntry{
 			Schema: p.Schema, Name: p.Name,
@@ -248,6 +265,33 @@ func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 
 	sort.Strings(idx.Schemas)
 	return idx
+}
+
+// addSynonyms indexes each synonym as an entry that shares its target's
+// columns. A synonym whose target is not in the index is dropped: it would
+// complete as a name that resolves to nothing, which is worse than not
+// offering it.
+func (idx *SchemaIndex) addSynonyms(syns []db.Synonym) {
+	for _, s := range syns {
+		target, ok := idx.Table(s.TargetSchema, s.TargetName)
+		if !ok || target.SynonymOf != nil {
+			continue
+		}
+		// Table() ignores the schema when the scan was owner-less (the
+		// catalog entries carry none), which is the right resolution here too.
+		entry := &TableEntry{
+			Schema:    s.Schema,
+			Name:      s.Name,
+			Lower:     strings.ToLower(s.Name),
+			Qualified: qualify(s.Schema, s.Name),
+			Columns:   target.Columns,
+			columnsBy: target.columnsBy,
+			outgoing:  target.outgoing,
+			SynonymOf: target,
+		}
+		idx.Synonyms = append(idx.Synonyms, entry)
+		idx.synonymsBy[entry.Lower] = append(idx.synonymsBy[entry.Lower], entry)
+	}
 }
 
 // addRoutine derives the call name and the lookup keys a RoutineEntry needs
@@ -303,16 +347,21 @@ func (idx *SchemaIndex) Table(schema, name string) (*TableEntry, bool) {
 	if t, ok := idx.scriptTable(schema, name); ok {
 		return t, true
 	}
-	candidates := idx.tablesBy[strings.ToLower(name)]
-	if len(candidates) == 0 {
-		return nil, false
-	}
-	if schema == "" {
+	lower := strings.ToLower(name)
+	candidates := idx.tablesBy[lower]
+	if schema == "" && len(candidates) > 0 {
 		return candidates[0], true
 	}
 	for _, t := range candidates {
 		if strings.EqualFold(t.Schema, schema) {
 			return t, true
+		}
+	}
+	// No real table answers to this name: a synonym might. Real tables win so
+	// that adding synonyms can never change what an existing name resolves to.
+	for _, syn := range idx.synonymsBy[lower] {
+		if schema == "" || strings.EqualFold(syn.Schema, schema) {
+			return syn, true
 		}
 	}
 	return nil, false

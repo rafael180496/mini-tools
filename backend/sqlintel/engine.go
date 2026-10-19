@@ -34,6 +34,9 @@ const (
 	KindParam = "param"
 	// KindPackage is an Oracle package, offered after "SCHEMA.".
 	KindPackage = "package"
+	// KindSynonym is an Oracle synonym of a table or view: another name for
+	// something already in the catalog, which resolves to the same columns.
+	KindSynonym = "synonym"
 )
 
 // Request is one completion query from the editor.
@@ -167,6 +170,7 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 	}
 
 	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen, explicit: req.Explicit}
+	c.lowerKeywords = keywordsInLowerCase(text, ctx)
 
 	switch {
 	case ctx.DotPrefix != "":
@@ -271,6 +275,51 @@ type collector struct {
 	// the SELECT list already projects is a far better GROUP BY candidate
 	// than one it does not, and that is not something the index can encode.
 	boost map[string]int
+	// lowerKeywords spells keywords in lower case when they are inserted, so a
+	// script written as "select … from … where" does not grow a "WHERE" in the
+	// middle of it. See keywordsInLowerCase.
+	lowerKeywords bool
+}
+
+// styleKeywords are the words whose spelling says how the author writes
+// keywords. Deliberately the structural ones: they are in nearly every
+// statement, and almost never a column name.
+var styleKeywords = map[string]bool{
+	"SELECT": true, "FROM": true, "WHERE": true, "AND": true, "OR": true,
+	"ORDER": true, "GROUP": true, "BY": true, "JOIN": true, "ON": true,
+	"INSERT": true, "INTO": true, "UPDATE": true, "DELETE": true, "SET": true,
+	"VALUES": true, "LEFT": true, "INNER": true, "HAVING": true, "DISTINCT": true,
+	"UNION": true, "DESC": true, "ASC": true, "BETWEEN": true, "LIKE": true,
+}
+
+// keywordsInLowerCase decides how an inserted keyword is spelled. The
+// document wins: whatever the author has already written in this buffer is
+// the style to continue, whichever way it goes. Only when the buffer has no
+// evidence yet (a new tab, the first word) does the typed prefix decide, and
+// with neither the historical upper case stays.
+//
+// The token being typed is excluded from the count — "sel|" is the question,
+// not part of the evidence.
+func keywordsInLowerCase(text []rune, ctx Context) bool {
+	lower, upper := 0, 0
+	for _, tok := range Tokenize(text) {
+		if tok.Kind != TokenWord || tok.Start == ctx.From || !styleKeywords[strings.ToUpper(tok.Value)] {
+			continue
+		}
+		switch tok.Value {
+		case strings.ToLower(tok.Value):
+			lower++
+		case strings.ToUpper(tok.Value):
+			upper++
+		}
+	}
+	if lower != upper {
+		return lower > upper
+	}
+	if ctx.Prefix == "" {
+		return false
+	}
+	return ctx.Prefix == strings.ToLower(ctx.Prefix)
 }
 
 // add scores a candidate and keeps it if it matches the typed prefix.
@@ -622,19 +671,53 @@ func (c *collector) tables(idx *SchemaIndex) { c.tablesWithBonus(idx, 300) }
 
 func (c *collector) tablesWithBonus(idx *SchemaIndex, bonus int) {
 	idx.AllTables(func(t *TableEntry) {
-		detail := t.Qualified
-		if len(t.Columns) > 0 {
-			detail += " · " + strconv.Itoa(len(t.Columns)) + " col"
-		}
 		extra := 0
 		if t.FromScript {
-			detail += i18n.T(i18n.Msg{ES: " · declarada en el script", EN: " · declared in the script"})
 			// Just written by hand a few lines up: more likely to be what is
 			// meant than any one table out of a catalog of thousands.
 			extra = 60
 		}
-		c.add(t.Name, KindTable, detail, "", "", bonus+extra)
+		c.add(t.Name, KindTable, tableDetail(t), "", "", bonus+extra)
 	})
+	c.synonyms(idx, bonus)
+}
+
+// tableDetail is the supporting text of a table suggestion: its schema first,
+// because the name is already the label and the schema is what tells apart two
+// tables that share one.
+func tableDetail(t *TableEntry) string {
+	var parts []string
+	if t.Schema != "" {
+		parts = append(parts, t.Schema)
+	}
+	if n := len(t.Columns); n > 0 {
+		parts = append(parts, strconv.Itoa(n)+" col")
+	}
+	if t.FromScript {
+		parts = append(parts, i18n.T(i18n.Msg{ES: "declarada en el script", EN: "declared in the script"}))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// synonyms offers the Oracle synonyms as names of their own, the way a table
+// is. One that is spelled exactly like a table of the catalog is left out:
+// "CARGVAR" would be listed twice with the same effect, and the table already
+// resolves to the same columns.
+func (c *collector) synonyms(idx *SchemaIndex, bonus int) {
+	if idx == nil {
+		return
+	}
+	for _, s := range idx.Synonyms {
+		if len(idx.tablesBy[s.Lower]) > 0 {
+			continue
+		}
+		target := s.SynonymOf.Qualified
+		detail := s.Schema + " → " + target
+		info := i18n.T(i18n.Msg{ES: "Sinónimo de %s. Se escribe como una tabla y Oracle lo resuelve al objeto real.", EN: "Synonym of %s. Written like a table; Oracle resolves it to the real object."}, target)
+		// Just under a table with the same text, so typing a table's name still
+		// puts the table first.
+		c.add(s.Name, KindSynonym, detail, "", info, bonus-5)
+	}
 }
 
 // joinTemplates offers whole JOIN clauses — table, alias and ON condition in
@@ -846,6 +929,9 @@ func (c *collector) keywords(d *Dialect, bonus int) {
 		return
 	}
 	for _, k := range d.AllKeywords() {
+		if c.lowerKeywords {
+			k = strings.ToLower(k)
+		}
 		c.add(k, KindKeyword, "", "", "", bonus)
 	}
 }
@@ -917,7 +1003,7 @@ func inlineSuggestion(idx *SchemaIndex, ctx Context, items []Item) string {
 		return ""
 	}
 	top := items[0]
-	if top.Kind != KindTable && top.Kind != KindColumn {
+	if top.Kind != KindTable && top.Kind != KindColumn && top.Kind != KindSynonym {
 		return ""
 	}
 	if len(items) > 1 && items[1].Score >= top.Score-100 {

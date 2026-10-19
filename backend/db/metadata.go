@@ -117,16 +117,31 @@ type PackageMember struct {
 	Args       []RoutineArg `json:"args,omitempty"`
 }
 
+// Synonym is an Oracle synonym that points at a table or view of the scanned
+// schemas. Only the ones that resolve to something already in
+// SchemaMetadata.Tables are carried: a synonym is useful to completion
+// because it lets a name resolve to columns, and one aimed at an object the
+// scan never saw has none to offer.
+type Synonym struct {
+	// Schema is the owner, "PUBLIC" for a public synonym.
+	Schema       string `json:"schema,omitempty"`
+	Name         string `json:"name"`
+	TargetSchema string `json:"targetSchema,omitempty"`
+	TargetName   string `json:"targetName"`
+}
+
 // SchemaMetadata is the unified shape used to populate the sidebar tree and
 // the editor's autocomplete/hover, regardless of engine. Every engine
 // leaves whichever object types it doesn't support empty (SQLite: only
-// Triggers; Postgres: no Packages) rather than erroring.
+// Triggers; Postgres: no Packages; Synonyms: Oracle only) rather than
+// erroring.
 type SchemaMetadata struct {
 	Tables     []Table     `json:"tables"`
 	Procedures []Procedure `json:"procedures,omitempty"`
 	Functions  []Function  `json:"functions,omitempty"`
 	Triggers   []Trigger   `json:"triggers,omitempty"`
 	Packages   []Package   `json:"packages,omitempty"`
+	Synonyms   []Synonym   `json:"synonyms,omitempty"`
 }
 
 // FetchSchemaMetadata queries pool for its table/column/FK metadata, using
@@ -162,6 +177,10 @@ func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType, schem
 	// over that would be a strict regression against what worked before
 	// signatures existed, so the error is dropped on purpose.
 	_ = attachRoutineArgs(ctx, pool, dbType, schemas, meta)
+	// Same reasoning for synonyms: they only add names that resolve to a
+	// table, so a catalog the user cannot read costs those names and nothing
+	// else.
+	_ = attachSynonyms(ctx, pool, dbType, schemas, meta)
 
 	return meta, nil
 }

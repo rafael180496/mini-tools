@@ -13,10 +13,11 @@
 // and routing a mouse-hover through the bridge would buy nothing.
 
 import {sql, PostgreSQL, SQLite, PLSQL, MSSQL, StandardSQL, type SQLDialect} from '@codemirror/lang-sql'
+import {autocompletion} from '@codemirror/autocomplete'
 import {Decoration, EditorView, hoverTooltip, type DecorationSet} from '@codemirror/view'
 import {StateEffect, StateField, type Extension} from '@codemirror/state'
 import {db} from '../../wailsjs/go/models'
-import {sqlIntelCompletionSource, sqlInlineSuggestions, sqlCompletionTheme} from './sqlIntel'
+import {sqlIntelCompletionSource, sqlInlineSuggestions, sqlCompletionTheme, sqlCompletionFooter, sqlCompletionKeys} from './sqlIntel'
 import {sqlSignatureHelp} from './sqlSignature'
 import {sqlFormatKeymap} from './sqlFormat'
 
@@ -108,6 +109,9 @@ export function sqlLanguageExtension(dbType: string | null | undefined, connId: 
         // still opens a popup there, and it should look like the rest of the
         // app rather than like CodeMirror's default.
         sqlCompletionTheme,
+        sqlCompletionFooter(),
+        // Tab elige del popup (y reemplaza el resto de la palabra).
+        sqlCompletionKeys,
         // Formatear (⌥⌘L / Ctrl+Alt+L) no necesita conexión: es solo texto.
         sqlFormatKeymap,
     ]
@@ -115,11 +119,14 @@ export function sqlLanguageExtension(dbType: string | null | undefined, connId: 
 
     return [
         ...base,
-        // The single schema-aware source, answered by backend/sqlintel.
-        // Registered on the dialect's language data the same additive way
-        // Redis's own source is; lang-sql's keyword source stays alongside
-        // it, and CodeMirror merges the two result sets.
-        dialect.language.data.of({autocomplete: sqlIntelCompletionSource(connId, dbType)}),
+        // The single completion source, answered by backend/sqlintel. It is
+        // an `override` rather than one more entry in the dialect's language
+        // data: the engine already offers the dialect's keywords, and
+        // lang-sql's own keyword source stayed alongside it, so every
+        // keyword showed up twice — once per source, with a different icon.
+        // `override` replaces the language's sources; `autocompletion()` in
+        // basicSetup passes no config, so the two do not conflict.
+        autocompletion({override: [sqlIntelCompletionSource(connId, dbType)]}),
         // Grey inline prediction (a FK join condition, or the rest of an
         // unambiguous name) accepted with Tab.
         sqlInlineSuggestions(connId, dbType),

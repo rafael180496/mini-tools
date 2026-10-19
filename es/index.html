@@ -665,6 +665,19 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
 BEGIN
   SGCPRO.PR_INFORMANTE(p_fecha_batch =&gt; SYSDATE, <span class="c">▮</span>  <span class="c">-- p_usuario, p_cant, p_retorno</span>
                        p_cant =&gt; <span class="c">▮</span>              <span class="c">-- v_cant</span></code></pre></div>
+  <h2 id="bases-consultas--sugerencias">Sinónimos, Enter y Tab, y mayúsculas de las palabras clave</h2>
+  <p>En Oracle, el popup también lista los <strong>sinónimos</strong> —públicos o del propietario— que apuntan a una
+  tabla o vista de los esquemas escaneados, con un ícono de <em>enlace</em> junto al de tabla. El detalle de la
+  derecha dice de dónde viene cada uno: <code>SGCPRO · 12 col</code> para una tabla, <code>PUBLIC → SGCPRO.TB_CLIENTES</code>
+  para un sinónimo. Un sinónimo resuelve a las columnas de su destino, así que <code>FROM CLIENTES c</code> seguido de
+  <code>c.</code> funciona aunque <code>CLIENTES</code> sea solo un sinónimo. Uno que se escribe igual que una tabla no
+  se lista dos veces.</p>
+  <p>Con el popup abierto, <kbd>Enter</kbd> <strong>inserta</strong> la sugerencia y <kbd>Tab</kbd>
+  <strong>reemplaza</strong> además el resto de la palabra a la derecha del cursor —el pie del popup recuerda las
+  dos—. Sin texto a la derecha hacen lo mismo.</p>
+  <p>Las palabras clave siguen <strong>las mayúsculas con las que ya escribís</strong>: en un script escrito como
+  <code>select … from … where</code> el popup ofrece <code>where</code> y no <code>WHERE</code>. Si todavía no hay
+  nada escrito, decide lo que vas tecleando.</p>
   <h2 id="bases-consultas--formato">Formatear e ir a la definición</h2>
   <p><strong>Formatear SQL</strong> (<kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd>, también <kbd>Shift+Alt+F</kbd>, o el
   ícono de <em>formato</em> de la barra) ordena lo seleccionado —o el archivo entero, sin selección— con una cláusula

@@ -1421,6 +1421,24 @@ export namespace db {
 		}
 	}
 	
+	export class Synonym {
+	    schema?: string;
+	    name: string;
+	    targetSchema?: string;
+	    targetName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Synonym(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.targetSchema = source["targetSchema"];
+	        this.targetName = source["targetName"];
+	    }
+	}
 	export class Trigger {
 	    schema?: string;
 	    name: string;
@@ -1481,6 +1499,7 @@ export namespace db {
 	    functions?: Function[];
 	    triggers?: Trigger[];
 	    packages?: Package[];
+	    synonyms?: Synonym[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SchemaMetadata(source);
@@ -1493,6 +1512,7 @@ export namespace db {
 	        this.functions = this.convertValues(source["functions"], Function);
 	        this.triggers = this.convertValues(source["triggers"], Trigger);
 	        this.packages = this.convertValues(source["packages"], Package);
+	        this.synonyms = this.convertValues(source["synonyms"], Synonym);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1513,6 +1533,7 @@ export namespace db {
 		    return a;
 		}
 	}
+	
 	
 
 }

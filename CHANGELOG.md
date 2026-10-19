@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **El autocompletado SQL ofrece los sinónimos de Oracle.** Los sinónimos —públicos o del propietario— que apuntan a una tabla o vista de los esquemas escaneados aparecen junto a las tablas, con un ícono de enlace y el destino a la derecha (`PUBLIC → SGCPRO.TB_CLIENTES`). Resuelven a las columnas de su tabla, así que `FROM CLIENTES c` y `c.` funcionan aunque `CLIENTES` sea solo un sinónimo. Uno que se llama igual que una tabla no se lista dos veces. La consulta a `ALL_SYNONYMS` es opcional: si el usuario no puede leerla, el resto del autocompletado sigue igual.
+- **Enter inserta, Tab reemplaza.** Con el popup de sugerencias abierto, <kbd>Tab</kbd> elige la sugerencia seleccionada y además reemplaza el resto de la palabra que quedó a la derecha del cursor (`CARG|VAR_X` → `CARGVAR`); <kbd>Enter</kbd> sigue insertando sin borrar nada. Un pie en el popup recuerda las dos teclas, en el idioma de la app.
+- **Las palabras clave siguen las mayúsculas con las que escribís.** En un script escrito como `select … from … where` el popup ofrece `where` en vez de `WHERE`; si el buffer no tiene evidencia todavía, decide lo que se está tecleando, y con nada de eso queda en mayúsculas como antes.
+
+### Cambiado
+
+- **El detalle de una tabla en el popup empieza por su esquema** (`SGCPRO · 12 col`) en lugar de repetir el nombre que ya está en la etiqueta: lo que distingue a dos tablas con el mismo nombre es el esquema.
+
+### Corregido
+
+- **Cada palabra clave aparecía dos veces en el popup** —una por la fuente propia del motor y otra por la de `@codemirror/lang-sql`, con distinto ícono—. Con una conexión vinculada hay una sola fuente de sugerencias.
+
 ## [2.10.2] - 2026-10-15
 
 ### Agregado
