@@ -54,6 +54,8 @@ de compilar/buildear (p. ej. "empaquetá para mac", "compila la versión oficial
 versión") dispara este proceso completo sin pedir confirmación — no hace falta
 ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
 
+**Verificación al preparar la versión: mínima.** Los cambios ya llegan probados (cada fase corre su verificación completa al cerrarse), así que antes de empaquetar solo se corre `gofmt -l .`, `go build ./...`, `go vet ./...`, el build de Windows (`GOOS=windows GOARCH=amd64 go build ./...`), `pnpm build` e `i18n-check`. **No** se corre `go test -race` ni `uishot-fit`/`uishot-persist` (pedido explícito del usuario: alargaban la preparación sin aportar).
+
 0. **Bumpear la versión primero:** `./scripts/bump-version.sh patch` (patch
    por default — si el usuario especificó minor/major en su pedido, usar
    esa parte en su lugar). Esto ya NO es un paso opcional para este flujo
