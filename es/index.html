@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.10.2. Lo que está acá existe en ese binario.">2.10.2 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.3. Lo que está acá existe en ese binario.">2.10.3 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -2255,6 +2255,27 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>Sus herramientas (<code>shell</code>, <code>patch</code>, <code>list</code>, <code>todowrite</code>, <code>webfetch</code>,
   <code>execute</code>) aparecen como tarjetas con su propio ícono y un resumen de una línea, igual que las de los demás agentes.</p>
 
+  <h2 id="ia-chat--permisos">Las herramientas de mini-tools con un CLI</h2>
+  <p>Con el servidor MCP encendido (<em>Acceso de la IA</em>), el chat le deja a Claude Code y a OpenCode usar
+  <strong>las herramientas de mini-tools en cualquier modo</strong>: leer tus notas, el esquema de una base, el estado de un
+  repositorio y, si habilitaste la escritura de notas, guardar en tu cerebro. Se nombran una por una para ese turno; en
+  modo no interactivo el CLI no tiene a quién pedirte permiso y antes las rechazaba solo. Nunca se usa
+  <code>--dangerously-skip-permissions</code> ni un permiso comodín, y ninguna herramienta escribe en una base de datos.</p>
+  <ul>
+    <li><strong>Solo consulta y Plan no editan</strong>, aunque tu configuración de Claude Code permita editar o correr comandos:
+    en esos modos el chat se los quita. Codex corre en su sandbox de solo lectura.</li>
+    <li><strong>Si el CLI rechaza una herramienta igual</strong>, la respuesta termina con una nota que dice cuál, por qué y qué
+    hacer. Con Antigravity la tarjeta lleva el nombre real de la herramienta de mini-tools y el detalle del error, y un turno
+    que termina sin texto lo dice en vez de quedar vacío.</li>
+    <li><strong>Antigravity necesita una regla de aprobación por herramienta.</strong> En modo no interactivo bloquea toda
+    herramienta MCP que no esté aprobada de antemano y el turno termina sin respuesta. Antes de cada turno de Antigravity (con el
+    servidor MCP encendido) y al tocar <strong>Conectar</strong>, mini-tools agrega una regla
+    <code>mcp(mini-tools/&lt;herramienta&gt;)</code> por herramienta a su <code>settings.json</code>. Cuando agrega o limpia reglas, la
+    respuesta abre con un aviso que dice cuántas y en qué archivo. Esas reglas son <strong>globales</strong> y se gestionan desde
+    <a href="#ia-mcp--antigravity-permisos">Acceso de la IA</a>. Si Antigravity rechaza una herramienta igual, la nota trae un
+    botón <strong>Reparar permisos</strong>; reenviar el mensaje lo decidís vos.</li>
+  </ul>
+
   <h2 id="ia-chat--adjuntos">Adjuntar archivos</h2>
   <p>El botón <strong>Adjuntar</strong>, arrastrar sobre el chat o <kbd>⌘V</kbd> suman imágenes, PDF y archivos de texto o código a tu mensaje,
   con un aviso si el modelo elegido no puede leer alguno. Ver <a href="#ia-adjuntos">Adjuntos</a>.</p>
@@ -2494,13 +2515,21 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="ia-adjuntos--limites">Topes</h2>
   <div class="tablewrap"><table>
     <tr><th>Qué</th><th>Tope</th></tr>
-    <tr><td>Imagen (PNG, JPG, GIF, WebP)</td><td>5 MB cada una</td></tr>
+    <tr><td>Imagen (PNG, JPG, GIF, WebP)</td><td>20 MB cada una (al modelo va una copia reducida)</td></tr>
     <tr><td>PDF</td><td>24 MB cada uno</td></tr>
     <tr><td>Texto o código (UTF-8)</td><td>512 KB cada uno</td></tr>
     <tr><td>Archivos por mensaje</td><td>10</td></tr>
   </table></div>
   <p>Se comprueban <strong>antes de subir</strong>, con un mensaje que nombra el archivo, y otra vez al enviar. Se rechazan los
   binarios que la app no conoce (un <code>.exe</code>, un zip), las imágenes BMP o ICO y el texto que no es UTF-8.</p>
+
+  <p><strong>Las imágenes grandes se reducen para el modelo, no se rechazan.</strong> Una foto de teléfono (6–15 MB, 4000 px)
+  entra hasta los 20 MB. Lo que recibe el modelo —servidores y CLIs por igual— es una <strong>copia de a lo sumo 2048 px
+  de lado y menos de 5 MB</strong> (el tope de la API de Anthropic): PNG si la imagen tiene transparencia y cabe, si no JPEG
+  sobre blanco, bajando la calidad y después el tamaño hasta que entre. Una imagen que ya cabe se manda tal cual, sin
+  recomprimir. <strong>Tu original queda intacto</strong>; la copia es otro archivo en la carpeta de adjuntos de la app, nunca
+  en tu repositorio, y se borra con el resto a las 24 horas. Dos límites: una imagen de más de <strong>50 megapíxeles</strong>
+  se rechaza, y una <strong>WebP de más de 5 MB</strong> no se puede reducir (convertila antes a PNG o JPG).</p>
 
   <h2 id="ia-adjuntos--historial">Qué se guarda y qué ve el modelo después</h2>
   <figure>
@@ -2928,7 +2957,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   </figure>
   <ul>
     <li><strong>La primera vez que lo elegís en un proyecto, la app te pide confirmar</strong> y explica el riesgo. Una vez que aceptás, no vuelve a preguntar para ese proyecto.</li>
-    <li><strong>El modo se recuerda por proyecto</strong>: un chat nuevo sobre un proyecto vuelve al último modo que elegiste ahí. Un proyecto para el que nunca elegiste modo arranca, como siempre, en <em>Solo consulta</em>. Una conversación que retomás del historial no reactiva sola un modo permisivo.</li>
+    <li><strong>El modo se recuerda por proyecto</strong>: un chat nuevo sobre un proyecto vuelve al último modo que elegiste ahí. Un proyecto para el que nunca elegiste modo arranca, como siempre, en <em>Solo consulta</em>. Una conversación que retomás del historial vuelve con su modo; si era <em>Aplicar ediciones</em> o <em>Automático</em>, solo cuando ya lo habías aceptado en ese proyecto, y si no, vuelve en <em>Solo consulta</em>.</li>
     <li>Mientras Automático está activo, el chat muestra una advertencia en cada turno.</li>
   </ul>
   <figure>
@@ -3063,6 +3092,21 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <code>~/.gemini/config/mcp_config.json</code>, respetando el resto y dejando una copia de respaldo. Después reiniciá el CLI para que lo
   tome. Codex y OpenCode se conectan copiando el fragmento que se muestra debajo: sus archivos de configuración tienen comentarios y
   formatos que mini-tools no reescribe.</p>
+
+  <h2 id="ia-mcp--antigravity-permisos">Permisos en Antigravity</h2>
+  <p>En modo no interactivo —el chat de la app— <strong>Antigravity bloquea toda herramienta MCP que no esté aprobada de
+  antemano</strong> y el turno termina sin respuesta. Para evitarlo, mini-tools agrega una regla
+  <code>mcp(mini-tools/&lt;herramienta&gt;)</code> por cada herramienta de su catálogo en <code>permissions.allow</code> de
+  <code>~/.gemini/antigravity-cli/settings.json</code>: antes de cada turno de Antigravity (con el servidor encendido) y al tocar
+  <strong>Conectar</strong>. Nunca usa un comodín, solo toca reglas propias —tus otras reglas y claves quedan exactamente como
+  están—, deja una copia de respaldo antes de cada cambio y no pisa un archivo que no sea JSON válido.</p>
+  <p>En <strong>Configuración → Acceso de la IA</strong>, el bloque <em>Permisos en Antigravity</em> muestra cuántas herramientas
+  están aprobadas (<em>8 de 9 herramientas aprobadas</em>) y tiene dos botones: <strong>Quitar</strong> (pide confirmación y borra solo
+  las reglas de mini-tools) y <strong>Volver a sincronizar</strong> (repone lo que falte). <strong>Una vez que las quitás, mini-tools
+  deja de agregarlas sola</strong> hasta que uses <em>Volver a sincronizar</em> (o <em>Reparar permisos</em> en el chat).</p>
+  <div class="note"><span class="lbl">Nota</span><p><strong>Las reglas son globales</strong>: valen para todo Antigravity, así que
+  su terminal interactiva tampoco te pedirá confirmación antes de usar las herramientas de mini-tools. <strong>Quitar</strong>
+  lo revierte.</p></div>
 
   <h2 id="ia-mcp--control">Control de acceso</h2>
   <ul>
@@ -3312,7 +3356,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.10.2; esta página no hace una sola petición externa.
+  v2.10.3; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

@@ -168,7 +168,15 @@ func (a *App) ConnectMCP(agentID string) error {
 			return err
 		}
 		// La ubicación del CLI actual (la misma que lee mcpconf.Scan primero).
-		return connectAntigravityAt(filepath.Join(home, ".gemini", "config", "mcp_config.json"), exe)
+		if err := connectAntigravityAt(filepath.Join(home, ".gemini", "config", "mcp_config.json"), exe); err != nil {
+			return err
+		}
+		// Sin una regla por herramienta, Antigravity bloquea el MCP en modo
+		// no interactivo (ver app_agyperm.go). Respeta un «Quitar» previo, y
+		// un fallo no deshace la conexión: queda a la vista en Acceso de la
+		// IA (estado de los permisos) y se repara desde ahí.
+		_ = a.syncAgyPermissions(false)
+		return nil
 	}
 	return i18n.Errorf(i18n.Msg{ES: "app: %s se conecta copiando la configuración; la app no reescribe su archivo", EN: "app: %s is connected by copying the configuration; the app doesn't rewrite its file"}, agentID)
 }

@@ -177,6 +177,11 @@ type Turn struct {
 	ApproveSettings string
 	// ApproveEnv son las variables que necesita el re-exec del hook.
 	ApproveEnv []string
+	// oneShot marca un turno de Ask (una acción de un botón, sin chat). Ahí no
+	// se le quita la shell a Claude Code en consulta: el prompt de esas
+	// acciones le pide leer con `git diff --staged` (agentctx/commitctx.go), y
+	// lo que decide si puede es la configuración del propio usuario, como antes.
+	oneShot bool
 	// Model es el modelo para este turno. Vacío usa el del CLI. No se valida
 	// contra una lista fija: los ids cambian con cada versión de cada
 	// proveedor, y una lista hardcodeada acá quedaría vieja rechazando modelos
@@ -257,6 +262,22 @@ type Turn struct {
 	// MaxToolRounds es el tope de vueltas del bucle (una vuelta = un pedido
 	// al modelo). 0 = DefaultToolRounds.
 	MaxToolRounds int
+
+	// MCPTools son los nombres de las herramientas del servidor MCP de
+	// mini-tools que el servidor declara AHORA (el catálogo de App.mcpTools:
+	// vacío si el servidor está apagado) y MCPServer el nombre con el que el
+	// CLI de este turno lo tiene registrado ("" = mini-tools). Solo los usan
+	// los CLIs: sin una regla de permiso por herramienta, en headless el CLI
+	// rechaza toda herramienta MCP porque nadie puede aprobarla. Ver
+	// mcpperms.go.
+	MCPTools  []string
+	MCPServer string
+
+	// Notice es un aviso de la propia app (no del modelo) que se deja en el
+	// chat al comienzo de la respuesta de este turno, ya con el formato de
+	// WarnNote. Hoy: «mini-tools aprobó sus herramientas en Antigravity». Sale
+	// una sola vez, justo después del evento de arranque del CLI. Vacío = nada.
+	Notice string
 }
 
 // Send arranca un turno y streamea sus eventos. Vuelve enseguida: el turno
@@ -272,7 +293,7 @@ func (m *Manager) Send(t Turn) error {
 	if IsLLM(t.AgentID) {
 		return m.sendLLM(t)
 	}
-	adapt, finish, ok := adapterFor(t.AgentID)
+	adapt, finish, ok := adapterFor(t)
 	if !ok {
 		// Se falla claro en vez de correr el CLI y mostrar un chat mudo: sin
 		// adaptador verificado no se puede leer nada de lo que conteste.
@@ -316,7 +337,7 @@ func (m *Manager) Send(t Turn) error {
 func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	// El cierre no hace falta: acá solo importa el texto, y el turno termina
 	// cuando termina el proceso.
-	adapt, _, ok := adapterFor(t.AgentID)
+	adapt, _, ok := adapterFor(t)
 	if !ok && !IsLLM(t.AgentID) {
 		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)
 	}
@@ -330,6 +351,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 		return m.askLLM(ctx, t)
 	}
 
+	t.oneShot = true
 	args, err := buildArgs(t, "")
 	if err != nil {
 		return "", err
@@ -492,6 +514,47 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 	failed := false
 	recalled := t.Recalled
 
+	// Lo que el cierre del turno necesita saber: qué herramientas rechazó el
+	// CLI (los adaptadores las avisan con kindDenied, que nunca se emite),
+	// si hubo texto de respuesta, y si la nota ya salió — una sola vez por
+	// turno, justo antes del evento que lo cierra.
+	var rejected deniedCollector
+	sawText, noted := false, false
+	// El aviso de la app (Turn.Notice) no cuenta como respuesta: se emite
+	// directo, sin pasar por sawText, para que «terminó sin responder» siga
+	// diciendo la verdad.
+	notice := strings.TrimSpace(t.Notice)
+	flushNotice := func() {
+		if notice != "" {
+			m.emit(t.SessionID, Event{Kind: KindText, Text: notice + "\n\n"})
+			notice = ""
+		}
+	}
+	emitEvent := func(ev Event) {
+		switch ev.Kind {
+		case KindText:
+			if strings.TrimSpace(ev.Text) != "" {
+				sawText = true
+			}
+		case KindDone, KindError:
+			flushNotice()
+			if !noted {
+				noted = true
+				if note := turnClosingNote(t, rejected.names, sawText, ev.Kind == KindDone); note != "" {
+					nev := Event{Kind: KindText, Text: note}
+					if agyRepairable(t, rejected.names) {
+						nev.Action = ActionRepairAgyPerms
+					}
+					m.emit(t.SessionID, nev)
+				}
+			}
+		}
+		m.emit(t.SessionID, ev)
+		if ev.Kind == KindStart {
+			flushNotice()
+		}
+	}
+
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for sc.Scan() {
@@ -501,6 +564,9 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 		}
 		for _, ev := range adapt([]byte(line)) {
 			switch ev.Kind {
+			case kindDenied:
+				rejected.add(ev.Text)
+				continue
 			case KindText:
 				// Un trozo que quedó entero en el retén no se emite: mandarlo
 				// vacío haría parpadear el "escribiendo" sin texto nuevo.
@@ -527,14 +593,14 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 			if ev.Kind == KindStart && recalled != nil {
 				ev.Recalled, recalled = recalled, nil
 			}
-			m.emit(t.SessionID, ev)
+			emitEvent(ev)
 		}
 	}
 
 	// Lo que haya quedado a medias sale igual: un carácter incompleto es
 	// señal de que el flujo se cortó, y comérselo escondería el truncado.
 	if rest := textFix.Flush(); rest != "" {
-		m.emit(t.SessionID, Event{Kind: KindText, Text: rest})
+		emitEvent(Event{Kind: KindText, Text: rest})
 	}
 
 	// Igual que en Ask: un scanner que se corta dejaría la respuesta a medias
@@ -561,7 +627,11 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 	}
 	if finish != nil && !failed {
 		for _, ev := range finish(t) {
-			m.emit(t.SessionID, ev)
+			if ev.Kind == kindDenied {
+				rejected.add(ev.Text)
+				continue
+			}
+			emitEvent(ev)
 		}
 	}
 }
@@ -570,7 +640,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 // entorno que armó quien llama.
 func turnEnv(t Turn) []string {
 	if t.AgentID == "opencode" {
-		return opencodeEnv(t.Cwd)
+		return opencodeEnv(t.Cwd, t.MCPServer, t.MCPTools)
 	}
 	return nil
 }
@@ -645,6 +715,7 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		case ModeEdit:
 			args = append(args, "--permission-mode", "acceptEdits")
 		}
+		args = append(args, claudePermissionArgs(t)...)
 		if t.Effort != "" {
 			args = append(args, "--effort", t.Effort)
 		}
@@ -677,6 +748,10 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 			args = append(args, "resume", conversation)
 		}
 		switch t.Mode {
+		case ModeAsk:
+			// Solo lectura, EXPLÍCITO: sin la bandera manda el sandbox del
+			// config.toml del usuario, que puede ser de escritura.
+			args = append(args, "--sandbox", "read-only")
 		case ModeEdit:
 			// Su sandbox de escritura acotada al workspace: el equivalente más
 			// cercano a "puede editar el repositorio", sin darle la máquina.

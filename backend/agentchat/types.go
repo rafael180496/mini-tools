@@ -140,6 +140,12 @@ type Event struct {
 	Recalled []string `json:"recalled,omitempty"`
 	// Error acompaña a KindError.
 	Error string `json:"error,omitempty"`
+	// Action le pide a la interfaz que ofrezca un botón junto a este evento.
+	// Es un código (ActionRepairAgyPerms), nunca texto: el frontend no detecta
+	// la situación leyendo la nota, que va en el idioma de la interfaz. Solo
+	// viaja en vivo y en el repaso de un turno en curso; no se guarda en el
+	// historial.
+	Action string `json:"action,omitempty"`
 	// Seq numera los eventos que el Manager publica: crece de a uno por
 	// evento, es único en todo el proceso y por lo tanto monótono dentro de
 	// cada sesión (con saltos si otra sesión emite en el medio). Lo asigna el

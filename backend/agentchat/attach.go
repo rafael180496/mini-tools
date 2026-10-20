@@ -36,9 +36,9 @@ import (
 
 const (
 	// maxAttachBytes acota una imagen pegada: el tope de imagen de los
-	// adjuntos (MaxImageBytes, 5 MB, el de la API de Anthropic). Antes era 20 MB,
-	// pero al enviar se vuelve a comprobar el tope, y una imagen de 8 MB
-	// guardada sin queja fallaba recién después de escribir el mensaje.
+	// adjuntos (MaxImageBytes, 20 MB). Tiene que ser el mismo que se comprueba
+	// al enviar, o una imagen guardada sin queja fallaría recién después de
+	// escribir el mensaje. Al modelo va una copia reducida (imagereduce.go).
 	maxAttachBytes = MaxImageBytes
 	// attachTTL es cuánto vive un adjunto. Un día alcanza de sobra para la
 	// conversación en la que se pegó, que es lo único para lo que sirve.
@@ -96,6 +96,11 @@ func SaveAttachment(dir, name, dataBase64 string) (string, error) {
 		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: escribiendo el adjunto: %w", EN: "agentchat: writing the attachment: %w"}, err)
 	}
 	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	// Igual que SaveFile: una imagen que no se puede reducir se rechaza ahora.
+	if _, err := ensureModelCopy(path, raw, cleanName(name), "image/"+strings.TrimPrefix(ext, ".")); err != nil {
 		os.Remove(path)
 		return "", err
 	}

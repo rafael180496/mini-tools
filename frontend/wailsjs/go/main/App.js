@@ -142,6 +142,10 @@ export function AnalyzeSSHError(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function AntigravityPermissionsStatus() {
+  return window['go']['main']['App']['AntigravityPermissionsStatus']();
+}
+
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
@@ -1534,6 +1538,10 @@ export function RemoveAgentWorkspace(arg1) {
   return window['go']['main']['App']['RemoveAgentWorkspace'](arg1);
 }
 
+export function RemoveAntigravityPermissions() {
+  return window['go']['main']['App']['RemoveAntigravityPermissions']();
+}
+
 export function RemoveRedisListIndex(arg1, arg2, arg3) {
   return window['go']['main']['App']['RemoveRedisListIndex'](arg1, arg2, arg3);
 }
@@ -1572,6 +1580,10 @@ export function ReorderFolder(arg1, arg2) {
 
 export function ReorderModelServers(arg1) {
   return window['go']['main']['App']['ReorderModelServers'](arg1);
+}
+
+export function RepairAntigravityPermissions() {
+  return window['go']['main']['App']['RepairAntigravityPermissions']();
 }
 
 export function ReplaceMongoDocument(arg1, arg2, arg3, arg4) {

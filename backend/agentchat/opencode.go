@@ -57,13 +57,21 @@ type opencodeLine struct {
 // opencodeTurn es el estado de UN turno: qué sesión se abrió (para encadenar
 // y para leer el uso al final) y si el CLI ya informó un error.
 type opencodeTurn struct {
-	session string
-	started bool
-	failed  bool
+	// mcpPrefix es `<servidor>_` de mini-tools: OpenCode nombra una
+	// herramienta MCP `mini-tools_db_get_schema`, y sin quitarlo la tarjeta se
+	// vería distinta de la misma herramienta con Claude o un servidor.
+	mcpPrefix string
+	session   string
+	started   bool
+	failed    bool
 }
 
-func newOpencodeTurn() (adapter, finisher) {
-	o := &opencodeTurn{}
+func newOpencodeTurn() (adapter, finisher) { return newOpencodeTurnFor(defaultMCPServer) }
+
+// newOpencodeTurnFor es el adaptador de un turno con el nombre con que el CLI
+// tiene registrado al servidor de mini-tools.
+func newOpencodeTurnFor(server string) (adapter, finisher) {
+	o := &opencodeTurn{mcpPrefix: mcpSafeName(server) + "_"}
 	return o.line, o.finish
 }
 
@@ -97,7 +105,7 @@ func (o *opencodeTurn) line(raw []byte) []Event {
 	case "tool_use":
 		// Llega UNA vez por llamada, ya resuelta (completed o error): no hay
 		// un started aparte que deduplicar.
-		out = append(out, Event{Kind: KindTool, Tool: newToolCall(l.Part.Tool, string(l.Part.State.Input))})
+		out = append(out, Event{Kind: KindTool, Tool: newToolCall(strings.TrimPrefix(l.Part.Tool, o.mcpPrefix), string(l.Part.State.Input))})
 	case "error":
 		o.failed = true
 		msg := i18n.T(msgAgentFailed)
@@ -138,7 +146,7 @@ func opencodeTurnUsage(t Turn, session string) *Usage {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "session", "export", session, "--standalone")...)
 	cmd.Dir = t.Cwd
-	cmd.Env = append(append([]string{}, t.Env...), opencodeEnv(t.Cwd)...)
+	cmd.Env = append(append([]string{}, t.Env...), opencodeEnv(t.Cwd, "", nil)...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
@@ -230,16 +238,40 @@ func opencodeUsageFromExport(raw []byte) *Usage {
 // de "hace cualquier cosa en la máquina" (ver buildArgs). Verificado: con
 // esta configuración el modelo no recibe la herramienta.
 //
+// Además permite POR NOMBRE cada herramienta del servidor de mini-tools
+// (`<servidor>_<herramienta>`): un `ask` global del usuario las dejaba
+// esperando una respuesta que en headless nadie da. Sin comodines: una
+// herramienta que el servidor no declara no queda habilitada.
+//
 // Requiere `--standalone`: el servicio en segundo plano de OpenCode ya
 // arrancó con su propio entorno e ignora el de quien lo llama.
-const opencodeConfig = `{"permission":{"bash":"deny"}}`
+func opencodeConfig(server string, tools []string) string {
+	perm := map[string]string{"bash": "deny"}
+	if server = strings.TrimSpace(server); server == "" {
+		server = defaultMCPServer
+	}
+	for _, tool := range tools {
+		if tool = strings.TrimSpace(tool); tool != "" {
+			perm[mcpSafeName(server)+"_"+mcpSafeName(tool)] = "allow"
+		}
+	}
+	b, err := json.Marshal(map[string]any{"permission": perm})
+	if err != nil {
+		return `{"permission":{"bash":"deny"}}`
+	}
+	return string(b)
+}
 
 // opencodeEnv suma además PWD: OpenCode toma el directorio de trabajo de esa
 // variable y no del directorio real del proceso. Heredada de la app, apunta a
 // donde se abrió mini-tools, y el agente lee rutas relativas —y lista las
 // sesiones— de otro proyecto (se vio: «a.txt no existe» con el archivo ahí).
-func opencodeEnv(cwd string) []string {
-	env := []string{"OPENCODE_CONFIG_CONTENT=" + opencodeConfig}
+//
+// server y tools son los del turno (Turn.MCPServer / Turn.MCPTools). Las
+// lecturas que no corren un turno (listar y exportar sesiones) pasan nil: ahí
+// basta con el `bash: deny`.
+func opencodeEnv(cwd, server string, tools []string) []string {
+	env := []string{"OPENCODE_CONFIG_CONTENT=" + opencodeConfig(server, tools)}
 	if cwd != "" {
 		env = append(env, "PWD="+cwd)
 	}
@@ -264,7 +296,7 @@ func opencodeConversations(repoRoot string) ([]Conversation, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "session", "list", "--format", "json", "--standalone")...)
 	cmd.Dir = repoRoot
-	cmd.Env = agents.Env(opencodeEnv(repoRoot)...)
+	cmd.Env = agents.Env(opencodeEnv(repoRoot, "", nil)...)
 	out, err := cmd.Output()
 	if err != nil {
 		// Un CLI que no puede listar no impide abrir un chat nuevo.

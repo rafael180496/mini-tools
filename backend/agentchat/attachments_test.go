@@ -104,15 +104,12 @@ func TestSaveFileLimitsPerKind(t *testing.T) {
 	if _, err := SaveFile(dir, "grande.txt", b64(atLimit+"a")); err == nil {
 		t.Error("512 KB + 1 debía rechazarse")
 	}
-	// Imagen: 5 MB entra, más no.
-	if _, err := SaveFile(dir, "ok.png", b64(pngHead+strings.Repeat("\x00", MaxImageBytes-len(pngHead)))); err != nil {
+	// Imagen: justo en el tope entra (si se puede reducir), más no. El de más de
+	// 20 MB y las grandes de verdad están en imagereduce_test.go.
+	if _, err := SaveFile(dir, "ok.png", b64(pngHead+strings.Repeat("\x00", MaxModelImageBytes-len(pngHead)))); err != nil {
 		t.Errorf("5 MB entra: %v", err)
 	}
-	_, err := SaveFile(dir, "enorme.png", b64(pngHead+strings.Repeat("\x00", MaxImageBytes)))
-	if err == nil || !strings.Contains(err.Error(), "enorme.png") || !strings.Contains(err.Error(), "5 MB") {
-		t.Errorf("la imagen de más de 5 MB debía rechazarse diciendo el tope: %v", err)
-	}
-	// PDF: una imagen de 6 MB no pasa, pero un PDF de 6 MB sí (su tope es otro).
+	// PDF: un PDF de 6 MB entra (su tope es otro).
 	if _, err := SaveFile(dir, "libro.pdf", b64(pdfHead+strings.Repeat("\x00", 6<<20))); err != nil {
 		t.Errorf("un PDF de 6 MB entra: %v", err)
 	}
@@ -199,14 +196,14 @@ func TestResolveAttachments(t *testing.T) {
 	if _, err := ResolveAttachments(dir, []string{filepath.Join(dir, "adjunto-5_no.png")}); err == nil || !strings.Contains(err.Error(), "no-existe") && !strings.Contains(err.Error(), "adjunto-5_no.png") {
 		t.Errorf("adjunto inexistente: %v", err)
 	}
-	// El tope se vuelve a comprobar al enviar: un archivo viejo de SaveAttachment de 20 MB no pasa.
+	// El tope se vuelve a comprobar al enviar: un archivo de más de 20 MB no pasa.
 	big := filepath.Join(dir, "adjunto-7_big.png")
 	f, _ := os.Create(big)
 	_, _ = f.WriteString(pngHead)
 	_ = f.Truncate(MaxImageBytes + 1)
 	f.Close()
 	if _, err := ResolveAttachments(dir, []string{big}); err == nil {
-		t.Error("una imagen de más de 5 MB debía rechazarse al enviar")
+		t.Error("una imagen de más de 20 MB debía rechazarse al enviar")
 	}
 	bigPDF := filepath.Join(dir, "adjunto-8_big.pdf")
 	f, _ = os.Create(bigPDF)
@@ -278,7 +275,7 @@ func TestPrepareAttachmentsPerProvider(t *testing.T) {
 	}
 	// Los límites viajan en las capacidades para que la UI los muestre.
 	c := CLIAttachmentCaps("claude")
-	if c.MaxImageBytes != 5<<20 || c.MaxPDFBytes != 24<<20 || c.MaxTextBytes != 512<<10 || c.MaxCount != 10 {
+	if c.MaxImageBytes != 20<<20 || c.MaxPDFBytes != 24<<20 || c.MaxTextBytes != 512<<10 || c.MaxCount != 10 {
 		t.Errorf("límites: %+v", c)
 	}
 }

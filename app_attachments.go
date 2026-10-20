@@ -39,9 +39,10 @@ func chatAttachmentsDir() (string, error) {
 //
 // El tipo se decide por el contenido, no por el nombre. Un archivo que no es
 // imagen PNG/JPG/GIF/WebP, PDF ni texto UTF-8, o que supera el tope de su tipo
-// (imagen 5 MB, PDF 32 MB, texto 512 KB), se rechaza con un error que dice por
-// qué. Lo que devuelve `path` es lo que después se pasa en `images` de
-// SendAgentChat.
+// (imagen 20 MB, PDF 24 MB, texto 512 KB), se rechaza con un error que dice por
+// qué. Una imagen de más de 5 MB o de más de 2048 px va al modelo como una
+// copia reducida (el original queda intacto). Lo que devuelve `path` es lo que
+// después se pasa en `images` de SendAgentChat.
 func (a *App) SaveChatFile(name, dataBase64 string) (agentchat.Attachment, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return agentchat.Attachment{}, err

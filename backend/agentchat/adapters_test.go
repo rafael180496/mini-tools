@@ -101,7 +101,8 @@ func TestClaudeAdapterOnRealCapture(t *testing.T) {
 }
 
 func TestAntigravityAdapterOnRealCapture(t *testing.T) {
-	evs := replay(t, "antigravity-stream.jsonl", antigravityAdapter)
+	agy, _ := newAntigravityTurn(Turn{})
+	evs := replay(t, "antigravity-stream.jsonl", agy)
 
 	if len(evs) < 3 {
 		t.Fatalf("se esperaban al menos start/text/done: %v", kinds(evs))
@@ -429,10 +430,11 @@ func TestAntigravitySplitRune(t *testing.T) {
 		[]byte("{\"event\":\"step_update\",\"step_update\":{\"step_type\":\"agent_response\",\"text_delta\":\"\xb3gico\"}}"),
 	}
 
+	agy, _ := newAntigravityTurn(Turn{})
 	var fix utf8Stitcher
 	var got string
 	for _, line := range lines {
-		for _, ev := range antigravityAdapter(line) {
+		for _, ev := range agy(line) {
 			if ev.Kind == KindText {
 				got += fix.Feed(ev.Text)
 			}
@@ -505,5 +507,240 @@ func TestBuildArgsClaudeAppendsSystemInOneFlag(t *testing.T) {
 		if strings.Contains(strings.Join(a, " "), "INSTRUCCIONES") {
 			t.Errorf("%s no debe recibir System por argumentos: %v", id, a)
 		}
+	}
+}
+
+// Permisos de las herramientas MCP de mini-tools en Claude Code: una regla
+// `--allowedTools` por herramienta (nunca un comodín), salvo en «Aprobar cada
+// acción», donde decide el hook; y la shell y las ediciones fuera en consulta y
+// planificación.
+func TestBuildArgsClaudePermissions(t *testing.T) {
+	flag := func(args []string, name string) string {
+		for i, a := range args {
+			if a == name && i+1 < len(args) {
+				return args[i+1]
+			}
+		}
+		return "<ausente>"
+	}
+	tools := []string{"vault_search_notes", "db_get_schema"}
+	const shell = "Edit,Write,MultiEdit,NotebookEdit,Bash,PowerShell"
+	const allowed = "mcp__mini-tools__vault_search_notes,mcp__mini-tools__db_get_schema"
+
+	cases := []struct {
+		mode            Mode
+		allow, disallow string
+	}{
+		{ModeAsk, allowed, shell},
+		{ModePlan, allowed, shell},
+		{ModeEdit, allowed, "<ausente>"},
+		{ModeAuto, allowed, "<ausente>"},
+		{ModeApprove, "<ausente>", "<ausente>"},
+	}
+	for _, c := range cases {
+		args, err := buildArgs(Turn{AgentID: "claude", Command: "claude", Prompt: "x", Mode: c.mode, MCPTools: tools, ApproveSettings: "/tmp/s.json"}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := flag(args, "--allowedTools"); got != c.allow {
+			t.Errorf("modo %q: --allowedTools = %q, quería %q", c.mode, got, c.allow)
+		}
+		if got := flag(args, "--disallowedTools"); got != c.disallow {
+			t.Errorf("modo %q: --disallowedTools = %q, quería %q", c.mode, got, c.disallow)
+		}
+		if j := strings.Join(args, " "); strings.Contains(j, "mcp__*") || strings.Contains(j, "dangerously") || strings.Contains(j, "bypassPermissions") {
+			t.Errorf("modo %q: nunca comodines ni saltear permisos: %v", c.mode, args)
+		}
+	}
+
+	// Sin servidor MCP declarado no hay reglas allow; el nombre registrado en
+	// el CLI manda sobre el default.
+	args, _ := buildArgs(Turn{AgentID: "claude", Command: "claude", Prompt: "x"}, "")
+	if flag(args, "--allowedTools") != "<ausente>" {
+		t.Errorf("sin herramientas declaradas no se permite nada: %v", args)
+	}
+	args, _ = buildArgs(Turn{AgentID: "claude", Command: "claude", Prompt: "x", MCPTools: []string{"db_get_schema"}, MCPServer: "mi tools"}, "")
+	if got := flag(args, "--allowedTools"); got != "mcp__mi_tools__db_get_schema" {
+		t.Errorf("el nombre del servidor se normaliza como lo hace el CLI: %q", got)
+	}
+}
+
+// Codex en «Solo consulta» fija el sandbox de solo lectura (el config.toml del
+// usuario puede traer otro), antes del prompt y detrás de `resume`.
+func TestBuildArgsCodexAskIsReadOnly(t *testing.T) {
+	args, _ := buildArgs(Turn{AgentID: "codex", Command: "codex", Prompt: "hola"}, "thread-9")
+	if j := strings.Join(args, " "); !strings.Contains(j, "resume thread-9 --sandbox read-only") || !strings.HasSuffix(j, "hola") {
+		t.Errorf("read-only explícito, tras resume y antes del prompt: %v", args)
+	}
+}
+
+func eventsOfKind(evs []Event, k EventKind) []Event {
+	var out []Event
+	for _, e := range evs {
+		if e.Kind == k {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// Claude Code: `permission_denials` del result se vuelven rechazos (sin
+// repetir al limpiar el nombre) y van ANTES del cierre.
+func TestClaudePermissionDenials(t *testing.T) {
+	evs := replay(t, "claude-denied.jsonl", claudeAdapter)
+	var c deniedCollector
+	for _, e := range eventsOfKind(evs, kindDenied) {
+		c.add(e.Text)
+	}
+	if want := []string{"db_get_schema", "Edit"}; strings.Join(c.names, ",") != strings.Join(want, ",") {
+		t.Errorf("rechazos = %v, quería %v", c.names, want)
+	}
+	if last := evs[len(evs)-1]; last.Kind != KindDone {
+		t.Errorf("los rechazos van antes del done: %v", kinds(evs))
+	}
+	for _, e := range eventsOfKind(evs, KindTool) {
+		if e.Tool.Name == "mcp__mini-tools__db_get_schema" {
+			return
+		}
+	}
+	t.Error("la tarjeta de la herramienta MCP de Claude conserva su nombre completo (el frontend lo limpia)")
+}
+
+// Antigravity: `call_mcp_tool` de mini-tools se muestra como la herramienta real
+// con sus argumentos; las de otros servidores no se tocan.
+func TestAntigravityUnwrapsMiniToolsMCP(t *testing.T) {
+	agy, _ := newAntigravityTurn(Turn{})
+	evs := replay(t, "antigravity-mcp.jsonl", agy)
+	var names []string
+	var firstInput string
+	for _, e := range eventsOfKind(evs, KindTool) {
+		names = append(names, e.Tool.Name)
+		if e.Tool.Name == "vault_create_note" {
+			firstInput = e.Tool.Input
+		}
+	}
+	if want := "db_list_connections,vault_create_note,call_mcp_tool"; strings.Join(names, ",") != want {
+		t.Errorf("herramientas = %v, quería %s (la de otro servidor queda como llega)", names, want)
+	}
+	if !strings.Contains(firstInput, `"title":"Caja"`) || strings.Contains(firstInput, "ServerName") {
+		t.Errorf("la entrada son los Arguments, no el sobre: %q", firstInput)
+	}
+	if n := len(eventsOfKind(evs, kindDenied)); n != 0 {
+		t.Errorf("sin rechazos no debe haber nada que anotar: %d", n)
+	}
+
+	// Con el servidor registrado con otro nombre en el CLI también se desenvuelve.
+	line := `{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"call_mcp_tool","tool_name":"call_mcp_tool","tool_input":{"ServerName":"minitools-dev","ToolName":"git_status","Arguments":{}}}}`
+	other, _ := newAntigravityTurn(Turn{MCPServer: "minitools-dev"})
+	if got := other([]byte(line)); len(got) != 1 || got[0].Tool.Name != "git_status" {
+		t.Errorf("el servidor detectado también se desenvuelve: %+v", got)
+	}
+	plain, _ := newAntigravityTurn(Turn{})
+	if got := plain([]byte(line)); len(got) != 1 || got[0].Tool.Name != "call_mcp_tool" {
+		t.Errorf("sin ese nombre en el turno es un servidor ajeno: %+v", got)
+	}
+}
+
+// Antigravity: un paso en ERROR por permiso es un rechazo con el nombre real; el
+// turno sin deltas ni respuesta termina igual.
+func TestAntigravityPermissionDeniedStep(t *testing.T) {
+	agy, _ := newAntigravityTurn(Turn{})
+	evs := replay(t, "antigravity-denied.jsonl", agy)
+	rej := eventsOfKind(evs, kindDenied)
+	if len(rej) != 1 || cleanDeniedName(rej[0].Text) != "db_get_schema" {
+		t.Fatalf("rechazos = %+v", rej)
+	}
+	if evs[len(evs)-1].Kind != KindDone || len(eventsOfKind(evs, KindText)) != 0 {
+		t.Errorf("sin respuesta: solo el done al final: %v", kinds(evs))
+	}
+}
+
+// `denied_actions` no está documentado: textos y objetos de cualquier forma
+// dan algo legible, y un paso cancelado sin motivo de permiso no es rechazo.
+func TestAntigravityDeniedActionsAnyShape(t *testing.T) {
+	agy, _ := newAntigravityTurn(Turn{})
+	evs := replay(t, "antigravity-denied-actions.jsonl", agy)
+	var got []string
+	for _, e := range eventsOfKind(evs, kindDenied) {
+		got = append(got, cleanDeniedName(e.Text))
+	}
+	if want := "vault_search_notes,run_command," + `{"x":1}`; strings.Join(got, ",") != want {
+		t.Errorf("rechazos = %q, quería %q", got, want)
+	}
+}
+
+// Si el CLI cierra con `result.response` y nunca mandó deltas, esa respuesta es
+// el texto del turno; si mandó deltas, no se duplica.
+func TestAntigravityResponseFallback(t *testing.T) {
+	agy, _ := newAntigravityTurn(Turn{})
+	evs := replay(t, "antigravity-response-only.jsonl", agy)
+	txt := eventsOfKind(evs, KindText)
+	if len(txt) != 1 || txt[0].Text != "Listo, sin deltas." || evs[len(evs)-1].Kind != KindDone {
+		t.Errorf("la respuesta del result sale como texto antes del done: %+v", evs)
+	}
+
+	agy, _ = newAntigravityTurn(Turn{})
+	evs = replay(t, "antigravity-mcp.jsonl", agy)
+	if n := len(eventsOfKind(evs, KindText)); n != 1 {
+		t.Errorf("con deltas la respuesta no se repite: %d textos", n)
+	}
+
+	agy, _ = newAntigravityTurn(Turn{})
+	got := agy([]byte(`{"event":"result","result":{"status":"FAILED","error":{"message":"cuota agotada"}}}`))
+	if len(got) != 1 || got[0].Kind != KindError || !strings.Contains(got[0].Error, "FAILED") || !strings.Contains(got[0].Error, "cuota agotada") {
+		t.Errorf("el motivo del estado viaja en el error: %+v", got)
+	}
+}
+
+// La nota del cierre: una sola vez, antes del done, con el nombre real de la
+// herramienta y lo que hay que hacer según el CLI; y un turno vacío lo dice.
+func TestTurnClosingNoteEndToEnd(t *testing.T) {
+	run := func(agent, label, fixture string) []Event {
+		col := newCollector()
+		m := NewManager(col.emit)
+		err := m.Send(Turn{
+			SessionID: "s1", AgentID: agent, Command: agent, AgentLabel: label, Prompt: "hola",
+			Exec: []string{"sh", "-c", "cat testdata/" + fixture},
+		})
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		return col.wait(t)
+	}
+	textOf := func(evs []Event) string {
+		var b strings.Builder
+		for _, e := range eventsOfKind(evs, KindText) {
+			b.WriteString(e.Text)
+		}
+		return b.String()
+	}
+
+	evs := run("claude", "Claude Code", "claude-denied.jsonl")
+	txt := textOf(evs)
+	if strings.Count(txt, "_⚠ ") != 1 || !strings.Contains(txt, "`db_get_schema`, `Edit`") || strings.Contains(txt, "mcp__") ||
+		!strings.Contains(txt, "Aprobar cada acción") || !strings.Contains(txt, "Claude Code") {
+		t.Errorf("nota de Claude: %q", txt)
+	}
+	if evs[len(evs)-1].Kind != KindDone || evs[len(evs)-2].Kind != KindText {
+		t.Errorf("la nota va justo antes del done: %v", kinds(evs))
+	}
+	if len(eventsOfKind(evs, kindDenied)) != 0 {
+		t.Error("kindDenied es interno: no se emite")
+	}
+
+	txt = textOf(run("antigravity", "Antigravity", "antigravity-denied.jsonl"))
+	if !strings.Contains(txt, "`db_get_schema`") || !strings.Contains(txt, "configuración global") || strings.Contains(txt, "Aprobar cada acción") {
+		t.Errorf("nota de Antigravity: %q", txt)
+	}
+
+	// Sin texto y sin rechazos: el turno dice que no respondió nada.
+	txt = textOf(run("antigravity", "Antigravity", "antigravity-text-empty.jsonl"))
+	if txt != "_⚠ Antigravity terminó el turno sin responder nada._" {
+		t.Errorf("turno vacío: %q", txt)
+	}
+
+	// Con respuesta y sin rechazos: no se agrega nada.
+	if txt = textOf(run("antigravity", "Antigravity", "antigravity-stream.jsonl")); strings.Contains(txt, "Nota:") || strings.Contains(txt, "sin responder") {
+		t.Errorf("un turno normal no lleva nota: %q", txt)
 	}
 }

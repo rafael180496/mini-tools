@@ -242,6 +242,7 @@ export namespace agentchat {
 	    mcpServers?: string[];
 	    recalled?: string[];
 	    error?: string;
+	    action?: string;
 	    seq: number;
 	
 	    static createFrom(source: any = {}) {
@@ -260,6 +261,7 @@ export namespace agentchat {
 	        this.mcpServers = source["mcpServers"];
 	        this.recalled = source["recalled"];
 	        this.error = source["error"];
+	        this.action = source["action"];
 	        this.seq = source["seq"];
 	    }
 	
@@ -3168,6 +3170,40 @@ export namespace main {
 	        this.path = source["path"];
 	        this.isGit = source["isGit"];
 	        this.exists = source["exists"];
+	    }
+	}
+	export class AntigravityPermissions {
+	    installed: boolean;
+	    mcpEnabled: boolean;
+	    path: string;
+	    server: string;
+	    exists: boolean;
+	    valid: boolean;
+	    problem: string;
+	    expected: number;
+	    approved: number;
+	    missing: string[];
+	    stale: number;
+	    removedByUser: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AntigravityPermissions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.mcpEnabled = source["mcpEnabled"];
+	        this.path = source["path"];
+	        this.server = source["server"];
+	        this.exists = source["exists"];
+	        this.valid = source["valid"];
+	        this.problem = source["problem"];
+	        this.expected = source["expected"];
+	        this.approved = source["approved"];
+	        this.missing = source["missing"];
+	        this.stale = source["stale"];
+	        this.removedByUser = source["removedByUser"];
 	    }
 	}
 	export class AskAgent {

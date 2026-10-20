@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.10.2. Everything here exists in that binary.">2.10.2 · Help</span>
+  <span class="ver" title="This documentation describes version 2.10.3. Everything here exists in that binary.">2.10.3 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -2239,6 +2239,27 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p>Its tool calls (<code>shell</code>, <code>patch</code>, <code>list</code>, <code>todowrite</code>, <code>webfetch</code>,
   <code>execute</code>) show up as cards with their own icon and a one-line summary, like the other agents'.</p>
 
+  <h2 id="ia-chat--permisos">mini-tools' tools with a CLI</h2>
+  <p>With the MCP server on (<em>AI access</em>), the chat lets Claude Code and OpenCode use <strong>mini-tools' tools in any
+  mode</strong>: read your notes, a database schema, a repository's status and, if you enabled note writing, save to your
+  brain. They're named one by one for that turn; in non-interactive mode the CLI has no one to ask for permission and used
+  to reject them on its own. <code>--dangerously-skip-permissions</code> or a wildcard permission is never used, and no tool
+  writes to a database.</p>
+  <ul>
+    <li><strong>Read-only and Plan don't edit</strong>, even if your Claude Code settings allow editing or running commands: in
+    those modes the chat takes them away. Codex runs in its read-only sandbox.</li>
+    <li><strong>If the CLI rejects a tool anyway</strong>, the answer ends with a note saying which one, why and what to do. With
+    Antigravity the card shows the real name of the mini-tools tool and the error detail, and a turn that ends without text
+    says so instead of staying empty.</li>
+    <li><strong>Antigravity needs an approval rule per tool.</strong> In non-interactive mode it blocks every MCP tool that isn't
+    approved beforehand and the turn ends with no reply. Before each Antigravity turn (with the MCP server on) and when you
+    press <strong>Connect</strong>, mini-tools adds one <code>mcp(mini-tools/&lt;tool&gt;)</code> rule per tool to its
+    <code>settings.json</code>. When it adds or cleans up rules, the answer opens with a notice saying how many and in which file.
+    These rules are <strong>global</strong>, and you manage them from <a href="#ia-mcp--antigravity-permisos">AI access</a>. If
+    Antigravity rejects a tool anyway, the note includes a <strong>Repair permissions</strong> button; resending your message
+    is up to you.</li>
+  </ul>
+
   <h2 id="ia-chat--adjuntos">Attach files</h2>
   <p>The <strong>Attach</strong> button, dragging onto the chat or <kbd>⌘V</kbd> add images, PDFs and text or code files to your message,
   with a warning when the model you picked can't read one. See <a href="#ia-adjuntos">Attachments</a>.</p>
@@ -2477,13 +2498,21 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="ia-adjuntos--limites">Limits</h2>
   <div class="tablewrap"><table>
     <tr><th>What</th><th>Limit</th></tr>
-    <tr><td>Image (PNG, JPG, GIF, WebP)</td><td>5 MB each</td></tr>
+    <tr><td>Image (PNG, JPG, GIF, WebP)</td><td>20 MB each (the model gets a reduced copy)</td></tr>
     <tr><td>PDF</td><td>24 MB each</td></tr>
     <tr><td>Text or code (UTF-8)</td><td>512 KB each</td></tr>
     <tr><td>Files per message</td><td>10</td></tr>
   </table></div>
   <p>They're checked <strong>before uploading</strong>, with a message naming the file, and again when sending. Binaries
   the app doesn't know (an <code>.exe</code>, a zip), BMP or ICO images, and text that isn't UTF-8 are rejected.</p>
+
+  <p><strong>Big images are reduced for the model, not rejected.</strong> A phone photo (6–15 MB, 4000 px) is accepted up
+  to 20 MB. What the model receives —servers and CLIs alike— is a <strong>copy of at most 2048 px per side and under 5 MB</strong>
+  (the limit of the Anthropic API): a PNG if the image has transparency and fits, otherwise a JPEG over white, lowering the
+  quality and then the size as needed. An image that already fits is sent as it is, without recompressing. <strong>Your
+  original stays untouched</strong>; the copy is a separate file in the app's attachments folder, never in your
+  repository, and is deleted with the rest after 24 hours. Two limits: an image of more than <strong>50 megapixels</strong>
+  is rejected, and a <strong>WebP over 5 MB</strong> can't be reduced (convert it to PNG or JPG first).</p>
 
   <h2 id="ia-adjuntos--historial">What's stored, and what the model sees later</h2>
   <figure>
@@ -2912,7 +2941,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   </figure>
   <ul>
     <li><strong>The first time you pick it in a project, the app asks you to confirm</strong> and explains the risk. After you accept, it doesn't ask again for that project.</li>
-    <li><strong>The mode is remembered per project</strong>: a new chat on a project goes back to the last mode you chose there. A project you've never picked a mode for starts, as always, in <em>Read-only</em>. A conversation you resume from the history doesn't re-enable a permissive mode by itself.</li>
+    <li><strong>The mode is remembered per project</strong>: a new chat on a project goes back to the last mode you chose there. A project you've never picked a mode for starts, as always, in <em>Read-only</em>. A conversation you resume from the history comes back with its mode; if it was <em>Apply edits</em> or <em>Automatic</em>, only when you had already accepted it on that project, and otherwise it comes back in <em>Read-only</em>.</li>
     <li>While Automatic is on, the chat shows a warning in every turn.</li>
   </ul>
   <figure>
@@ -3047,6 +3076,21 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <code>~/.gemini/config/mcp_config.json</code>, keeping everything else and leaving a backup copy. Restart the CLI afterwards so it
   picks it up. Codex and OpenCode are connected by copying the snippet shown below: their configuration files have comments and
   formats that mini-tools doesn't rewrite.</p>
+
+  <h2 id="ia-mcp--antigravity-permisos">Antigravity permissions</h2>
+  <p>In non-interactive mode —the app's chat— <strong>Antigravity blocks every MCP tool that isn't approved beforehand</strong>
+  and the turn ends with no reply. To avoid that, mini-tools adds one <code>mcp(mini-tools/&lt;tool&gt;)</code> rule per tool
+  of its catalog to <code>permissions.allow</code> in <code>~/.gemini/antigravity-cli/settings.json</code>: before each
+  Antigravity turn (with the server on) and when you press <strong>Connect</strong>. It never uses a wildcard, only touches rules
+  of its own —your other rules and keys stay exactly as they are—, leaves a backup copy before each change and doesn't overwrite a
+  file that isn't valid JSON.</p>
+  <p>In <strong>Settings → AI access</strong>, the <em>Permissions in Antigravity</em> block shows how many tools are approved
+  (<em>8 of 9 tools approved</em>) and has two buttons: <strong>Remove</strong> (asks for confirmation and deletes only the
+  mini-tools rules) and <strong>Re-sync</strong> (adds back whatever is missing). <strong>Once you remove them, mini-tools no longer
+  adds them by itself</strong> until you press <em>Re-sync</em> (or <em>Repair permissions</em> in the chat).</p>
+  <div class="note"><span class="lbl">Note</span><p><strong>The rules are global</strong>: they apply to all of Antigravity, so
+  its interactive terminal won't ask you for confirmation before using mini-tools' tools either. <strong>Remove</strong>
+  undoes that.</p></div>
 
   <h2 id="ia-mcp--control">Access control</h2>
   <ul>
@@ -3293,7 +3337,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.10.2; this page doesn't make a single external request.
+  v2.10.3; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·

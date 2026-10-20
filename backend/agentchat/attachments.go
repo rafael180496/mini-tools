@@ -46,12 +46,14 @@ import (
 // (AttachmentMeta); nunca los bytes. Y un adjunto viejo no se reenvía en los
 // turnos siguientes (ver forgetAttachments): los archivos se borran al día.
 
-// Límites. El de imagen es el de la API de Anthropic; el de texto es lo que
-// entra con holgura en el contexto de un modelo local. El de PDF queda por
-// debajo de los 32 MB del request de Anthropic porque el PDF viaja en base64
-// (+33 %): con 32 MB de archivo el request se pasaría y la API contestaría 413.
+// Límites. El de imagen es lo que se ACEPTA al adjuntar (una foto de teléfono):
+// al modelo va una copia reducida de a lo sumo MaxModelImageBytes, el tope de la
+// API de Anthropic (imagereduce.go). El de texto es lo que entra con holgura en
+// el contexto de un modelo local. El de PDF queda por debajo de los 32 MB del
+// request de Anthropic porque el PDF viaja en base64 (+33 %): con 32 MB de
+// archivo el request se pasaría y la API contestaría 413.
 const (
-	MaxImageBytes  = 5 << 20
+	MaxImageBytes  = 20 << 20
 	MaxPDFBytes    = 24 << 20
 	MaxTextBytes   = 512 << 10
 	MaxAttachments = 10
@@ -74,6 +76,18 @@ type Attachment struct {
 	Kind string `json:"kind"`
 	Mime string `json:"mime"`
 	Size int64  `json:"size"`
+	// ModelPath es la copia reducida de una imagen grande, la que va al modelo;
+	// "" si la imagen ya cabía y se usa Path. No viaja al frontend.
+	ModelPath string `json:"-"`
+}
+
+// ModelFile es el archivo que se entrega al modelo: la copia reducida si hay,
+// si no el adjunto tal cual.
+func (a Attachment) ModelFile() string {
+	if a.ModelPath != "" {
+		return a.ModelPath
+	}
+	return a.Path
 }
 
 // AttachmentMeta es lo único que el historial guarda de un adjunto.
@@ -384,7 +398,21 @@ func SaveFile(dir, name, dataBase64 string) (Attachment, error) {
 		os.Remove(path)
 		return Attachment{}, err
 	}
-	return Attachment{Path: path, Name: nameFromStored(path), Kind: kind, Mime: mime, Size: int64(len(raw))}, nil
+	att := Attachment{Path: path, Name: nameFromStored(path), Kind: kind, Mime: mime, Size: int64(len(raw))}
+	if kind == AttachImage {
+		// La copia que va al modelo se prepara ahora: una imagen que no se puede
+		// reducir (una bomba, una WebP enorme) se rechaza antes de que la persona
+		// escriba el mensaje, y sin dejar nada en la carpeta.
+		mp, err := ensureModelCopy(path, raw, display, mime)
+		if err != nil {
+			os.Remove(path)
+			return Attachment{}, err
+		}
+		if mp != path {
+			att.ModelPath = mp
+		}
+	}
+	return att, nil
 }
 
 // withExt asegura que el nombre termine en la extensión del tipo real: una
@@ -478,7 +506,17 @@ func classifyStored(path string) (Attachment, error) {
 			return Attachment{}, err
 		}
 	}
-	return Attachment{Path: path, Name: name, Kind: kind, Mime: mime, Size: info.Size()}, nil
+	att := Attachment{Path: path, Name: name, Kind: kind, Mime: mime, Size: info.Size()}
+	if kind == AttachImage {
+		mp, err := ensureModelCopy(path, nil, name, mime)
+		if err != nil {
+			return Attachment{}, err
+		}
+		if mp != path {
+			att.ModelPath = mp
+		}
+	}
+	return att, nil
 }
 
 // --- Preparar el envío ------------------------------------------------------------
@@ -521,7 +559,7 @@ func PrepareAttachments(atts []Attachment, caps AttachmentCaps, who string) (Pre
 			if caps.MaxImageBytes > 0 && a.Size > caps.MaxImageBytes {
 				return p, errTooBig(a.Name, "imagen", "image", caps.MaxImageBytes)
 			}
-			p.Images = append(p.Images, a.Path)
+			p.Images = append(p.Images, a.ModelFile())
 		case AttachPDF:
 			if !caps.PDF {
 				return p, i18n.Errorf(i18n.Msg{
@@ -692,7 +730,8 @@ func withAttachmentPaths(prompt string, images, pdfs []string, names map[string]
 	return b.String()
 }
 
-// attachmentNames indexa el nombre original de cada adjunto por su ruta.
+// attachmentNames indexa el nombre original de cada adjunto por su ruta (y por
+// la de su copia reducida, que es la que viaja en Images).
 func attachmentNames(atts []Attachment) map[string]string {
 	if len(atts) == 0 {
 		return nil
@@ -700,6 +739,9 @@ func attachmentNames(atts []Attachment) map[string]string {
 	m := make(map[string]string, len(atts))
 	for _, a := range atts {
 		m[a.Path] = a.Name
+		if a.ModelPath != "" {
+			m[a.ModelPath] = a.Name
+		}
 	}
 	return m
 }

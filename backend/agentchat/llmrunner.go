@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -426,7 +427,17 @@ func runLLMTool(ctx context.Context, t Turn, allowed map[string]bool, c llm.Tool
 		}
 	}()
 	if !allowed[c.Name] {
-		return "error: " + i18n.T(i18n.Msg{ES: "la herramienta %q no está disponible en este chat", EN: "the tool %q is not available in this chat"}, c.Name)
+		names := make([]string, 0, len(allowed))
+		for n := range allowed {
+			names = append(names, n)
+		}
+		if len(names) == 0 {
+			return "error: " + i18n.T(i18n.Msg{ES: "la herramienta %q no está disponible: este chat no tiene herramientas", EN: "the tool %q is not available: this chat has no tools"}, c.Name)
+		}
+		sort.Strings(names)
+		// Con la lista el modelo corrige el nombre en la vuelta siguiente en
+		// vez de insistir con uno que no existe.
+		return "error: " + i18n.T(i18n.Msg{ES: "la herramienta %q no está disponible en este chat. Las disponibles son: %s", EN: "the tool %q is not available in this chat. The available ones are: %s"}, c.Name, strings.Join(names, ", "))
 	}
 	if raw, ok := c.Arguments["_raw"].(string); ok && len(c.Arguments) == 1 {
 		return "error: " + i18n.T(i18n.Msg{ES: "los argumentos no son un JSON válido: %s", EN: "the arguments are not valid JSON: %s"}, trim(raw))

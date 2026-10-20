@@ -25,7 +25,7 @@ export interface AttachCaps {
 // Topes por defecto mientras la consulta de capacidades no contesta (puede
 // tardar: es una llamada HTTP al proveedor). Son los mismos que fija Go.
 export const DEFAULT_LIMITS = {
-    maxImageBytes: 5 * 1024 * 1024,
+    maxImageBytes: 20 * 1024 * 1024,
     maxPdfBytes: 24 * 1024 * 1024,
     maxTextBytes: 512 * 1024,
     maxCount: 10,

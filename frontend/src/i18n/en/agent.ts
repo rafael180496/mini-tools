@@ -153,6 +153,14 @@ const en: Messages<typeof es> = {
         allowAutoDescriptionLlm: (p) =>
             `${p.agent} will edit and create files and run commands in the working project without asking you, for this whole chat session. Only risky commands (rm -rf, git push, git reset --hard, sudo…) ask for your permission. Files are confined to the project, but a command runs with your permissions and can affect things outside it. If the project is a folder without git there is no automatic way back. You're asked this time; after that it's remembered for this project.`,
         replayTrimmed: 'You picked up a turn in progress: the beginning of this answer is no longer available (start trimmed).',
+        repairAgy: {
+            button: 'Repair permissions',
+            busy: 'Repairing…',
+            title: "Re-approves mini-tools' tools in Antigravity's settings.json (only mcp(mini-tools/…) rules, nothing else). Then send your message again: it is not resent automatically.",
+            busyTitle: "Repairing Antigravity's permissions…",
+            done: (p: {n: number}) => `Done: ${p.n} mini-tools tools approved in Antigravity. Send your message again.`,
+            failed: (p: {error: string}) => `Couldn't repair: ${p.error}`,
+        },
         approval: {
             title: (p) => `Allow ${p.tool}?`,
             titleRisky: (p) => `Risky command (${p.tool})`,
@@ -636,6 +644,35 @@ const en: Messages<typeof es> = {
         serverOff: 'The server is off, so no access is possible.',
         auditNote:
             "What's logged is **what was requested, not what was read**: storing the content would be a second copy of the very thing being protected. It lives in memory and is gone when the app closes.",
+        agyPerms: {
+            heading: 'Permissions in Antigravity',
+            intro: "Antigravity, in non-interactive mode (the app's chat), **blocks** every MCP tool that isn't approved beforehand and the turn ends with no reply. mini-tools approves them with one `mcp(mini-tools/<tool>)` rule per tool in Antigravity's `settings.json`.",
+            global: "**The rules are global**: they apply to all of Antigravity, so its interactive terminal won't ask you for confirmation for mini-tools' tools either. **Remove** reverts that. Only `mcp(mini-tools/…)` rules are touched: your other rules and keys stay as they are.",
+            statusOk: (p: {n: number}) => `${p.n} mini-tools tools approved`,
+            statusOne: '1 mini-tools tool approved',
+            statusPartial: (p: {n: number; total: number}) => `${p.n} of ${p.total} tools approved`,
+            statusNone: 'No tools approved',
+            statusInvalid: "Can't read the file",
+            statusRemoved: "You removed them: they won't be added back automatically",
+            statusMcpOff: "The MCP server is off: turns won't add them until you turn it on",
+            statusTitle: (p: {path: string}) => `File: ${p.path}`,
+            missing: (p: {tools: string}) => `Missing: ${p.tools}`,
+            stale: (p: {n: number}) => `${p.n} rule(s) for tools that no longer exist; they are cleaned up on re-sync.`,
+            invalid: (p: {problem: string}) => `The file isn't valid JSON and is left untouched: ${p.problem}`,
+            remove: 'Remove',
+            removeTitle: "Deletes only the mcp(mini-tools/…) rules from Antigravity's settings.json. They won't be added back automatically until you use “Re-sync”. Antigravity will block these tools from the chat again.",
+            removeTitleNone: 'There are no mini-tools rules in the file: nothing to remove.',
+            resync: 'Re-sync',
+            resyncTitle: "Adds any missing rules (and cleans up extra ones) in Antigravity's settings.json, even if you removed them. From then on they are kept up to date automatically.",
+            resyncTitleOk: 'All the rules are in place and the app keeps them up to date. Re-syncing would change nothing.',
+            busyTitle: "Working on Antigravity's file…",
+            removeConfirmTitle: "Remove Antigravity's permissions?",
+            removeConfirmBody: (p: {path: string}) =>
+                `Only the mcp(mini-tools/…) rules are deleted from ${p.path}. From the chat, Antigravity will block mini-tools' tools again and the app won't restore them until you use “Re-sync”. Your other rules are not touched.`,
+            removed: "mini-tools rules removed. They won't be added back automatically.",
+            resynced: (p: {n: number}) => `Done: ${p.n} mini-tools tools approved in Antigravity.`,
+            connectedNote: (p: {n: number; path: string}) => `${p.n} mini-tools tools were approved in ${p.path} (a global Antigravity rule).`,
+        },
     },
 }
 export default en

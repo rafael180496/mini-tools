@@ -10,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.2 |
-| Archivo | `mini-tools-v2.10.2-windows-amd64.exe` |
-| Tamaño | ~78 MB (78,3 MB; 78 297 088 bytes) — es el binario suelto, bajo el techo de 100 MB |
-| SHA-256 | `7b3f200cd9d855f2624f482cc081a4002e3d9df9d234c751d0e1188e180c7de6` |
+| Versión | 2.10.3 |
+| Archivo | `mini-tools-v2.10.3-windows-amd64.exe` |
+| Tamaño | ~78 MB (78,5 MB; 78 497 280 bytes) — es el binario suelto, bajo el techo de 100 MB |
+| SHA-256 | `1e9e952921401a9a19ae4847281b27f3ded2c66feaf3a1f3f5770bdef7eb2735` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file`: `PE32+ executable (GUI) x86-64, for MS Windows` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.10.2-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.10.3-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -34,8 +34,8 @@ Get-FileHash mini-tools-v2.10.2-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**La 2.10.2 se verificó en Windows 10 y en Windows 11.** El usuario corrió esta
-versión en las dos, y eso es lo único que se afirma aquí: que corre en esas dos
+**Verificado por el usuario en Windows 10 y Windows 11.** El usuario corrió la
+2.10.3 en las dos, y eso es lo único que se afirma aquí: que corre en esas dos
 versiones de Windows. Este documento no detalla qué flujos se ejercitaron, así
 que no se da por probado ningún flujo en particular más allá de eso.
 
@@ -43,7 +43,7 @@ Además pasan `go build`, `go vet` y `go test` en el host de desarrollo, y el
 binario es un `PE32+ x86-64`.
 
 Esto vale **para esta versión**: no se extrapola a la siguiente. Cuando salga
-la 2.10.3 (o cualquier otra), vuelve la pregunta de si alguien la corrió en
+la siguiente versión, vuelve la pregunta de si alguien la corrió en
 Windows y en cuál.
 
 ## Compatibilidad del sistema
@@ -73,7 +73,7 @@ Windows y en cuál.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.10.2-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.10.3-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

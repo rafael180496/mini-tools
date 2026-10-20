@@ -98,6 +98,8 @@ export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:bo
 
 export function AnalyzeSSHError(arg1:string,arg2:string,arg3:string,arg4:number,arg5:string):Promise<main.SSHErrorAnalysis>;
 
+export function AntigravityPermissionsStatus():Promise<main.AntigravityPermissions>;
+
 export function AppVersion():Promise<string>;
 
 export function AppendLocalHistory(arg1:string,arg2:string):Promise<boolean>;
@@ -794,6 +796,8 @@ export function ReleasePagedResult(arg1:string):Promise<void>;
 
 export function RemoveAgentWorkspace(arg1:string):Promise<void>;
 
+export function RemoveAntigravityPermissions():Promise<main.AntigravityPermissions>;
+
 export function RemoveRedisListIndex(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function RemoveRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -813,6 +817,8 @@ export function RenameSftpPath(arg1:string,arg2:string,arg3:string):Promise<void
 export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 
 export function ReorderModelServers(arg1:Array<string>):Promise<void>;
+
+export function RepairAntigravityPermissions():Promise<main.AntigravityPermissions>;
 
 export function ReplaceMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

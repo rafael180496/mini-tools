@@ -138,6 +138,22 @@ func TestBuildArgsOpencode(t *testing.T) {
 	if turnEnv(Turn{AgentID: "claude"}) != nil {
 		t.Error("los otros agentes no reciben esa variable")
 	}
+
+	// Las herramientas de mini-tools se permiten por NOMBRE (`<servidor>_<tool>`),
+	// sin comodines, y el bash sigue denegado; sin ellas (listar o exportar
+	// sesiones) basta con el bash.
+	env := strings.Join(turnEnv(Turn{AgentID: "opencode", Cwd: "/repo", MCPServer: "mini-tools", MCPTools: []string{"db_get_schema", "vault_search_notes"}}), " ")
+	for _, want := range []string{`"bash":"deny"`, `"mini-tools_db_get_schema":"allow"`, `"mini-tools_vault_search_notes":"allow"`} {
+		if !strings.Contains(env, want) {
+			t.Errorf("falta %s en %q", want, env)
+		}
+	}
+	if strings.Contains(env, "*") {
+		t.Errorf("nunca comodines: %q", env)
+	}
+	if got := strings.Join(opencodeEnv("/repo", "", nil), " "); !strings.Contains(got, `{"permission":{"bash":"deny"}}`) {
+		t.Errorf("sin turno, solo bash deny: %q", got)
+	}
 }
 
 func TestParseOpencodeSessions(t *testing.T) {

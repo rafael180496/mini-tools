@@ -37,7 +37,7 @@ workflow sin gastar un tag.
 **El proceso de abajo sigue vigente y es el que corre Claude** cuando se pide
 "preparar la versión": deja todo listo —versión bumpeada, artefactos generados y
 copiados a `releases/<os>/`, CHANGELOG volcado, READMEs con los checksums nuevos
-e `index.html` al día— y el commit y el tag los hace el usuario. Lo que cambia
+e `index.html` al día— y el commit, el merge a `main`, el tag y el push solo se hacen con permiso explícito del usuario (paso 10). Lo que cambia
 con el workflow es el **paso 9**: ya no hay que crear el release ni adjuntar los
 archivos a mano.
 
@@ -187,14 +187,7 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    con las notas del CHANGELOG y los dos archivos adjuntos. No hay que crear
    nada a mano ni subir binarios por la web. Ver "Dónde viven los binarios"
    abajo.
-10. **Nunca `git add`/`commit`/`push` nada de esto — ni los artefactos, ni
-   las docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
-   [conventions.md](../rules/conventions.md)): el usuario hace todo el
-   staging y los commits siempre, a mano. Terminar el proceso con los
-   artefactos y las docs actualizadas en el working tree y avisar qué
-   archivos quedaron listos para que el usuario los commitee — incluso si
-   en una conversación anterior pidió explícitamente subir algo puntual,
-   eso no habilita hacerlo de nuevo sin que lo pida otra vez.
+10. **Commit, merge, tag y push solo con el permiso explícito del usuario, preguntando siempre** (ver "Commits / PRs" en [conventions.md](../rules/conventions.md)). Sin ese permiso, el proceso termina con los artefactos y las docs en el working tree y la lista de archivos para commitear. Con el permiso: commit en `develop` → merge en `main` → tag `vX.Y.Z` sobre `main` → push de `develop`, `main` y el tag.
 
 ## Dónde viven los binarios
 

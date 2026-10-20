@@ -1328,6 +1328,36 @@ const fixtures: Record<string, unknown> = {
         {agent: 'antigravity', label: 'Antigravity CLI', installed: true, connected: true, stale: true, source: '/Users/tu-usuario/.gemini/config/mcp_config.json', canConnect: true},
     ],
     ConnectMCP: null,
+    // Permisos de Antigravity: 8 de 9 herramientas con su regla y una vieja que
+    // ya no corresponde, para que se vean el faltante y la limpieza.
+    AntigravityPermissionsStatus: {
+        installed: true,
+        mcpEnabled: true,
+        path: '/Users/tu-usuario/.gemini/antigravity-cli/settings.json',
+        server: 'mini-tools',
+        exists: true,
+        valid: true,
+        problem: '',
+        expected: 9,
+        approved: 8,
+        missing: ['git_status'],
+        stale: 1,
+        removedByUser: false,
+    },
+    RepairAntigravityPermissions: {
+        installed: true,
+        mcpEnabled: true,
+        path: '/Users/tu-usuario/.gemini/antigravity-cli/settings.json',
+        server: 'mini-tools',
+        exists: true,
+        valid: true,
+        problem: '',
+        expected: 9,
+        approved: 9,
+        missing: [],
+        stale: 0,
+        removedByUser: false,
+    },
     MCPServerStatus: {
         enabled: true,
         socketPath: '/Users/tu-usuario/Library/Application Support/mini-tools/mcp.sock',
@@ -3643,7 +3673,7 @@ if (attachViews.includes(view)) {
     const es = uiLang === 'es'
     const mb = 1024 * 1024
     fixtures.AgentAttachmentCapabilities = (agentId: string) => {
-        const base = {text: true, maxImageBytes: 5 * mb, maxPdfBytes: 24 * mb, maxTextBytes: 512 * 1024, maxCount: 10}
+        const base = {text: true, maxImageBytes: 20 * mb, maxPdfBytes: 24 * mb, maxTextBytes: 512 * 1024, maxCount: 10}
         if (agentId === 'llm:ms1') {
             return {
                 ...base,

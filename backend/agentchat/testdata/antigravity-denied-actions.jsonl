@@ -1,0 +1,5 @@
+{"event":"init","conversation_id":"b7f0c1d2-3e4a-4b5c-8d6e-7f8091a2b3c4","init":{"cwd":"/work/repo","tools":["view_file","call_mcp_tool"],"model":"gemini-4-argon-high","permission_mode":"request-review"}}
+{"event":"step_update","step_update":{"conversation_id":"b7f0c1d2","step_index":0,"state":"DONE","step_type":"user_input"}}
+{"event":"step_update","step_update":{"conversation_id":"b7f0c1d2","step_index":2,"state":"ACTIVE","step_type":"call_mcp_tool","tool_name":"call_mcp_tool","tool_input":{"ServerName":"mini-tools","ToolName":"vault_search_notes","Arguments":{"query":"oracle"}}}}
+{"event":"step_update","step_update":{"conversation_id":"b7f0c1d2","step_index":2,"state":"CANCELLED","step_type":"call_mcp_tool","tool_name":"call_mcp_tool"}}
+{"event":"result","result":{"conversation_id":"b7f0c1d2-3e4a-4b5c-8d6e-7f8091a2b3c4","status":"SUCCESS","response":"","denied_actions":["mcp(mini-tools/vault_search_notes)",{"tool_name":"run_command","reason":"not allowed"},{"x":1}],"usage":{"input_tokens":5000,"output_tokens":9,"total_tokens":5009}}}

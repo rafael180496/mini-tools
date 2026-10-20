@@ -592,6 +592,14 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 	brain, recalled := a.withRecall(brain, agentID, sessionID, module, contextID, typed)
 	system, prompt := brainDelivery(agentID, brain, prompt)
 
+	// Las herramientas de mini-tools que el servidor declara ahora, para que el
+	// CLI las tenga permitidas en headless (ver agentchat/mcpperms.go).
+	mcpTools, mcpServer := a.chatMCPTools(agentID)
+	// Antigravity necesita además una regla de permiso por herramienta en su
+	// settings.json global (app_agyperm.go). Se deja al día antes de lanzarlo;
+	// un fallo no frena el turno, se avisa en el chat.
+	notice := a.agyTurnNotice(agentID)
+
 	return a.sendRecorded(module, contextID, typed, agentchat.Turn{
 		SessionID: sessionID,
 		Recalled:  recalled,
@@ -616,6 +624,9 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		// El id de la sesión viaja en el entorno del CLI, que el hook hereda:
 		// así la pregunta de permiso llega rotulada con su chat.
 		ApproveEnv: agentapprove.HookEnvFor(a.approve.Path(), sessionID),
+		MCPTools:   mcpTools,
+		MCPServer:  mcpServer,
+		Notice:     notice,
 	})
 }
 

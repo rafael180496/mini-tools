@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,10 +50,21 @@ func (c *openaiClient) Models(ctx context.Context) ([]string, error) {
 	names := make([]string, 0, len(out.Data))
 	for _, m := range out.Data {
 		if m.ID != "" {
-			names = append(names, m.ID)
+			names = append(names, openaiModelID(c.base, m.ID))
 		}
 	}
 	return names, nil
+}
+
+// openaiModelID deja el id tal como lo acepta /chat/completions. Google Gemini,
+// por su endpoint compatible con OpenAI, lista sus modelos como
+// «models/gemini-2.5-pro», y su chat documenta el nombre sin el prefijo: se
+// elige de la lista ya como lo espera el chat.
+func openaiModelID(base, id string) string {
+	if u, err := url.Parse(base); err == nil && strings.EqualFold(u.Hostname(), "generativelanguage.googleapis.com") {
+		return strings.TrimPrefix(id, "models/")
+	}
+	return id
 }
 
 type openaiPart struct {

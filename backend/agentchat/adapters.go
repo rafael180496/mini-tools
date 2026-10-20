@@ -52,6 +52,11 @@ type claudeLine struct {
 	IsError    bool        `json:"is_error"`
 	Result     string      `json:"result"`
 	StopReason string      `json:"stop_reason"`
+	// PermissionDenials son las herramientas que el CLI rechazó en el turno
+	// porque en headless no podía pedir permiso.
+	PermissionDenials []struct {
+		ToolName string `json:"tool_name"`
+	} `json:"permission_denials"`
 }
 
 type claudeUsage struct {
@@ -118,102 +123,18 @@ func claudeAdapter(line []byte) []Event {
 			CostUSD:   l.TotalCost,
 		}
 		u.Total = u.Input + u.Output + u.CacheRead
+		// Los rechazos van antes del cierre: Manager.run los junta y deja la
+		// nota justo antes del done.
+		var out []Event
+		for _, d := range l.PermissionDenials {
+			if d.ToolName != "" {
+				out = append(out, denied(d.ToolName))
+			}
+		}
 		if l.IsError {
-			return []Event{{Kind: KindError, Error: firstNonEmpty(l.Result, i18n.T(msgAgentFailed)), Usage: &u, ConversationID: l.SessionID}}
+			return append(out, Event{Kind: KindError, Error: firstNonEmpty(l.Result, i18n.T(msgAgentFailed)), Usage: &u, ConversationID: l.SessionID})
 		}
-		return []Event{{Kind: KindDone, Usage: &u, ConversationID: l.SessionID}}
-	}
-	return nil
-}
-
-// --- Antigravity ----------------------------------------------------------
-
-type agyLine struct {
-	Event string `json:"event"`
-	Init  *struct {
-		Cwd   string   `json:"cwd"`
-		Tools []string `json:"tools"`
-		Model string   `json:"model"`
-	} `json:"init"`
-	ConversationID string `json:"conversation_id"`
-	StepUpdate     *struct {
-		ConversationID string `json:"conversation_id"`
-		StepIndex      int    `json:"step_index"`
-		StepType       string `json:"step_type"`
-		State          string `json:"state"`
-		// TextDelta se lee CRUDO. Ver rawtext.go: el decodificador estándar
-		// reemplaza por U+FFFD el byte suelto de un carácter que quedó
-		// partido entre dos trozos, y ahí ya no hay nada que recuperar.
-		TextDelta json.RawMessage `json:"text_delta"`
-		ToolName  string          `json:"tool_name"`
-		ToolInput any             `json:"tool_input"`
-		Usage     *agyUsage       `json:"usage"`
-	} `json:"step_update"`
-	Result *struct {
-		ConversationID string    `json:"conversation_id"`
-		Status         string    `json:"status"`
-		Response       string    `json:"response"`
-		Usage          *agyUsage `json:"usage"`
-	} `json:"result"`
-}
-
-type agyUsage struct {
-	Input     int64 `json:"input_tokens"`
-	Output    int64 `json:"output_tokens"`
-	Thinking  int64 `json:"thinking_tokens"`
-	CacheRead int64 `json:"cache_read_tokens"`
-	Total     int64 `json:"total_tokens"`
-}
-
-func (u *agyUsage) common() *Usage {
-	if u == nil {
-		return nil
-	}
-	return &Usage{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, Thinking: u.Thinking, Total: u.Total}
-}
-
-func antigravityAdapter(line []byte) []Event {
-	var l agyLine
-	if err := json.Unmarshal(line, &l); err != nil {
-		return nil
-	}
-
-	switch {
-	case l.Init != nil:
-		return []Event{{Kind: KindStart, Model: l.Init.Model, Tools: l.Init.Tools, ConversationID: l.ConversationID}}
-
-	case l.StepUpdate != nil:
-		s := l.StepUpdate
-		// El texto llega como deltas incrementales, así que se reenvía tal
-		// cual y quien lo muestra concatena. Acumularlo acá para mandarlo
-		// entero al final tiraría abajo lo único que hace que un chat se
-		// sienta vivo.
-		switch s.StepType {
-		case "agent_response":
-			if delta := jsonRawString(s.TextDelta); delta != "" {
-				return []Event{{Kind: KindText, Text: delta}}
-			}
-		case "user_input", "checkpoint", "unknown":
-			// Pasos internos: no son nada que mostrar.
-			return nil
-		default:
-			// Cualquier otro step_type con nombre de herramienta se muestra
-			// como llamada. Se toma el step_type como nombre cuando no hay uno
-			// explícito: es preferible mostrar "algo pasó y se llamaba así" a
-			// tragarse la acción entera.
-			if s.State == "ACTIVE" {
-				name := firstNonEmpty(s.ToolName, s.StepType)
-				return []Event{{Kind: KindTool, Tool: newToolCall(name, rawJSON(s.ToolInput))}}
-			}
-		}
-		return nil
-
-	case l.Result != nil:
-		u := l.Result.Usage.common()
-		if l.Result.Status != "" && l.Result.Status != "SUCCESS" {
-			return []Event{{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "el agente terminó con estado %s", EN: "the agent finished with status %s"}, l.Result.Status), Usage: u, ConversationID: l.Result.ConversationID}}
-		}
-		return []Event{{Kind: KindDone, Usage: u, ConversationID: l.Result.ConversationID}}
+		return append(out, Event{Kind: KindDone, Usage: &u, ConversationID: l.SessionID})
 	}
 	return nil
 }
@@ -327,11 +248,11 @@ var msgAgentFailed = i18n.Msg{ES: "el agente terminó con error", EN: "the agent
 
 // --- Registro -------------------------------------------------------------
 
-// adapters son los agentes con adaptador VERIFICADO contra una corrida real.
+// adapters son los agentes con adaptador VERIFICADO contra una corrida real y
+// sin estado entre líneas. Los que sí lo necesitan están en turnAdapters.
 var adapters = map[string]adapter{
-	"claude":      claudeAdapter,
-	"antigravity": antigravityAdapter,
-	"codex":       codexAdapter,
+	"claude": claudeAdapter,
+	"codex":  codexAdapter,
 }
 
 // finisher cierra un turno cuyo CLI terminó bien sin emitir un evento final
@@ -340,19 +261,21 @@ var adapters = map[string]adapter{
 type finisher func(t Turn) []Event
 
 // turnAdapters son los adaptadores que necesitan estado DURANTE un turno: uno
-// nuevo por turno, porque las sesiones corren en paralelo. Hoy solo OpenCode,
-// que no cierra el turno en su stream (ver opencode.go).
-var turnAdapters = map[string]func() (adapter, finisher){
-	"opencode": newOpencodeTurn,
+// nuevo por turno, porque las sesiones corren en paralelo. Hoy OpenCode, que
+// no cierra el turno en su stream (ver opencode.go), y Antigravity, que
+// necesita saber si ya salió texto y qué herramienta era cada paso.
+var turnAdapters = map[string]func(Turn) (adapter, finisher){
+	"opencode":    func(t Turn) (adapter, finisher) { return newOpencodeTurnFor(mcpServerOf(t)) },
+	"antigravity": newAntigravityTurn,
 }
 
 // adapterFor devuelve el adaptador de un turno nuevo y, si lo tiene, su cierre.
-func adapterFor(agentID string) (adapter, finisher, bool) {
-	if mk, ok := turnAdapters[agentID]; ok {
-		a, f := mk()
+func adapterFor(t Turn) (adapter, finisher, bool) {
+	if mk, ok := turnAdapters[t.AgentID]; ok {
+		a, f := mk(t)
 		return a, f, true
 	}
-	a, ok := adapters[agentID]
+	a, ok := adapters[t.AgentID]
 	return a, nil, ok
 }
 
@@ -365,7 +288,7 @@ func Supports(agentID string) bool {
 	if IsLLM(agentID) {
 		return true
 	}
-	_, _, ok := adapterFor(agentID)
+	_, _, ok := adapterFor(Turn{AgentID: agentID})
 	return ok
 }
 

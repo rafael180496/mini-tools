@@ -79,7 +79,7 @@ de las opciones de un `Select`.
 
 ## Commits / PRs
 
-- **Regla dura: nunca `git add`/`git commit`/`git push` de forma automática, bajo ningún proceso ni trigger (incluido el de Releases más abajo).** El usuario hace todos los commits y el staging manualmente, siempre — incluso después de haber pedido explícitamente en una conversación que se suba algo puntual (eso no crea un precedente que se repita solo). Dejar los cambios listos en el working tree y avisar qué archivos tocar; nunca stagear/commitear/pushear por iniciativa propia.
+- **Regla dura — Commits solo con permiso explícito, cada vez.** Por defecto nunca `git add`, `commit`, `push`, merge, tags ni PRs —ni Claude ni ningún sub-agente—: los cambios quedan en el árbol de trabajo. La única excepción es que el usuario lo autorice **en esa misma conversación y para ese cambio**; un permiso no vale para el siguiente, y Claude **siempre pregunta antes** (nunca lo hace por iniciativa propia). Con el permiso, el flujo es fijo: commit en `develop` → merge de `develop` en `main` → tag `vX.Y.Z` sobre `main` (si es una versión) → push de `develop`, `main` y el tag. Nunca `push --force`, reescribir historia ni borrar ramas o tags; los sub-agentes nunca commitean.
 - Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente — pero el commit en sí lo arma el usuario.
 
 ## Bindings de Wails
@@ -251,7 +251,7 @@ que nadie va a usar.
 
 - **Cualquier mención de "empaquetar"/"empaquetá"/"empaquete" u "oficial" en el contexto de compilar es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye bumpear la versión (`bump-version.sh patch` por default, ya no es opcional en este flujo), armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz, **y volcar `CHANGELOG.md` (mover `[Unreleased]` a `[X.Y.Z] - fecha`, con los features/fixes nuevos de la sesión)**.
 - El `.dmg`/artefacto empaquetado **sí se versiona en git** dentro de `releases/<os>/` — no agregarlo a `.gitignore`. Decisión explícita del usuario: el link del README tiene que bajar el binario directo desde GitHub. Desde el workflow de release **además es obligatorio**: lo que se publica es literalmente ese archivo, así que un tag empujado sin el artefacto de esa versión commiteado falla en CI.
-- **El `git add`/`commit`/`push` de todo esto lo hace el usuario, nunca Claude** — ver la regla dura en "Commits / PRs" arriba, sin excepción para este trigger tampoco. Dejar el `.dmg` + docs actualizadas en el working tree y listo.
+- **El `git add`/`commit`/merge/tag/`push` de todo esto solo se hace con el permiso explícito del usuario y preguntando siempre** — ver la regla dura en "Commits / PRs" arriba. Sin permiso, dejar el `.dmg` + docs actualizadas en el working tree y listo; con permiso: commit en `develop` → merge en `main` → tag → push.
 
 ## Migraciones del vault
 

@@ -136,7 +136,7 @@ func TestAgentAttachmentCapabilities(t *testing.T) {
 		t.Errorf("antigravity: %+v", c)
 	}
 	c, err := a.AgentAttachmentCapabilities(ollama, "llava")
-	if err != nil || !c.Images || !c.Known || c.PDF || !c.Text || c.MaxImageBytes != 5<<20 || c.MaxCount != 10 {
+	if err != nil || !c.Images || !c.Known || c.PDF || !c.Text || c.MaxImageBytes != 20<<20 || c.MaxCount != 10 {
 		t.Errorf("ollama con visión: %+v %v", c, err)
 	}
 	// Sin modelo elegido se resuelve el del proveedor (el primero que liste).

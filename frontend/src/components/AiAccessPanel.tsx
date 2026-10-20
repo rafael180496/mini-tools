@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useState} from 'react'
-import {ConnectMCP, MCPConnections, MCPServerStatus, SetMCPNotesWrite, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
+import {AntigravityPermissionsStatus, ConnectMCP, MCPConnections, MCPServerStatus, SetMCPNotesWrite, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
+import AgyPermissionsBlock from './AgyPermissionsBlock'
 import Icon from './Icon'
 import Toggle from './Toggle'
 import {rich} from './agent/rich'
@@ -141,6 +142,9 @@ export default function AiAccessPanel() {
     const [connections, setConnections] = useState<main.MCPConnection[]>([])
     const [connecting, setConnecting] = useState('')
     const [connectedMsg, setConnectedMsg] = useState('')
+    // Sube después de Conectar: en Antigravity, Conectar también aprueba las
+    // herramientas (reglas de permiso) y el bloque de permisos tiene que releerlas.
+    const [permsTick, setPermsTick] = useState(0)
 
     const refresh = useCallback(() => {
         MCPServerStatus()
@@ -165,11 +169,27 @@ export default function AiAccessPanel() {
         setError('')
         setConnectedMsg('')
         ConnectMCP(c.agent)
-            .then(() => setConnectedMsg(a.connectedOk({agent: c.label})))
+            .then(async () => {
+                let msg = a.connectedOk({agent: c.label})
+                if (c.agent === 'antigravity') {
+                    // Conectar también aprueba las herramientas en Antigravity
+                    // (reglas globales): se dice qué se tocó y dónde.
+                    try {
+                        const p = await AntigravityPermissionsStatus()
+                        if (p.valid && p.approved > 0 && !p.removedByUser) {
+                            msg += ' ' + a.agyPerms.connectedNote({n: p.approved, path: p.path})
+                        }
+                    } catch {
+                        // El bloque de permisos mostrará el estado real.
+                    }
+                }
+                setConnectedMsg(msg)
+            })
             .catch((e) => setError(String(e)))
             .finally(() => {
                 setConnecting('')
                 refreshConnections()
+                setPermsTick((n) => n + 1)
             })
     }
 
@@ -374,6 +394,8 @@ export default function AiAccessPanel() {
                         </div>
                     )}
                 </div>
+
+                <AgyPermissionsBlock refreshKey={permsTick} />
 
                 <div className="rounded border border-outline-variant bg-surface-container-low p-2">
                     <p className="mb-1 text-ui-10 font-medium uppercase tracking-wider text-on-surface-variant">

@@ -26,6 +26,7 @@ import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
 import ChatCodeBlock from './ChatCodeBlock'
+import RepairAgyButton from './RepairAgyButton'
 import ToolCallCard, {canonicalToolName, type ToolCall} from './ToolCallCard'
 import {CONTEXT_ICONS, contextNoun, describeContext, repoIdOf, workRepoIdOf, type WorkContext} from './workContext'
 import {rich} from './rich'
@@ -78,6 +79,9 @@ interface ChatEvent {
     // turno; solo el primer 'start' los trae.
     recalled?: string[]
     error?: string
+    // Botón que el backend pide junto a este evento (ver RepairAgyButton). Un
+    // código, no texto.
+    action?: string
 }
 
 // Chat con un agente, sobre el modo headless del CLI (backend/agentchat).
@@ -271,6 +275,9 @@ interface Turn {
     // Notas del cerebro que se le recordaron al agente en este turno (títulos).
     // No se guarda: el historial conserva lo que escribió la persona.
     recalled?: string[]
+    // Botón de reparación que el backend pidió para este turno (Event.Action).
+    // No se guarda: es un aviso de ese momento.
+    action?: string
     // Quién contestó este turno, cuando el proveedor de la conversación cambió a
     // mitad de camino (Chat de IA): sin esto, todo el hilo pasaría a firmarlo el
     // proveedor nuevo. Vacío = el vigente.
@@ -769,10 +776,23 @@ export default function AgentChat({
         if (!workRepo && (PERMISSIVE.has(mode) || (isLLM && REPO_MODES.has(mode)))) setMode('')
     }, [workRepo, mode, isLLM])
 
+    // Modo permisivo guardado en una conversación retomada, a la espera de que
+    // lleguen el proyecto y sus modos (ver el efecto de «Restaurar los ajustes»).
+    // Cualquier elección hecha en esta ventana lo descarta: lo que el usuario
+    // acaba de decidir pesa más que lo que había guardado.
+    const restoreModeRef = useRef<string | null>(null)
+
     // Elegir un modo a mano lo recuerda POR PROYECTO. Solo pasa por acá lo que el
     // usuario eligió (y aprobó, si era permisivo): las bajadas automáticas de
     // arriba —quitar el proyecto, cambiar de proveedor— no escriben nada.
     const chooseMode = (next: string) => {
+        if (restoreModeRef.current !== null) {
+            // Elegir "consulta" cuando ya estaba en consulta no cambia el estado
+            // y el efecto de guardado no corre: se guarda acá para no dejar el
+            // modo permisivo viejo en el historial.
+            restoreModeRef.current = null
+            void SetAgentChatSettings(sessionId, model, effort, next).catch(() => {})
+        }
         setMode(next)
         if (workRepo) writeProjectPrefs(workRepo, {mode: next})
     }
@@ -789,8 +809,8 @@ export default function AgentChat({
     }
 
     // En un chat NUEVO sobre un proyecto se vuelve al último modo que se eligió
-    // ahí. No aplica a una conversación retomada (ya trae sus ajustes, y un modo
-    // permisivo guardado no se reactiva solo, ver más abajo) ni a una que ya tiene
+    // ahí. No aplica a una conversación retomada (ya trae sus ajustes; un modo
+    // permisivo guardado vuelve solo si el proyecto lo aceptó, ver más abajo) ni a una que ya tiene
     // mensajes; y no pisa lo que el usuario ya eligió en esta ventana. Sin
     // memoria el modo sigue siendo el de siempre: solo consulta.
     const modeRestoredFor = useRef('')
@@ -841,6 +861,7 @@ export default function AgentChat({
                     // y Claude bloques enteros; las dos cosas funcionan
                     // igual concatenando.
                     last.text += ev.text
+                    if (ev.action) last.action = ev.action
                     break
                 case 'thinking':
                     break
@@ -884,23 +905,55 @@ export default function AgentChat({
     // de una forma distinta de como venía y eso no se nota hasta que la
     // respuesta llega peor.
     //
-    // **El MODO no se restaura si era permisivo.** Guardar "podía editar" y
-    // reactivarlo solo porque se reabrió una pestaña sería conceder un permiso
-    // que nadie volvió a dar. Se vuelve a pedir, que cuesta un clic.
+    // **El MODO permisivo se restaura solo con el visto bueno del proyecto.**
+    // Reactivar "podía editar" porque se reabrió una pestaña sería conceder un
+    // permiso que nadie volvió a dar, pero la confirmación de «Editar»/«Auto» ya
+    // es POR PROYECTO: si ese proyecto la tiene aceptada, un chat nuevo ahí
+    // arranca con el modo recordado sin preguntar, y la conversación retomada
+    // era la única que lo perdía. Entonces vuelve con su modo si el proyecto lo
+    // aceptó y el agente lo ofrece ahí; si no, baja a consulta y se vuelve a
+    // pedir, que cuesta un clic.
+    //
+    // El proyecto y la lista de modos llegan DESPUÉS de este efecto (los trae
+    // `AgentChatModes`), así que acá solo se anota qué modo había y el efecto
+    // de abajo lo resuelve cuando ya se puede decidir. Mientras tanto el modo
+    // queda en consulta, igual que antes.
     useEffect(() => {
         if (!initialSettings) return
         setModel(initialSettings.model || '')
         setEffort(initialSettings.effort || '')
-        setMode(PERMISSIVE.has(initialSettings.mode) ? '' : initialSettings.mode || '')
+        const saved = initialSettings.mode || ''
+        restoreModeRef.current = PERMISSIVE.has(saved) ? saved : null
+        setMode(PERMISSIVE.has(saved) ? '' : saved)
         brainPersistedRef.current = !!initialSettings.brain
         setBrain(!!initialSettings.brain)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId])
 
+    // Resuelve el modo permisivo anotado arriba. Espera a que `modes` sea el de
+    // ESTE proyecto (`modesFor`); sin proyecto de trabajo no hay nada que
+    // decidir todavía (los modos permisivos no se ofrecen), así que el modo
+    // sigue anotado por si se elige uno después. Una elección del usuario lo
+    // borra (`chooseMode`), por lo que nunca se pisa una decisión reciente.
+    useEffect(() => {
+        const saved = restoreModeRef.current
+        if (!saved || !workRepo || modesFor !== workRepo) return
+        restoreModeRef.current = null
+        if (isProjectModeAcked(workRepo, saved) && modes.includes(saved)) {
+            setMode(saved)
+        } else {
+            // Baja a consulta, y eso también es lo que queda guardado.
+            void SetAgentChatSettings(sessionId, model, effort, '').catch(() => {})
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, workRepo, modes, modesFor])
+
     // Guardar los ajustes cuando cambian, para el próximo turno y para la
     // próxima vez que se abra la app.
     useEffect(() => {
-        void SetAgentChatSettings(sessionId, model, effort, mode).catch(() => {})
+        // Con un modo permisivo a la espera de su aprobación se conserva el
+        // guardado, en vez de pisarlo con "consulta" antes de poder decidir.
+        void SetAgentChatSettings(sessionId, model, effort, restoreModeRef.current ?? mode).catch(() => {})
     }, [sessionId, model, effort, mode])
 
     // Volver a dibujar la conversación anterior al retomar un chat.
@@ -1729,6 +1782,8 @@ export default function AgentChat({
                                 )}
                             </div>
                         )}
+
+                        {turn.action === 'repair-agy-perms' && <RepairAgyButton />}
 
                         {turn.error && (
                             <p className="mt-1 flex items-start gap-1 rounded-lg border border-error/30 bg-error-container/30 px-2 py-1 text-ui-11 text-error">
