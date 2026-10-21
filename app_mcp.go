@@ -155,6 +155,18 @@ func (a *App) CallTool(name string, args map[string]any) (string, error) {
 		return "", i18n.Errorf(i18n.Msg{ES: "el vault de mini-tools está bloqueado: desbloquealo en la aplicación para que estas herramientas puedan responder", EN: "the mini-tools vault is locked: unlock it in the app so these tools can answer"})
 	}
 
+	// Los modelos adivinan el nombre de los argumentos (`sql` por `query`,
+	// `alias` por `connection`…): se traducen antes de ejecutar, para los CLIs y
+	// para el chat con servidores, que entran los dos por acá.
+	a.mcp.mu.Lock()
+	for _, t := range a.mcpTools() {
+		if t.Name == name {
+			args = mcpserver.NormalizeArgs(t.InputSchema, args)
+			break
+		}
+	}
+	a.mcp.mu.Unlock()
+
 	out, resource, err := a.runMCPTool(name, args)
 	a.recordMCPAccess(name, resource, err != nil)
 	return out, err

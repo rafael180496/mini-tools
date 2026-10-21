@@ -4,6 +4,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **Las herramientas de la IA fallaban por el nombre de un argumento.** Los modelos adivinan cómo se llama cada parámetro y a veces mandan `sql` en vez de `query`, `alias` en vez de `connection` o `note` en vez de `title`; la herramienta respondía que faltaba el dato y el agente perdía una vuelta por cada tropiezo. Ahora cada herramienta del servidor MCP entiende los sinónimos habituales —y la capitalización o los guiones distintos— antes de ejecutarse, tanto en el chat con Claude Code, Codex, OpenCode o Antigravity como en el chat con un servidor de modelos.
+
 ## [2.10.3] - 2026-10-19
 
 ### Agregado
