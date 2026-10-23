@@ -139,6 +139,18 @@ import type {Theme} from '../hooks/useTheme'
 // Lazy: both are only mounted once the user opens them (showDialog /
 // showExplain), so they don't need to be in the initial bundle — unlike
 // the editor itself, which the workspace needs immediately and can't defer.
+// Ver gitWorkInSidebar.
+const GIT_WORK_IN_SIDEBAR_KEY = 'mt.git.workInSidebar'
+// Panel de trabajo acoplado: plegado a su encabezado y qué fracción del alto
+// del módulo Git se queda con el árbol de repositorios. Preferencias de la
+// máquina, no de un repo: se leen y escriben con try/catch como la anterior.
+const GIT_WORK_DOCK_COLLAPSED_KEY = 'mt.git.workDockCollapsed'
+const GIT_WORK_DOCK_SPLIT_KEY = 'mt.git.workDockSplit'
+const GIT_WORK_DOCK_SPLIT_DEFAULT = 0.38
+const GIT_WORK_DOCK_SPLIT_MIN = 0.12
+const GIT_WORK_DOCK_SPLIT_MAX = 0.85
+const clampGitWorkSplit = (v: number) => Math.min(GIT_WORK_DOCK_SPLIT_MAX, Math.max(GIT_WORK_DOCK_SPLIT_MIN, v))
+
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
@@ -1005,6 +1017,7 @@ export default function Workspace({
     const pendingSortRef = useRef<{column: string; direction: 'asc' | 'desc'} | null>(null)
 
     const activeTabData = tabs.find((t) => t.id === activeTabId) ?? tabs[0]
+
     // The connection the ACTIVE TAB is bound to — this, not `selected`,
     // drives everything about running queries/commands and the toolbar's
     // engine-specific controls. null when the tab has no connection linked
@@ -1315,6 +1328,113 @@ export default function Workspace({
     const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     sidebarCollapsedRef.current = sidebarCollapsed
+
+    // La columna de trabajo de un repositorio (Historial, Cambios, Stash,
+    // Archivos) se dibuja en ESTA barra lateral, debajo de la lista de
+    // repositorios, y no como una segunda barra dentro de la pestaña: dos
+    // columnas angostas una al lado de la otra se comían el ancho del grafo y
+    // la de la app quedaba con media pantalla vacía. GitRepoTab la manda acá
+    // por un portal; si la barra está plegada o muestra otro módulo, vuelve a
+    // dibujarla adentro, como antes. Es una preferencia de esta máquina.
+    const [gitWorkHost, setGitWorkHost] = useState<HTMLDivElement | null>(null)
+    const [gitWorkInSidebar, setGitWorkInSidebar] = useState(() => {
+        try {
+            return localStorage.getItem(GIT_WORK_IN_SIDEBAR_KEY) !== '0'
+        } catch {
+            return true
+        }
+    })
+    const toggleGitWorkInSidebar = useCallback(() => {
+        setGitWorkInSidebar((v) => {
+            try {
+                localStorage.setItem(GIT_WORK_IN_SIDEBAR_KEY, v ? '0' : '1')
+            } catch {
+                // sin almacenamiento: vuelve al valor por defecto la próxima vez
+            }
+            return !v
+        })
+    }, [])
+    // Plegar el panel acoplado a su encabezado le devuelve todo el alto al árbol
+    // de repositorios; el reparto del alto entre los dos es una fracción del
+    // cuerpo del módulo (no píxeles) para que siga proporcionado si la ventana
+    // cambia de tamaño. Se persiste al soltar el divisor, no en cada movimiento.
+    const [gitWorkDockCollapsed, setGitWorkDockCollapsed] = useState(() => {
+        try {
+            return localStorage.getItem(GIT_WORK_DOCK_COLLAPSED_KEY) === '1'
+        } catch {
+            return false
+        }
+    })
+    const toggleGitWorkDockCollapsed = useCallback(() => {
+        setGitWorkDockCollapsed((v) => {
+            try {
+                localStorage.setItem(GIT_WORK_DOCK_COLLAPSED_KEY, v ? '0' : '1')
+            } catch {
+                // sin almacenamiento: vuelve a desplegado la próxima vez
+            }
+            return !v
+        })
+    }, [])
+    const [gitWorkSplit, setGitWorkSplit] = useState(() => {
+        try {
+            const raw = parseFloat(localStorage.getItem(GIT_WORK_DOCK_SPLIT_KEY) ?? '')
+            return Number.isFinite(raw) ? clampGitWorkSplit(raw) : GIT_WORK_DOCK_SPLIT_DEFAULT
+        } catch {
+            return GIT_WORK_DOCK_SPLIT_DEFAULT
+        }
+    })
+    const gitWorkBodyRef = useRef<HTMLDivElement>(null)
+    function saveGitWorkSplit(v: number) {
+        try {
+            if (v === GIT_WORK_DOCK_SPLIT_DEFAULT) localStorage.removeItem(GIT_WORK_DOCK_SPLIT_KEY)
+            else localStorage.setItem(GIT_WORK_DOCK_SPLIT_KEY, String(v))
+        } catch {
+            // sin almacenamiento: queda solo para esta sesión
+        }
+    }
+    // Misma mecánica que startSidebarResize: listeners en window para que el
+    // arrastre siga aunque el puntero salga del divisor, y selección de texto
+    // apagada mientras dura.
+    function startGitWorkSplitResize(e: ReactMouseEvent) {
+        e.preventDefault()
+        const body = gitWorkBodyRef.current
+        const total = body?.getBoundingClientRect().height ?? 0
+        if (total <= 0) return
+        const startY = e.clientY
+        const startSplit = gitWorkSplit
+        const at = (y: number) => clampGitWorkSplit(startSplit + (y - startY) / total)
+        const prevCursor = document.body.style.cursor
+        const prevSelect = document.body.style.userSelect
+        document.body.style.cursor = 'row-resize'
+        document.body.style.userSelect = 'none'
+        function onMove(ev: MouseEvent) {
+            setGitWorkSplit(at(ev.clientY))
+        }
+        function onUp(ev: MouseEvent) {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            document.body.style.cursor = prevCursor
+            document.body.style.userSelect = prevSelect
+            const v = at(ev.clientY)
+            setGitWorkSplit(v)
+            saveGitWorkSplit(v)
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }
+    function resetGitWorkSplit() {
+        setGitWorkSplit(GIT_WORK_DOCK_SPLIT_DEFAULT)
+        saveGitWorkSplit(GIT_WORK_DOCK_SPLIT_DEFAULT)
+    }
+    // Pasar a la pestaña de un repositorio muestra el módulo Git de la barra:
+    // es donde ahora vive su columna de trabajo. No se guarda como módulo
+    // elegido —eso lo decide el menú master—, y elegir otro a mano sigue
+    // funcionando: la columna vuelve a la pestaña.
+    const activeIsGitRepo = activeTabData?.kind === 'git-repo'
+    useEffect(() => {
+        if (activeIsGitRepo && gitWorkInSidebar) setActiveModule('git')
+    }, [activeTabId, activeIsGitRepo, gitWorkInSidebar])
+    const gitWorkDocked = activeIsGitRepo && gitWorkInSidebar && activeModule === 'git' && !sidebarCollapsed
     // Ancho arrastrado de la barra, mismo trato que el alto del editor: se
     // persiste una vez al soltar, no en cada movimiento del puntero.
     const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
@@ -3746,6 +3866,14 @@ export default function Workspace({
                     ),
                     git: (
                         <GitErrorBoundary label={t.workspace.gitSidebarLabel}>
+                            <div ref={gitWorkBodyRef} className="flex min-h-0 flex-1 flex-col">
+                            {/* Acoplado y desplegado, el árbol toma su fracción del alto
+                                (flex-basis en %: resuelve contra el alto del cuerpo, que
+                                es definido); plegado o sin acoplar, todo el que sobra. */}
+                            <div
+                                className={gitWorkDocked && !gitWorkDockCollapsed ? 'flex min-h-16 shrink-0 grow-0 flex-col' : 'flex min-h-0 flex-1 flex-col'}
+                                style={gitWorkDocked && !gitWorkDockCollapsed ? {flexBasis: `${gitWorkSplit * 100}%`} : undefined}
+                            >
                             <GitRepoTree
                         onOpenRepo={openGitRepo}
                         activeTabRepoId={activeTabData?.repoId ?? null}
@@ -3761,6 +3889,31 @@ export default function Workspace({
                         filter={sidebarFilter}
                         onMatchCount={setGitMatches}
                     />
+                            </div>
+                            {/* Divisor: alto cero con la zona de agarre superpuesta, para
+                                que los 6 px no corran el layout (mismo truco que el tirador
+                                de ancho de la barra). */}
+                            {gitWorkDocked && !gitWorkDockCollapsed && (
+                                <div className="relative z-10 h-0 shrink-0">
+                                    <div
+                                        role="separator"
+                                        aria-orientation="horizontal"
+                                        onMouseDown={startGitWorkSplitResize}
+                                        onDoubleClick={resetGitWorkSplit}
+                                        title={t.git.workbench.panel.splitResize}
+                                        className="absolute inset-x-0 -top-[3px] h-1.5 cursor-row-resize hover:bg-primary/30"
+                                    />
+                                </div>
+                            )}
+                            {/* Plegado el host sigue montado (el portal de GitRepoTab
+                                cuelga de él) pero sin flex-1: solo mide su encabezado. */}
+                            {gitWorkDocked && (
+                                <div
+                                    ref={setGitWorkHost}
+                                    className={`flex min-h-0 flex-col border-t border-outline-variant ${gitWorkDockCollapsed ? 'shrink-0' : 'flex-1'}`}
+                                />
+                            )}
+                            </div>
                         </GitErrorBoundary>
                     ),
                     notes: (
@@ -4571,6 +4724,11 @@ export default function Workspace({
                                     syncToken={gitSyncToken}
                                     onChanged={notifyGitChanged}
                                     active={activeTabId === t.id}
+                                    workHost={activeTabId === t.id && gitWorkDocked ? gitWorkHost : null}
+                                    workInSidebar={gitWorkInSidebar}
+                                    onToggleWorkInSidebar={toggleGitWorkInSidebar}
+                                    dockCollapsed={gitWorkDockCollapsed}
+                                    onToggleDockCollapsed={toggleGitWorkDockCollapsed}
                                 />
                             </GitErrorBoundary>
                         </div>

@@ -4,8 +4,12 @@ import type es from '../../es/gitparts/workbench'
 const en: Messages<typeof es> = {
     panel: {
         history: 'History',
+        dockedTitle: (p) => `Work panel of “${p.repo}”, the repository in the active tab`,
         collapse: 'Collapse the work panel to an icon bar — the four tabs stay one click away',
         expand: 'Expand the work panel (History, Changes, Stash, Files)',
+        dockHide: 'Hide the work panel: leaves only this row and the repository tree takes the whole height',
+        dockShow: 'Show the work panel (History, Changes, Stash, Files)',
+        splitResize: 'Drag to split the height between the repositories and the work panel — double-click restores the default size',
     },
     toolbar: {
         createPr: 'Create pull request',

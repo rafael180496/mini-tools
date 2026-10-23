@@ -30,6 +30,9 @@ export type GitRequest =
     // lista completa y vigente. Las anclas también alimentan el «Modo foco» del
     // grafo, por eso la pestaña tiene que enterarse.
     | {repoId: string; kind: 'pinned-changed'; pinned: string[]}
+    // Una operación lanzada desde la barra (merge, rebase) se detuvo con
+    // conflictos: la pestaña abre el resolutor y explica qué pasó.
+    | {repoId: string; kind: 'open-conflicts'}
 
 const EVENT = 'mini-tools:git-request'
 

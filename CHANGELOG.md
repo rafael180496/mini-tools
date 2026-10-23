@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.4] - 2026-10-23
+
+### Mejorado
+
+- **El panel de trabajo de Git vive en la barra lateral de la app.** Historial, Cambios, Stash y Archivos se dibujan debajo de la lista de repositorios en vez de como una segunda barra dentro de la pestaña: abrir un repositorio pasa la barra a Git y la pestaña se queda con todo el ancho para el grafo, el diff y el chat. Si la barra está plegada o muestra otro módulo, el panel vuelve a la pestaña, y *Vista → Dejar el panel de trabajo dentro de la pestaña* deja el diseño anterior. Acoplado se puede ocultar con el chevron de su encabezado (queda solo esa fila y los repositorios toman todo el alto), el alto se reparte arrastrando el divisor entre los repositorios y el panel (doble clic vuelve al tamaño por defecto) y las solapas son una fila compacta que, si la barra es angosta, muestra solo los íconos.
+- **El panel de abajo del repositorio, más claro.** Cuatro solapas de primer nivel —**Chat**, **Terminal**, **Contexto** y **Registro** (comandos ejecutados + reflog)— en lugar de Sesiones/Comandos/Reflog/Agentes con Contexto e Historial mezclados entre las conversaciones abiertas. El contador de Contexto cuenta skills y el de Chat las conversaciones (antes el «24» de Agentes se leía como chats). Sin ninguna conversación abierta, Chat muestra el historial, desde donde se empieza una nueva; la letra y la paleta de la terminal se muestran solo en Terminal.
+- **El chat del repositorio gasta una barra menos.** Los controles del chat (modelo, **Validar con otro**, buscar, reiniciar y cerrar) suben a la fila de las conversaciones, a la derecha, en vez de abrir una tercera barra encima de los mensajes; el chip «Git · repo» desaparece porque la pestaña ya lo dice. En un panel angosto, anclado al costado, «Validar con otro» queda solo con el ícono. El chat de los demás módulos conserva su encabezado.
+- **El pie del chat ocupa la mitad.** Modo, Cerebro, esfuerzo, adjuntar y modelo van dentro de la caja del mensaje, junto a Enviar; el aviso del modo y el consumo de la conversación pasan a una línea tenue debajo. Aplica al chat de todos los módulos.
+- **Resolver conflictos ya no es pelearse con botoncitos.** Un merge, pull, rebase o cherry-pick que choca abre el resolutor solo con un aviso de qué pasó, en vez del «exit status 1» crudo (también desde el menú de una rama en la barra lateral). Se resuelve con un clic sobre el lado que se quiere conservar (y salta al siguiente bloque), cada bloque se puede **editar a mano**, *Todo lo mío* / *Todo lo entrante* resuelven el archivo entero, *Editor* abre el archivo completo y *Marcar resuelto tal cual* agrega uno arreglado a mano o un conflicto de borrado. Tres pasos arriba dicen en cuál estás y, al terminar, un botón grande continúa la operación.
+
+### Cambiado
+
+- **Dependencias al día.** Go: Wails 2.17, SDK de Anthropic 1.84, pgx 5.11, go-mssqldb 1.11, go-redis 9.23, driver de MongoDB 2.9, modernc SQLite 1.61, `x/crypto` 0.58 y el resto de las indirectas. Frontend: React 19.3, Vite 8, TypeScript 7 (el `tsc` nativo), `@vitejs/plugin-react` 6, TanStack Table 9 (la grilla de resultados se migró a su API nueva), Tailwind 4.3.3 y CodeMirror al día. El chequeo de textos de i18n usa la API de TypeScript 5 por un alias (`typescript-api`), porque la 7 todavía no la publica estable.
+
 ### Corregido
 
 - **Las herramientas de la IA fallaban por el nombre de un argumento.** Los modelos adivinan cómo se llama cada parámetro y a veces mandan `sql` en vez de `query`, `alias` en vez de `connection` o `note` en vez de `title`; la herramienta respondía que faltaba el dato y el agente perdía una vuelta por cada tropiezo. Ahora cada herramienta del servidor MCP entiende los sinónimos habituales —y la capitalización o los guiones distintos— antes de ejecutarse, tanto en el chat con Claude Code, Codex, OpenCode o Antigravity como en el chat con un servidor de modelos.

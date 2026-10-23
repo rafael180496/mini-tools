@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.10.3. Lo que está acá existe en ese binario.">2.10.3 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.4. Lo que está acá existe en ese binario.">2.10.4 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -1316,7 +1316,27 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <ul>
     <li><strong>Historial</strong>: búsqueda de commits (<code>autor:</code>, <code>mensaje:</code>, <code>archivo:</code>, <code>desde:</code>, <code>hasta:</code> — los chips agregan el prefijo por vos) y <em>Solo mi trabajo</em>, que deja solo la rama actual, los troncos y las ancladas. Debajo, las <strong>ramas rápidas</strong>: clic para verla en el grafo, doble clic para cambiar a ella.</li>
     <li><strong>Cambios</strong>: más abajo. <strong>Stash</strong>: la lista, con la vista previa del elegido en el área principal. <strong>Archivos</strong>: el árbol de archivos del editor.</li>
-    <li>Arrastrá su borde para cambiar el ancho: se recuerda <strong>por repositorio</strong>, igual que la solapa en la que estabas. El botón a la derecha de las solapas lo pliega a una barra de íconos; un clic en cualquier ícono lo vuelve a abrir.</li>
+    <li><strong>Vive en la barra lateral de la app</strong>, debajo de la lista de repositorios: abrir la pestaña de un repositorio pasa la barra a Git y el panel aparece ahí, así la pestaña se queda con todo el ancho para el grafo, el diff y el chat. Si plegás la barra o elegís otro módulo, el panel vuelve a la pestaña. Con un clic en su encabezado (el nombre del repositorio, con un chevron) se pliega a esa única fila y la lista de repositorios recupera todo el alto, y arrastrando el divisor entre las dos se reparte el alto a gusto — doble clic vuelve al tamaño por defecto. Con la barra angosta las cuatro solapas muestran solo el ícono; pasá el puntero por encima para ver su nombre.</li>
+    <li>¿Lo preferís dentro de la pestaña? <em>Vista → Dejar el panel de trabajo dentro de la pestaña</em> (y de vuelta con <em>Llevar el panel de trabajo a la barra lateral</em>). Dentro de la pestaña, arrastrá su borde para cambiar el ancho —se recuerda <strong>por repositorio</strong>, igual que la solapa en la que estabas— y el botón a la derecha de las solapas lo pliega a una barra de íconos.</li>
+  </ul>
+
+  <h2 id="git-trabajo--abajo">El panel de abajo: Chat, Terminal, Contexto, Registro</h2>
+  <ul>
+    <li><strong>Chat</strong>: las conversaciones abiertas con agentes, <strong>+</strong> para empezar una e <strong>Historial</strong> (a la derecha) con todas las anteriores. Sin ninguna abierta se muestra el historial, que es también desde donde se empieza una nueva. Los controles del propio chat —<strong>Validar con otro</strong>, buscar y reiniciar, más el modelo— están en esa misma fila, a la derecha de las conversaciones, así que no hay una barra más encima de los mensajes.</li>
+    <li><strong>Terminal</strong>: shells y agentes en su terminal completa. Los botones de tamaño de letra y paleta aparecen solo en esta solapa.</li>
+    <li><strong>Contexto</strong>: lo que el repositorio le ofrece a un agente — skills, subagentes, comandos, archivos de instrucciones y MCP. Su contador es eso, no la cantidad de chats.</li>
+    <li><strong>Registro</strong>: los comandos git que ejecutó la app, con su salida, y el <a href="#git-reflog">reflog</a>.</li>
+    <li>En el chat, el modo, Cerebro, el esfuerzo, adjuntar y el modelo van en el pie de la caja del mensaje; lo que permite el modo y cuántos tokens lleva la conversación quedan en una línea tenue debajo.</li>
+  </ul>
+
+  <h2 id="git-trabajo--conflictos">Resolver conflictos</h2>
+  <p>Cuando un merge, pull, rebase o cherry-pick se detiene por conflictos, el resolutor <strong>se abre solo</strong> con un aviso de qué pasó (el error crudo queda en Registro). Tres pasos arriba dicen dónde estás: elegir qué conservar, marcar el archivo resuelto, continuar la operación.</p>
+  <ul>
+    <li><strong>Clic en el lado que querés conservar</strong> —el panel entero es el botón— y la vista salta al siguiente bloque sin decidir. Clic también en el otro lado conserva los dos.</li>
+    <li><strong>Editar</strong> escribe el bloque a mano, arrancando de lo elegido (o de los dos lados).</li>
+    <li><strong>Todo lo mío / Todo lo entrante</strong> resuelven todos los bloques del archivo de una vez; después podés cambiarlos uno por uno.</li>
+    <li><strong>Editor</strong> abre el archivo para arreglarlo con todo el archivo delante; de vuelta en el resolutor, <strong>Marcar resuelto tal cual</strong> lo agrega cuando ya no quedan marcadores (también para conflictos de borrado).</li>
+    <li>Con todos los archivos marcados, un botón grande de <strong>Continuar</strong> termina la operación; <strong>Abortar</strong> deja el repositorio como estaba.</li>
   </ul>
 
   <h2 id="git-trabajo--cambios">Cambios y el commit</h2>
@@ -1393,8 +1413,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li><strong>Stash</strong>: aplicar, hacer pop y descartar.</li>
   </ul>
   <div class="note"><span class="lbl">Dato</span>
-  Si un merge o un rebase iniciado acá se detiene por conflictos, la pestaña del repositorio se abre sola: ahí están el
-  resolutor de conflictos y el aviso de <em>continuar / abortar</em>.</div>
+  Si un merge o un rebase iniciado acá se detiene por conflictos, la pestaña del repositorio se abre sola, directo en el
+  <a href="#git-trabajo--conflictos">resolutor de conflictos</a>.</div>
 
   <figure>
     <div class="shot"><img src="../docs/screenshots/es/git-sidebar-menu.png" alt="Menú del clic derecho sobre una rama local: checkout, ver en el grafo, crear rama desde acá, mergear en develop, rebasar develop sobre esta, buscar en esta rama, anclar arriba, cambiar nombre, configurar upstream, quitar upstream, copiar nombre y borrar rama"></div>
@@ -3356,7 +3376,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.10.3; esta página no hace una sola petición externa.
+  v2.10.4; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

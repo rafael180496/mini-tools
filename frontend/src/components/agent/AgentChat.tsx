@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import type {ReactNode} from 'react'
+import {createPortal} from 'react-dom'
 import {
     AgentChatHistory,
     AgentChatMessages,
@@ -402,6 +403,20 @@ interface AgentChatProps {
     // Contenido extra bajo las sugerencias del estado vacío (el aviso de «agregá
     // un servidor» del Chat de IA).
     emptyExtra?: ReactNode
+    // Esconde el chip «Git · <repo>» del encabezado. Dentro de la pestaña de un
+    // repositorio el contexto es la pestaña misma: el chip repite lo que ya dice
+    // la pestaña y se come el ancho de la fila.
+    hideContextChip?: boolean
+    // Dónde dibujar los controles del encabezado (modelo, Validar con otro,
+    // buscar, reiniciar, cerrar). Con un elemento, se pintan ahí con un portal y
+    // el chat no reserva su propia fila: el anfitrión los junta con la tira de
+    // sus conversaciones y el panel gasta una barra menos. Sin él (el Chat de IA
+    // y los demás módulos) el encabezado queda propio, como siempre.
+    //
+    // El anfitrión mantiene montados varios chats y esconde los que no se ven,
+    // así que solo le pasa el elemento al chat que está delante: con los demás
+    // el portal pintaría sus controles encima de los del activo.
+    headerTarget?: HTMLElement | null
 }
 
 // Tope de lectura del texto corrido de una respuesta cuando el chat es fluido:
@@ -456,6 +471,8 @@ export default function AgentChat({
     fluid = false,
     emptyExtra,
     blocked = false,
+    hideContextChip = false,
+    headerTarget = null,
 }: AgentChatProps) {
     const t = useT()
     // Etiqueta y explicación de un modo en el idioma activo. Un modo que el
@@ -1389,6 +1406,112 @@ export default function AgentChat({
         })
     }, [busy, queueHeld, queue, sendText, attachBlocked])
 
+    // Encabezado: va en su propia fila o, con `headerTarget`, en la tira del
+    // anfitrión (ver la prop).
+    const headerControls = (
+        <>
+            {/* El nombre del agente NO se repite acá: ya está en el
+                selector del encabezado del panel, una línea más arriba.
+                Repetirlo gastaba la línea más visible del chat en un dato
+                que ya estaba a la vista. */}
+            {/* Sobre qué está trabajando AHORA. Es la contracara de tener
+                un solo chat para toda la app: la conversación no se
+                reinicia al cambiar de módulo, así que sin esto no habría
+                forma de saber a qué repositorio o a qué conexión se refiere
+                "acá" en el próximo mensaje. */}
+            {hasContext && !hideContextChip && (
+                <span
+                    className="flex min-w-0 shrink items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                    title={t.agent.chat.workingOn({noun: contextNoun(context.kind), label: context.label})}
+                >
+                    <Icon name={CONTEXT_ICONS[context.kind]} size={12} className="shrink-0" />
+                    <span className="truncate">{describeContext(context)}</span>
+                </span>
+            )}
+            {info?.model && (
+                <span className={`truncate font-mono text-ui-10 text-on-surface-variant ${headerTarget ? 'min-w-0 max-w-32' : ''}`}>{info.model}</span>
+            )}
+            {serverRemote && (
+                <span
+                    data-remote-chip
+                    title={t.agent.chat.remote.chipTitle({server: serverRemote.name, url: serverRemote.baseUrl})}
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-tertiary/40 bg-tertiary/10 px-1.5 py-px text-ui-10 text-tertiary"
+                >
+                    <Icon name="cloud" size={11} />
+                    {t.agent.chat.remote.chip}
+                </span>
+            )}
+            {info && info.mcp.length > 0 && (
+                <span
+                    className="truncate text-on-surface-variant"
+                    title={t.agent.chat.mcpTitle({servers: info.mcp.join('\n')})}
+                >
+                    {t.agent.chat.mcpCount({n: info.mcp.length})}
+                </span>
+            )}
+            {/* Segundo agente en paralelo. Cada chat es su propio proceso
+                y su propia conversación, así que el que revisa no
+                interrumpe al que trabaja — y al ser otro modelo, no
+                arrastra los mismos puntos ciegos. */}
+            {onValidateWithAnother && (
+                <button
+                    onClick={() => onValidateWithAnother(agentId, lastAgentTurn())}
+                    title={t.agent.chat.validateTitle}
+                    aria-label={t.agent.chat.validate}
+                    className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                >
+                    <Icon name="fact_check" size={12} />
+                    {/* En la tira del anfitrión el ancho lo manda ella (es un
+                        @container): angosta, queda solo el ícono. */}
+                    <span className={headerTarget ? 'hidden @[460px]:inline' : undefined}>{t.agent.chat.validate}</span>
+                </button>
+            )}
+            <button
+                onClick={() => setSearch((v) => (v === null ? '' : null))}
+                title={t.agent.chat.searchTitle}
+                aria-label={t.agent.chat.a11y.search}
+                aria-pressed={search !== null}
+                className={`shrink-0 rounded p-0.5 ${FOCUS} ${
+                    search !== null ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                } ${onValidateWithAnother ? '' : 'ml-auto'}`}
+            >
+                <Icon name="search" size={14} />
+            </button>
+            <button
+                onClick={() => {
+                    void ResetAgentChat(sessionId)
+                    // Las miniaturas de los adjuntos enviados se sueltan con
+                    // la conversación que las mostraba.
+                    for (const x of turns) if (x.attachments) attach.releaseSent(x.attachments)
+                    setTurns([])
+                    setInfo(null)
+                    // La cola también se va: un mensaje escrito para la
+                    // conversación anterior, mandado dentro de una que
+                    // arranca de cero, llega sin el contexto que le daba
+                    // sentido.
+                    setQueue([])
+                    setQueueHeld(false)
+                }}
+                title={t.agent.chat.resetTitle}
+                aria-label={t.agent.chat.a11y.reset}
+                className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
+            >
+                <Icon name="restart_alt" size={14} />
+            </button>
+            {onCloseChat && (
+                <button
+                    onClick={onCloseChat}
+                    data-chat-close
+                    title={t.agent.chat.closeChatTitle}
+                    aria-label={t.agent.chat.a11y.closeChat}
+                    className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error ${FOCUS}`}
+                >
+                    <Icon name="cancel_presentation" size={14} />
+                </button>
+            )}
+        </>
+    )
+
     return (
         <div
             className="relative flex h-full min-h-0 flex-col"
@@ -1414,102 +1537,13 @@ export default function AgentChat({
                     })}
                 />
             )}
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1.5 text-ui-11">
-                {/* El nombre del agente NO se repite acá: ya está en el
-                    selector del encabezado del panel, una línea más arriba.
-                    Repetirlo gastaba la línea más visible del chat en un dato
-                    que ya estaba a la vista. */}
-                {/* Sobre qué está trabajando AHORA. Es la contracara de tener
-                    un solo chat para toda la app: la conversación no se
-                    reinicia al cambiar de módulo, así que sin esto no habría
-                    forma de saber a qué repositorio o a qué conexión se refiere
-                    "acá" en el próximo mensaje. */}
-                {hasContext && (
-                    <span
-                        className="flex min-w-0 shrink items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
-                        title={t.agent.chat.workingOn({noun: contextNoun(context.kind), label: context.label})}
-                    >
-                        <Icon name={CONTEXT_ICONS[context.kind]} size={12} className="shrink-0" />
-                        <span className="truncate">{describeContext(context)}</span>
-                    </span>
-                )}
-                {info?.model && <span className="truncate font-mono text-ui-10 text-on-surface-variant">{info.model}</span>}
-                {serverRemote && (
-                    <span
-                        data-remote-chip
-                        title={t.agent.chat.remote.chipTitle({server: serverRemote.name, url: serverRemote.baseUrl})}
-                        className="flex shrink-0 items-center gap-1 rounded-full border border-tertiary/40 bg-tertiary/10 px-1.5 py-px text-ui-10 text-tertiary"
-                    >
-                        <Icon name="cloud" size={11} />
-                        {t.agent.chat.remote.chip}
-                    </span>
-                )}
-                {info && info.mcp.length > 0 && (
-                    <span
-                        className="truncate text-on-surface-variant"
-                        title={t.agent.chat.mcpTitle({servers: info.mcp.join('\n')})}
-                    >
-                        {t.agent.chat.mcpCount({n: info.mcp.length})}
-                    </span>
-                )}
-                {/* Segundo agente en paralelo. Cada chat es su propio proceso
-                    y su propia conversación, así que el que revisa no
-                    interrumpe al que trabaja — y al ser otro modelo, no
-                    arrastra los mismos puntos ciegos. */}
-                {onValidateWithAnother && (
-                    <button
-                        onClick={() => onValidateWithAnother(agentId, lastAgentTurn())}
-                        title={t.agent.chat.validateTitle}
-                        className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="fact_check" size={12} />
-                        {t.agent.chat.validate}
-                    </button>
-                )}
-                <button
-                    onClick={() => setSearch((v) => (v === null ? '' : null))}
-                    title={t.agent.chat.searchTitle}
-                    aria-label={t.agent.chat.a11y.search}
-                    aria-pressed={search !== null}
-                    className={`shrink-0 rounded p-0.5 ${FOCUS} ${
-                        search !== null ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
-                    } ${onValidateWithAnother ? '' : 'ml-auto'}`}
-                >
-                    <Icon name="search" size={14} />
-                </button>
-                <button
-                    onClick={() => {
-                        void ResetAgentChat(sessionId)
-                        // Las miniaturas de los adjuntos enviados se sueltan con
-                        // la conversación que las mostraba.
-                        for (const x of turns) if (x.attachments) attach.releaseSent(x.attachments)
-                        setTurns([])
-                        setInfo(null)
-                        // La cola también se va: un mensaje escrito para la
-                        // conversación anterior, mandado dentro de una que
-                        // arranca de cero, llega sin el contexto que le daba
-                        // sentido.
-                        setQueue([])
-                        setQueueHeld(false)
-                    }}
-                    title={t.agent.chat.resetTitle}
-                    aria-label={t.agent.chat.a11y.reset}
-                    className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
-                >
-                    <Icon name="restart_alt" size={14} />
-                </button>
-                {onCloseChat && (
-                    <button
-                        onClick={onCloseChat}
-                        data-chat-close
-                        title={t.agent.chat.closeChatTitle}
-                        aria-label={t.agent.chat.a11y.closeChat}
-                        className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error ${FOCUS}`}
-                    >
-                        <Icon name="cancel_presentation" size={14} />
-                    </button>
-                )}
-            </div>
+            {headerTarget ? (
+                createPortal(headerControls, headerTarget)
+            ) : (
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1.5 text-ui-11">
+                    {headerControls}
+                </div>
+            )}
 
             {search !== null && (
                 <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
@@ -2079,195 +2113,6 @@ export default function AgentChat({
                 </div>
             )}
 
-            {/* Controles del turno. Van pegados a la caja de texto y no en un
-                menú escondido porque cambian lo que el agente TIENE PERMITIDO
-                hacer: es lo último que hay que mirar antes de mandar. */}
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-2 pt-1.5 text-ui-11">
-<Select
-                    value={mode}
-                    onChange={requestMode}
-                    title={modeLabel(mode)?.hint}
-                    size="sm"
-                    leadingIcon={MODE_ICONS[mode] ?? 'visibility'}
-                    menuMinWidth={280}
-                    className={`rounded-lg ${modeLabel(mode)?.danger ? 'border-error! bg-error-container/30' : ''}`}
-                    options={modes.map((m) => ({
-                        value: m,
-                        label: modeLabel(m)?.label ?? m,
-                        description: modeLabel(m)?.hint,
-                        danger: modeLabel(m)?.danger,
-                        icon: <Icon name={MODE_ICONS[m] ?? 'visibility'} size={14} />,
-                    }))}
-                />
-
-                {/* Cerebro: el agente anota solo lo que valga la pena conservar.
-                    Es un interruptor y no un modo: se combina con cualquiera. */}
-                <button
-                    type="button"
-                    data-brain-toggle
-                    onClick={() => void toggleBrain()}
-                    aria-pressed={brain}
-                    title={
-                        !brainAvailable
-                            ? brainStatus && !brainStatus.mcpEnabled
-                                ? t.agent.chat.brain.blockedMcp
-                                : t.agent.chat.brain.blockedNotes
-                            : brain
-                              ? t.agent.chat.brain.titleOn({root: brainStatus?.root || 'Cerebro'})
-                              : t.agent.chat.brain.titleOff({root: brainStatus?.root || 'Cerebro'})
-                    }
-                    className={`flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs ${FOCUS} ${
-                        !brainAvailable
-                            ? brain
-                                ? 'border-tertiary/60 text-tertiary'
-                                : 'border-dashed border-outline-variant text-on-surface-variant/70 hover:text-on-surface-variant'
-                            : brain
-                              ? 'border-primary bg-primary/15 text-primary'
-                              : 'border-outline-variant bg-surface text-on-surface-variant hover:border-primary/60 hover:text-on-surface'
-                    }`}
-                >
-                    <Icon name="psychology" size={14} filled={brain && brainAvailable} />
-                    {t.agent.chat.brain.label}
-                    {!brainAvailable && <Icon name="lock" size={11} />}
-                </button>
-
-                {/* Esfuerzo como puntos y no como lista: es una escala, y una
-                    escala se entiende mejor viéndola entera que abriendo un
-                    desplegable. El primer punto es "el del CLI". */}
-                {efforts.length > 0 && (
-                    <span className="flex items-center gap-1" title={t.agent.chat.effortTitle}>
-                        <Icon name="tune" size={12} className="text-on-surface-variant" />
-                        <span className="text-on-surface-variant">
-                            {t.agent.chat.effort}
-                            {effort ? ` (${effort})` : ''}
-                        </span>
-                        <span className="flex items-center gap-1">
-                            {['', ...efforts].map((e) => (
-                                <button
-                                    key={e || 'default'}
-                                    onClick={() => setEffort(e)}
-                                    title={e === '' ? t.agent.chat.effortDefault : e}
-                                    className={`h-2 w-2 rounded-full ${
-                                        effort === e ? 'bg-primary' : 'bg-outline-variant hover:bg-on-surface-variant'
-                                    }`}
-                                />
-                            ))}
-                        </span>
-                    </span>
-                )}
-
-                {/* Adjuntar archivos. Es un botón que abre un input de archivo
-                    oculto, y no un <label>, para que se llegue con Tab y se
-                    active con Enter o Espacio. El archivo hay que leerlo igual
-                    para escribirlo en la carpeta de adjuntos: pedirle la ruta
-                    al sistema no ahorraría ese paso. */}
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={blocked}
-                    data-attach-button
-                    title={t.agent.chat.attach.buttonTitle({
-                        paste: pasteKey,
-                        limits: t.agent.chat.attach.limits({
-                            count: attach.limits.maxCount,
-                            image: formatBytes(attach.limits.maxImageBytes),
-                            pdf: formatBytes(attach.limits.maxPdfBytes),
-                            text: formatBytes(attach.limits.maxTextBytes),
-                        }),
-                    })}
-                    aria-label={t.agent.chat.attach.buttonAria}
-                    className={`flex shrink-0 items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
-                >
-                    <Icon name="attach_file" size={14} />
-                    {t.agent.chat.attach.button}
-                </button>
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={ATTACH_ACCEPT}
-                    multiple
-                    className="hidden"
-                    tabIndex={-1}
-                    aria-hidden
-                    onChange={(e) => {
-                        attach.addFiles(Array.from(e.target.files ?? []))
-                        // Se limpia el valor para poder elegir el MISMO archivo
-                        // dos veces seguidas: sin esto el segundo change no
-                        // dispara.
-                        e.target.value = ''
-                    }}
-                />
-
-                {/* Lista y no campo libre: la lista la arma cada CLI (alias
-                    en Claude Code, su cache de modelos en Codex, `agy models`
-                    en Antigravity), así que no envejece como una escrita a
-                    mano — que era el motivo por el que antes era texto libre.
-                    Con el modelo controlado desde afuera no se dibuja. */}
-                {!modelControlled && (
-                    <Select
-                        value={model}
-                        onChange={setModel}
-                        title={
-                            catalog?.models.find((m) => m.id === model)?.description ||
-                            t.agent.chat.modelTitle
-                        }
-                        size="sm"
-                        leadingIcon="memory"
-                        menuMinWidth={260}
-                        className="max-w-52 min-w-0 rounded-lg"
-                        options={(catalog?.models ?? [{id: '', label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
-                            value: m.id,
-                            label: m.label,
-                            description: m.description || undefined,
-                        }))}
-                    />
-                )}
-
-                {/* Mientras el modo permisivo está activo se avisa en todos
-                    los turnos, no solo al activarlo: una sesión larga hace
-                    olvidar en qué modo quedó. */}
-                {PERMISSIVE.has(mode) && (
-                    <span
-                        className={`flex items-center gap-1 ${isLLM || mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`}
-                        title={modeLabel(mode)?.hint}
-                    >
-                        <Icon name="warning" size={12} />
-                        {isLLM
-                            ? mode === 'edit'
-                                ? t.agent.chat.willEditFilesLlm
-                                : t.agent.chat.actsAloneLlm
-                            : mode === 'edit'
-                              ? t.agent.chat.willEditFiles
-                              : t.agent.chat.actsAlone}
-                    </span>
-                )}
-
-                {/* Lo gastado en esta conversación, siempre a la vista.
-                    Deliberadamente NO dice "te quedan X": el saldo del plan no
-                    está en ningún archivo local, lo contesta el servidor. Se
-                    muestra lo verificable y el tooltip dice dónde ver el
-                    resto. */}
-                <span
-                    className="ml-auto flex shrink-0 items-center gap-1 text-on-surface-variant"
-                    title={
-                        sessionUsage.total > 0
-                            ? t.agent.chat.sessionUsageTitle
-                            : t.agent.chat.sessionUsageEmptyTitle
-                    }
-                >
-                    <Icon name="monitoring" size={12} />
-                    {sessionUsage.total > 0 ? (
-                        <>
-                            {t.agent.chat.inSession({n: formatTokens(sessionUsage.total)})}
-                            <span className="opacity-70">{t.agent.chat.outputShort({n: formatTokens(sessionUsage.output)})}</span>
-                            {sessionUsage.cost > 0 && <span className="opacity-70">{t.agent.chat.cost({usd: sessionUsage.cost.toFixed(4)})}</span>}
-                        </>
-                    ) : (
-                        <span className="opacity-70">{t.agent.chat.noUsageYet}</span>
-                    )}
-                </span>
-            </div>
-
             {/* Cierre del círculo de un turno autónomo: qué tocó y qué hacer
                 con eso. Va arriba de la caja de texto porque es lo que hay que
                 mirar antes de seguir pidiéndole cosas. */}
@@ -2363,7 +2208,6 @@ export default function AgentChat({
                         <span className="min-w-0 break-words">{attach.reason}</span>
                     </p>
                 )}
-                <div className="flex items-end gap-1 p-1.5">
                 <textarea
                     ref={inputRef}
                     value={input}
@@ -2425,53 +2269,246 @@ export default function AgentChat({
                               ? t.agent.chat.busyPlaceholder({agent: agentLabel})
                               : t.agent.chat.placeholder({agent: agentLabel})
                     }
-                    className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                    className="max-h-40 min-w-0 resize-none bg-transparent px-3 pb-1 pt-2 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                 />
-                {busy ? (
-                    <>
-                        {/* Encolar también con el mouse: con el agente ocupado
-                            el botón principal es Detener, así que sin esto la
-                            única forma de encolar sería saber que Enter lo
-                            hace. */}
+                {/* Controles del turno. Van pegados a la caja de texto y no en un
+                    menú escondido porque cambian lo que el agente TIENE PERMITIDO
+                    hacer: es lo último que hay que mirar antes de mandar. Viven DENTRO
+                    de la caja, en su pie, y no en una fila aparte: así se leen como
+                    parte del mensaje que se está por mandar, y la caja deja de
+                    tener cuatro franjas encima. */}
+                <div className="flex flex-wrap items-center gap-1 px-1.5 pb-1.5 text-ui-11">
+                    <Select
+                        value={mode}
+                        onChange={requestMode}
+                        title={modeLabel(mode)?.hint}
+                        size="sm"
+                        leadingIcon={MODE_ICONS[mode] ?? 'visibility'}
+                        menuMinWidth={280}
+                        className={`rounded-lg ${modeLabel(mode)?.danger ? 'border-error! bg-error-container/30' : ''}`}
+                        options={modes.map((m) => ({
+                            value: m,
+                            label: modeLabel(m)?.label ?? m,
+                            description: modeLabel(m)?.hint,
+                            danger: modeLabel(m)?.danger,
+                            icon: <Icon name={MODE_ICONS[m] ?? 'visibility'} size={14} />,
+                        }))}
+                    />
+
+                    {/* Cerebro: el agente anota solo lo que valga la pena conservar.
+                        Es un interruptor y no un modo: se combina con cualquiera. */}
+                    <button
+                        type="button"
+                        data-brain-toggle
+                        onClick={() => void toggleBrain()}
+                        aria-pressed={brain}
+                        aria-label={t.agent.chat.brain.label}
+                        title={
+                            !brainAvailable
+                                ? brainStatus && !brainStatus.mcpEnabled
+                                    ? t.agent.chat.brain.blockedMcp
+                                    : t.agent.chat.brain.blockedNotes
+                                : brain
+                                  ? t.agent.chat.brain.titleOn({root: brainStatus?.root || 'Cerebro'})
+                                  : t.agent.chat.brain.titleOff({root: brainStatus?.root || 'Cerebro'})
+                        }
+                        className={`flex shrink-0 items-center gap-0.5 rounded-lg border px-1.5 py-1 text-xs ${FOCUS} ${
+                            !brainAvailable
+                                ? brain
+                                    ? 'border-tertiary/60 text-tertiary'
+                                    : 'border-dashed border-outline-variant text-on-surface-variant/70 hover:text-on-surface-variant'
+                                : brain
+                                  ? 'border-primary bg-primary/15 text-primary'
+                                  : 'border-outline-variant bg-surface text-on-surface-variant hover:border-primary/60 hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="psychology" size={14} filled={brain && brainAvailable} />
+                        {!brainAvailable && <Icon name="lock" size={11} />}
+                    </button>
+
+                    {/* Esfuerzo como puntos y no como lista: es una escala, y una
+                        escala se entiende mejor viéndola entera que abriendo un
+                        desplegable. El primer punto es "el del CLI". */}
+                    {efforts.length > 0 && (
+                        <span className="flex items-center gap-1" title={t.agent.chat.effortTitle}>
+                            <Icon name="tune" size={12} className="text-on-surface-variant" />
+                            {effort && <span className="text-on-surface-variant">{effort}</span>}
+                            <span className="flex items-center gap-1">
+                                {['', ...efforts].map((e) => (
+                                    <button
+                                        key={e || 'default'}
+                                        onClick={() => setEffort(e)}
+                                        title={e === '' ? t.agent.chat.effortDefault : e}
+                                        className={`h-2 w-2 rounded-full ${
+                                            effort === e ? 'bg-primary' : 'bg-outline-variant hover:bg-on-surface-variant'
+                                        }`}
+                                    />
+                                ))}
+                            </span>
+                        </span>
+                    )}
+
+                    {/* Adjuntar archivos. Es un botón que abre un input de archivo
+                        oculto, y no un <label>, para que se llegue con Tab y se
+                        active con Enter o Espacio. El archivo hay que leerlo igual
+                        para escribirlo en la carpeta de adjuntos: pedirle la ruta
+                        al sistema no ahorraría ese paso. */}
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={blocked}
+                        data-attach-button
+                        title={t.agent.chat.attach.buttonTitle({
+                            paste: pasteKey,
+                            limits: t.agent.chat.attach.limits({
+                                count: attach.limits.maxCount,
+                                image: formatBytes(attach.limits.maxImageBytes),
+                                pdf: formatBytes(attach.limits.maxPdfBytes),
+                                text: formatBytes(attach.limits.maxTextBytes),
+                            }),
+                        })}
+                        aria-label={t.agent.chat.attach.buttonAria}
+                        className={`flex shrink-0 items-center rounded-lg border border-outline-variant bg-surface px-1.5 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
+                    >
+                        <Icon name="attach_file" size={14} />
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept={ATTACH_ACCEPT}
+                        multiple
+                        className="hidden"
+                        tabIndex={-1}
+                        aria-hidden
+                        onChange={(e) => {
+                            attach.addFiles(Array.from(e.target.files ?? []))
+                            // Se limpia el valor para poder elegir el MISMO archivo
+                            // dos veces seguidas: sin esto el segundo change no
+                            // dispara.
+                            e.target.value = ''
+                        }}
+                    />
+
+                    {/* Lista y no campo libre: la lista la arma cada CLI (alias
+                        en Claude Code, su cache de modelos en Codex, `agy models`
+                        en Antigravity), así que no envejece como una escrita a
+                        mano — que era el motivo por el que antes era texto libre.
+                        Con el modelo controlado desde afuera no se dibuja. */}
+                    {!modelControlled && (
+                        <Select
+                            value={model}
+                            onChange={setModel}
+                            title={
+                                catalog?.models.find((m) => m.id === model)?.description ||
+                                t.agent.chat.modelTitle
+                            }
+                            size="sm"
+                            leadingIcon="memory"
+                            menuMinWidth={260}
+                            className="max-w-52 min-w-0 rounded-lg"
+                            options={(catalog?.models ?? [{id: '', label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
+                                value: m.id,
+                                label: m.label,
+                                description: m.description || undefined,
+                            }))}
+                        />
+                    )}
+                    <span className="flex-1" />
+
+                    {busy ? (
+                        <>
+                            {/* Encolar también con el mouse: con el agente ocupado
+                                el botón principal es Detener, así que sin esto la
+                                única forma de encolar sería saber que Enter lo
+                                hace. */}
+                            <button
+                                onClick={send}
+                                disabled={!input.trim()}
+                                title={t.agent.chat.enqueueTitle}
+                                aria-label={t.agent.chat.a11y.enqueue}
+                                className={`shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
+                            >
+                                <Icon name="schedule_send" size={14} />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    void CancelAgentChat(sessionId)
+                                    // Frenar la cola es parte de cortar: quien
+                                    // detiene un turno casi nunca quiere que el
+                                    // siguiente salga solo un segundo después, y
+                                    // sobre todo no antes de ver por qué cortó.
+                                    // Queda con el botón de "Mandar igual".
+                                    setQueueHeld(true)
+                                }}
+                                title={t.agent.chat.stopTitle}
+                                aria-label={t.agent.chat.a11y.stop}
+                                className={`shrink-0 rounded-lg bg-error p-1.5 text-on-error ${FOCUS}`}
+                            >
+                                <Icon name="stop" size={14} />
+                            </button>
+                        </>
+                    ) : (
                         <button
                             onClick={send}
-                            disabled={!input.trim()}
-                            title={t.agent.chat.enqueueTitle}
-                            aria-label={t.agent.chat.a11y.enqueue}
-                            className={`shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
+                            disabled={(!input.trim() && attachReady === 0) || blocked || attachBlocked}
+                            title={attach.reason || t.agent.chat.sendTitle}
+                            aria-label={t.agent.chat.a11y.send}
+                            data-chat-send
+                            className={`shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40 ${FOCUS}`}
                         >
-                            <Icon name="schedule_send" size={14} />
+                            <Icon name="send" size={14} />
                         </button>
-                        <button
-                            onClick={() => {
-                                void CancelAgentChat(sessionId)
-                                // Frenar la cola es parte de cortar: quien
-                                // detiene un turno casi nunca quiere que el
-                                // siguiente salga solo un segundo después, y
-                                // sobre todo no antes de ver por qué cortó.
-                                // Queda con el botón de "Mandar igual".
-                                setQueueHeld(true)
-                            }}
-                            title={t.agent.chat.stopTitle}
-                            aria-label={t.agent.chat.a11y.stop}
-                            className={`shrink-0 rounded-lg bg-error p-1.5 text-on-error ${FOCUS}`}
-                        >
-                            <Icon name="stop" size={14} />
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        onClick={send}
-                        disabled={(!input.trim() && attachReady === 0) || blocked || attachBlocked}
-                        title={attach.reason || t.agent.chat.sendTitle}
-                        aria-label={t.agent.chat.a11y.send}
-                        data-chat-send
-                        className={`shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40 ${FOCUS}`}
-                    >
-                        <Icon name="send" size={14} />
-                    </button>
-                )}
+                    )}
                 </div>
+            </div>
+
+            {/* Lo que no se toca antes de mandar pero conviene tener a la vista:
+                si el modo deja actuar al agente, y cuánto lleva gastado la
+                conversación. Una línea tenue debajo de la caja, no una franja
+                más encima. */}
+            <div className="-mt-1 flex shrink-0 items-center gap-2 px-3 pb-1.5 text-ui-10">
+                {/* Mientras el modo permisivo está activo se avisa en todos
+                    los turnos, no solo al activarlo: una sesión larga hace
+                    olvidar en qué modo quedó. */}
+                {PERMISSIVE.has(mode) && (
+                    <span
+                        className={`flex items-center gap-1 ${isLLM || mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`}
+                        title={modeLabel(mode)?.hint}
+                    >
+                        <Icon name="warning" size={12} />
+                        {isLLM
+                            ? mode === 'edit'
+                                ? t.agent.chat.willEditFilesLlm
+                                : t.agent.chat.actsAloneLlm
+                            : mode === 'edit'
+                              ? t.agent.chat.willEditFiles
+                              : t.agent.chat.actsAlone}
+                    </span>
+                )}
+                {/* Lo gastado en esta conversación, siempre a la vista.
+                    Deliberadamente NO dice "te quedan X": el saldo del plan no
+                    está en ningún archivo local, lo contesta el servidor. Se
+                    muestra lo verificable y el tooltip dice dónde ver el
+                    resto. */}
+                <span
+                    className="ml-auto flex shrink-0 items-center gap-1 text-on-surface-variant/80"
+                    title={
+                        sessionUsage.total > 0
+                            ? t.agent.chat.sessionUsageTitle
+                            : t.agent.chat.sessionUsageEmptyTitle
+                    }
+                >
+                    <Icon name="monitoring" size={12} />
+                    {sessionUsage.total > 0 ? (
+                        <>
+                            {t.agent.chat.inSession({n: formatTokens(sessionUsage.total)})}
+                            <span className="opacity-70">{t.agent.chat.outputShort({n: formatTokens(sessionUsage.output)})}</span>
+                            {sessionUsage.cost > 0 && <span className="opacity-70">{t.agent.chat.cost({usd: sessionUsage.cost.toFixed(4)})}</span>}
+                        </>
+                    ) : (
+                        <span className="opacity-70">{t.agent.chat.noUsageYet}</span>
+                    )}
+                </span>
             </div>
         </div>
     )

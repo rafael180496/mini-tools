@@ -40,5 +40,27 @@ const en: Messages<typeof es> = {
     base: 'Common ancestor',
     baseDetail: 'before both branches touched it',
     empty: '(empty)',
+    step1: 'Choose what to keep in each block',
+    step2: 'Mark the file as resolved',
+    step3: (p) => `Continue the ${p.op}`,
+    allDoneTitle: 'No conflicts left',
+    allMine: 'All mine',
+    allMineTitle: (p) => `Resolves EVERY block in this file with ${p.side}. You can still change them one by one.`,
+    allIncoming: 'All incoming',
+    allIncomingTitle: (p) => `Resolves EVERY block in this file with ${p.side}. You can still change them one by one.`,
+    openInEditorTitle:
+        "Opens the file in the tab's editor to fix it by hand, with the whole file in front of you. When you come back (“Resolve conflicts” button), “Mark resolved as is” stages it.",
+    openInEditor: 'Editor',
+    markAsIs: 'Mark resolved as is',
+    markAsIsTitle: 'The file has no conflict markers left: stages it exactly as it is on disk',
+    noBlocks:
+        "This file has no conflict markers: it was already fixed by hand, or it's a delete conflict (one branch deleted it and the other changed it). If it looks right, mark it resolved as is.",
+    unresolvedHint: 'Unresolved — click the side you want to keep',
+    edited: 'Edited by hand',
+    edit: 'Edit',
+    editTitle: "Write by hand how this block ends up. Starts from what's chosen, or from both sides if nothing is chosen yet.",
+    editHint: 'This is how the block ends up in the file:',
+    editAreaTitle: 'The final content of this block. What you write replaces both sides.',
+    pickSideTitle: (p) => `Click to keep ${p.side}. With the other side already chosen, keeps both.`,
 }
 export default en

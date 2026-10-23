@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState, useRef, type MouseEvent, type ReactNode} from 'react'
-import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
+import {ColumnDef, columnResizingFeature, columnSizingFeature, flexRender, tableFeatures, useTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
 import Icon from '../Icon'
 import {generateCSV, generateInsertStatements, generateUpdateStatements, type SqlTarget} from '../../lib/sqlGenerate'
@@ -42,6 +42,10 @@ interface ResultGridProps {
 }
 
 const ROW_HEIGHT = 28
+
+// Se arma una vez, fuera del componente: useTable pide que los features no
+// cambien de identidad entre renders.
+const gridFeatures = tableFeatures({columnSizingFeature, columnResizingFeature})
 
 // Virtualized (rows are windowed, not all rendered at once — thousands of
 // rows scroll without lag) grid with resizable columns. Sorting doesn't
@@ -136,7 +140,7 @@ export default function ResultGrid({
     // vive en el estado de la tabla y pisa a este.
     const [autoSizes, setAutoSizes] = useState<Record<string, number>>({})
 
-    const colDefs: ColumnDef<unknown[]>[] = columns.map((col, i) => ({
+    const colDefs: ColumnDef<typeof gridFeatures, unknown[]>[] = columns.map((col, i) => ({
         id: col,
         header: col,
         accessorFn: (row) => row[i],
@@ -144,10 +148,10 @@ export default function ResultGrid({
         minSize: MIN_COL_WIDTH,
     }))
 
-    const table = useReactTable({
+    const table = useTable({
+        features: gridFeatures,
         data: rows,
         columns: colDefs,
-        getCoreRowModel: getCoreRowModel(),
         columnResizeMode: 'onChange',
     })
 
@@ -211,7 +215,7 @@ export default function ResultGrid({
         )
     }
 
-    const isResizing = table.getState().columnSizingInfo.isResizingColumn !== false
+    const isResizing = table.state.columnResizing.isResizingColumn !== false
     const virtualItems = virtualizer.getVirtualItems()
     const totalHeight = virtualizer.getTotalSize()
     const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
@@ -522,7 +526,7 @@ export default function ResultGrid({
                                                 : 'odd:bg-surface even:bg-surface-container-lowest hover:bg-surface-variant/40'
                                         }`}
                                     >
-                                        {row.getVisibleCells().map((cell, ci) => {
+                                        {row.getAllCells().map((cell, ci) => {
                                             const colName = cell.column.id
                                             const editable = editing.editableCols.get(colName.toLowerCase())
                                             const change = editing.valueOf(ri, colName)

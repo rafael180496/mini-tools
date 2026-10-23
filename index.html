@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.10.3. Everything here exists in that binary.">2.10.3 · Help</span>
+  <span class="ver" title="This documentation describes version 2.10.4. Everything here exists in that binary.">2.10.4 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -1308,7 +1308,27 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <ul>
     <li><strong>History</strong>: commit search (<code>author:</code>, <code>message:</code>, <code>file:</code>, <code>since:</code>, <code>until:</code> — the chips add the prefix for you) and <em>Only my work</em>, which shows just the current branch, the trunks and the pinned ones. Under them, the <strong>quick branches</strong>: click to see one in the graph, double-click to switch.</li>
     <li><strong>Changes</strong>: see below. <strong>Stash</strong>: the list, with a preview of the selected stash in the main area. <strong>Files</strong>: the editor's file tree.</li>
-    <li>Drag its edge to resize it: the width is remembered <strong>per repository</strong>, and so is the tab you were on. The button on the right of the tabs folds it into an icon bar; one click on any icon opens it again.</li>
+    <li><strong>It lives in the app's sidebar</strong>, under the repository list: opening a repository's tab switches the sidebar to Git and the panel shows up there, so the tab keeps its whole width for the graph, the diff and the chat. If you collapse the sidebar or pick another module, the panel goes back inside the tab. Click its header (the repository name, with a chevron) to fold it down to that single row and give the whole height back to the repository list, and drag the divider between the two to split the height as you like — double-click it to restore the default. On a narrow sidebar the four tabs show only their icons; hover one for its name.</li>
+    <li>Prefer it inside the tab? <em>View → Keep the work panel inside the tab</em> (and back with <em>Move the work panel to the sidebar</em>). Inside the tab, drag its edge to resize it — the width is remembered <strong>per repository</strong>, like the tab you were on — and the button on the right of the tabs folds it into an icon bar.</li>
+  </ul>
+
+  <h2 id="git-trabajo--abajo">The bottom panel: Chat, Terminal, Context, Log</h2>
+  <ul>
+    <li><strong>Chat</strong>: the open conversations with agents, <strong>+</strong> to start one and <strong>History</strong> (on the right) for every past conversation. With none open, the history shows up, which is also where you start a new one. The chat's own controls — <strong>Validate with another</strong>, search and restart, plus the model — sit on that same row, to the right of the conversations, so there is no extra bar above the messages.</li>
+    <li><strong>Terminal</strong>: shells and agents in their full terminal. The font size and palette buttons only show on this tab.</li>
+    <li><strong>Context</strong>: what the repository offers an agent — skills, subagents, commands, instruction files and MCP. Its counter is that, not the number of chats.</li>
+    <li><strong>Log</strong>: the git commands the app ran, with their output, and the <a href="#git-reflog">reflog</a>.</li>
+    <li>In the chat, the mode, Brain, effort, attach and model controls sit at the foot of the message box; what the mode allows and how many tokens the conversation spent go on a faint line underneath.</li>
+  </ul>
+
+  <h2 id="git-trabajo--conflictos">Resolving conflicts</h2>
+  <p>When a merge, pull, rebase or cherry-pick stops on conflicts, the resolver <strong>opens by itself</strong> with a notice of what happened (the raw error stays in Log). Three steps at the top tell you where you are: choose what to keep, mark the file resolved, continue the operation.</p>
+  <ul>
+    <li><strong>Click the side you want to keep</strong> — the whole pane is the button — and the view jumps to the next undecided block. Clicking the other side as well keeps both.</li>
+    <li><strong>Edit</strong> writes the block by hand, starting from what's chosen (or both sides).</li>
+    <li><strong>All mine / All incoming</strong> resolve every block of the file at once; you can still change them one by one.</li>
+    <li><strong>Editor</strong> opens the file to fix it with the whole file in front of you; back in the resolver, <strong>Mark resolved as is</strong> stages it once no markers are left (also for delete conflicts).</li>
+    <li>With every file marked, a big <strong>Continue</strong> button finishes the operation; <strong>Abort</strong> leaves the repository as it was.</li>
   </ul>
 
   <h2 id="git-trabajo--cambios">Changes and the commit</h2>
@@ -1384,8 +1404,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li><strong>Stash</strong>: apply, pop and drop.</li>
   </ul>
   <div class="note"><span class="lbl">Note</span>
-  If a merge or a rebase started here stops on conflicts, the repository's tab opens by itself: that's where the conflict
-  resolver and the <em>continue / abort</em> notice are.</div>
+  If a merge or a rebase started here stops on conflicts, the repository's tab opens by itself, straight in the
+  <a href="#git-trabajo--conflictos">conflict resolver</a>.</div>
 
   <figure>
     <div class="shot"><img src="docs/screenshots/git-sidebar-menu.png" alt="Right-click menu on a local branch: checkout, show in graph, create branch from here, merge into develop, rebase develop onto this one, search in this branch, pin to top, rename, set upstream, unset upstream, copy name and delete"></div>
@@ -3337,7 +3357,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.10.3; this page doesn't make a single external request.
+  v2.10.4; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·

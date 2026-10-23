@@ -371,6 +371,15 @@ const aiChatMessages: Record<string, unknown[]> = {
 // remotos, tags por versión y un stash. Los demás cuadros siguen con el
 // repositorio chico de siempre.
 const gitSidebarShot = (new URLSearchParams(location.search).get('view') ?? '').startsWith('gitsidebar')
+// El panel acoplado plegado se fotografía sembrando la preferencia antes de que
+// Workspace monte (la lee en el inicializador de su useState).
+if (new URLSearchParams(location.search).get('view') === 'gitsidebardockcollapsed') {
+    try {
+        localStorage.setItem('mt.git.workDockCollapsed', '1')
+    } catch {
+        // sin almacenamiento la captura sale desplegada
+    }
+}
 // Las vistas `gitwork*` fotografían la pestaña de un repositorio con su columna
 // de trabajo (Historial / Cambios / Stash / Archivos). Llevan stashes de
 // ejemplo para que la solapa Stash tenga qué mostrar.
@@ -889,6 +898,29 @@ const fixtures: Record<string, unknown> = {
         {hash: '65da206000000000000000000000000000000000', shortHash: '65da206', subject: 'feat: implement automatic backup feature with scheduler', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-20', body: '', parents: [], branches: [], tags: ['v0.3.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
     ],
     GitInProgress: '',
+    // Vista `conflicts`: un merge detenido con dos archivos en conflicto.
+    GitConflictedFiles: ['app/channels/room_channel.rb', 'db/schema.rb'],
+    GitReadConflictFile: [
+        'class RoomChannel < ApplicationCable::Channel',
+        '  def subscribed',
+        '<<<<<<< HEAD',
+        '    stream_from "room_#{params[:room]}"',
+        '    ensure_access!',
+        '=======',
+        '    stream_for room',
+        '>>>>>>> feature/TIGOCHAT-12551',
+        '  end',
+        '',
+        '  def unsubscribed',
+        '<<<<<<< HEAD',
+        '    stop_all_streams',
+        '=======',
+        '    stop_stream_for room',
+        '    log_leave(room)',
+        '>>>>>>> feature/TIGOCHAT-12551',
+        '  end',
+        'end',
+    ].join('\n'),
     GitStashDiff: gitWorkStashPatch,
     GitForgeInfo: {provider: 'github', webUrl: 'https://github.com/rafael180496/mini-tools', compareUrl: 'https://github.com/rafael180496/mini-tools/compare/develop'},
     GitCommandLog: [],
@@ -914,7 +946,7 @@ const fixtures: Record<string, unknown> = {
         {path: '/consultas/facturacion-pendiente.sql', connId: 'c1', language: 'sql', kind: 'editor'},
         {path: '/consultas/contactos-duplicados.sql', connId: 'c5', language: 'sql', kind: 'editor'},
         {path: '', connId: 'c3', language: 'redis-cli', kind: 'redis-browser'},
-    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : (new URLSearchParams(location.search).get('view') ?? '') === 'aisessreveal' ? 'connections' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisess') ? 'utilities' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : (new URLSearchParams(location.search).get('view') ?? '') === 'aisessreveal' ? 'connections' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisess') ? 'utilities' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: (new URLSearchParams(location.search).get('view') ?? '').startsWith('repochatright') ? 'right' : 'bottom', gitTermSize: new URLSearchParams(location.search).get('view') === 'repochatrightnarrow' ? 380 : new URLSearchParams(location.search).get('view') === 'repochatright' ? 700 : 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' || gitWorkShot ? '' : 'agents', gitSideHidden: new URLSearchParams(location.search).get('view') === 'gitworkcollapsed', gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
@@ -1772,6 +1804,7 @@ const {default: ModelManagerTab} = await import('./components/utilities/ModelMan
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
+const {default: GitConflictResolver} = await import('./components/git/GitConflictResolver')
 const {default: GitSettingsDialog} = await import('./components/git/GitSettingsDialog')
 const {default: FolderNotesDialog} = await import('./components/notes/FolderNotesDialog')
 const {default: SftpTab} = await import('./components/sftp/SftpTab')
@@ -1849,6 +1882,11 @@ const views_repo = (
         syncToken={0}
         onChanged={() => {}}
         active
+        workHost={null}
+        workInSidebar={false}
+        onToggleWorkInSidebar={() => {}}
+        dockCollapsed={false}
+        onToggleDockCollapsed={() => {}}
     />
 )
 
@@ -2133,6 +2171,9 @@ const views: Record<string, React.ReactNode> = {
     gitsidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     gitsidebarfilter: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     gitsidebartag: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebardock: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebardockdrag: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebardockcollapsed: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     gitsidebarmenu: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     sidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     tabs: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
@@ -2200,6 +2241,12 @@ const views: Record<string, React.ReactNode> = {
     // La pestaña Git entera: es la única forma de ver el modo agente, la tira
     // de solapas y los acordeones, que dependen del layout completo.
     repo: views_repo,
+    // El mismo repositorio con el panel anclado a la DERECHA en la solapa Chat, dentro de una columna del alto
+    // de la ventana (como lo monta Workspace; sin ella la altura sale del contenido).
+    // Es donde la tira de conversaciones y los controles del chat más se aprietan.
+    repochatright: <div className="flex h-screen flex-col">{views_repo}</div>,
+    // Igual, con el panel angosto: ahí «Validar con otro» queda solo con el ícono.
+    repochatrightnarrow: <div className="flex h-screen flex-col">{views_repo}</div>,
     files: (
         <GitFileEditor
             repoId="r1"
@@ -2251,6 +2298,21 @@ const views: Record<string, React.ReactNode> = {
     // barra de formato, los enlaces entre notas y el panel lateral.
     http: views_http,
     reflog: views_reflog,
+    conflicts: (
+        <div className="flex h-full flex-col">
+            <GitConflictResolver
+                repoId="r1"
+                operation="merge"
+                busy={false}
+                onContinue={() => {}}
+                onAbort={() => {}}
+                onResolved={() => {}}
+                onClose={() => {}}
+                onOpenFile={() => {}}
+                onAsk={() => {}}
+            />
+        </div>
+    ),
     sftp: views_sftp,
     notesfolder: views_notesfolder,
     notes: (
@@ -2810,6 +2872,33 @@ if (view === 'aichatusage') {
 }
 if (view === 'aichatwide') {
     autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
+}
+// La columna de trabajo acoplada a la barra lateral: se abre un repositorio
+// (doble clic en su fila, como en la app) y la columna aparece debajo.
+if (view === 'gitsidebardock' || view === 'gitsidebardockcollapsed' || view === 'gitsidebardockdrag') {
+    setTimeout(() => {
+        const row = [...document.querySelectorAll<HTMLElement>('aside *')].find((el) => el.children.length === 0 && el.textContent === 'chatwoot-clone')
+        row?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))
+    }, 1200)
+}
+// Divisor del panel acoplado, arrastrado 160 px hacia arriba y sin soltar.
+if (view === 'gitsidebardockdrag') {
+    setTimeout(() => {
+        const sep = document.querySelector<HTMLElement>('[role="separator"][aria-orientation="horizontal"]')
+        if (!sep) return
+        const r = sep.getBoundingClientRect()
+        sep.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: r.left + 40, clientY: r.top + 3}))
+        window.dispatchEvent(new MouseEvent('mousemove', {clientX: r.left + 40, clientY: r.top - 160}))
+    }, 2400)
+}
+// Resolutor con un bloque resuelto por clic sobre su lado y el otro en edición.
+if (view === 'conflictsedit') {
+    views.conflictsedit = views.conflicts
+    setTimeout(() => document.querySelector<HTMLElement>('[role="button"][aria-pressed="false"]')?.click(), 900)
+    setTimeout(() => {
+        const edits = [...document.querySelectorAll<HTMLButtonElement>('button')].filter((b) => b.textContent === 'Editar' || b.textContent === 'Edit')
+        edits[edits.length - 1]?.click()
+    }, 1300)
 }
 if (view === 'aichatnarrow' || view === 'aichatdrawer') {
     // Pestaña angosta: el historial no es una columna, así que se abre el cajón,

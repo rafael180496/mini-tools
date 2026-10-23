@@ -4,8 +4,12 @@
 export default {
     panel: {
         history: 'Historial',
+        dockedTitle: (p: {repo: string}) => `Panel de trabajo de «${p.repo}», el repositorio de la pestaña activa`,
         collapse: 'Plegar el panel de trabajo a una barra de íconos — las cuatro solapas siguen a un clic',
         expand: 'Desplegar el panel de trabajo (Historial, Cambios, Stash, Archivos)',
+        dockHide: 'Ocultar el panel de trabajo: deja solo esta fila y el árbol de repositorios toma todo el alto',
+        dockShow: 'Mostrar el panel de trabajo (Historial, Cambios, Stash, Archivos)',
+        splitResize: 'Arrastrá para repartir el alto entre los repositorios y el panel de trabajo — doble clic vuelve al tamaño por defecto',
     },
     toolbar: {
         createPr: 'Crear pull request',

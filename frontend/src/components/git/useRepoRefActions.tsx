@@ -114,18 +114,24 @@ export function useRepoRefActions(deps: RepoRefActionsDeps) {
     )
 
     // Un merge o un rebase que se detiene por conflictos deja el repositorio a
-    // mitad de la operación. La barra no sabe resolverlos: abre la pestaña,
-    // que sí tiene el resolvedor y el aviso de «continuar / abortar».
+    // mitad de la operación. La barra no sabe resolverlos: abre la pestaña
+    // DIRECTO en el resolutor, que explica qué pasó y tiene «continuar /
+    // abortar». El «exit status 1» de la barra se retira: no dice nada que el
+    // resolutor no diga mejor, y quedaba como si el merge hubiera fallado.
     const surfaceInProgress = useCallback(
         async (repo: vault.GitRepo) => {
             try {
-                if (await GitInProgress(repo.id)) onOpenRepo(repo)
+                if (await GitInProgress(repo.id)) {
+                    setError(null)
+                    onOpenRepo(repo)
+                    requestGit({repoId: repo.id, kind: 'open-conflicts'})
+                }
             } catch {
                 // Si ni siquiera se puede preguntar, el error de la operación
                 // ya está en el banner.
             }
         },
-        [onOpenRepo],
+        [onOpenRepo, setError],
     )
 
     // --- Pedidos a la pestaña del repositorio ---------------------------------

@@ -13,7 +13,10 @@
 // Uso: node scripts-i18n-check.mjs [--update] [--list archivo]
 import fs from 'node:fs'
 import path from 'node:path'
-import ts from 'typescript'
+// La API de compilador en JavaScript es la de TypeScript 5: la 7 (el tsc nativo
+// con el que compila el proyecto) todavía no la publica estable — de ahí el alias
+// `typescript-api` de devDependencies.
+import ts from 'typescript-api'
 
 const root = path.resolve(import.meta.dirname, 'src')
 const baselinePath = path.resolve(import.meta.dirname, '../scripts/i18n-baseline.txt')

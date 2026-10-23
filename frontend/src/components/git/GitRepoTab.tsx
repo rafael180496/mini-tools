@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
+import {createPortal} from 'react-dom'
 import {onAgentChatsChanged} from '../../lib/appBus'
 import type {EditorAppearance} from '../../codemirror/editorAppearance'
 import {
@@ -17,6 +18,7 @@ import {
     GitTags,
     GitRenameBranch,
     GitInProgress,
+    GitConflictedFiles,
     GitMerge,
     GitRebase,
     GitFlowInit,
@@ -181,6 +183,17 @@ interface GitRepoTabProps {
     // status live (see the polling effect) — polling every open-but-hidden Git
     // tab would run git on a timer for repositories the user isn't looking at.
     active: boolean
+    // Contenedor de la barra lateral de la app donde va la columna de trabajo
+    // (ver gitWorkInSidebar en Workspace). null = se dibuja dentro de la
+    // pestaña, como antes: barra plegada, otro módulo a la vista, o la
+    // preferencia apagada.
+    workHost: HTMLElement | null
+    workInSidebar: boolean
+    onToggleWorkInSidebar: () => void
+    // Panel acoplado plegado a su encabezado (preferencia global, la guarda
+    // Workspace porque es quien reparte el alto de la barra).
+    dockCollapsed: boolean
+    onToggleDockCollapsed: () => void
 }
 
 // Which of the two center views is showing. "commits" is the history graph;
@@ -219,7 +232,7 @@ function saveWorkPrefs(repoId: string, patch: {view?: CenterView; width?: number
 // settings.git_term_dock/git_panel_tab (migración 27); null es la solapa
 // vacía, que en la base es ''.
 type Dock = 'bottom' | 'left' | 'right'
-type PanelTab = 'terminal' | 'commands' | 'agents' | 'reflog' | null
+type PanelTab = 'terminal' | 'commands' | 'agents' | 'reflog' | 'context' | null
 
 // Una sesión abierta del panel. `id` es a la vez el id de sesión del backend
 // y el nombre del evento de Wails por el que llegan sus bytes, así que tiene
@@ -313,6 +326,11 @@ export default function GitRepoTab({
     syncToken,
     onChanged,
     active,
+    workHost,
+    workInSidebar,
+    onToggleWorkInSidebar,
+    dockCollapsed,
+    onToggleDockCollapsed,
 }: GitRepoTabProps) {
     const t = useT()
     const g = t.git.tab
@@ -442,7 +460,7 @@ export default function GitRepoTab({
     const [activeChatId, setActiveChatId] = useState<string | null>(null)
     // Qué muestra la solapa Agentes: la conversación abierta, el contexto del
     // repositorio (skills, MCP, consumo) o el historial completo.
-    const [agentsView, setAgentsView] = useState<'chats' | 'context' | 'history'>('context')
+    const [agentsView, setAgentsView] = useState<'chats' | 'history'>('chats')
     // Modo agente: archivos + conversación, sin ramas ni diff. Se recuerda lo
     // que estaba oculto ANTES de entrar, para devolverlo tal cual al salir —
     // salir dejando visible algo que el usuario tenía cerrado sería reordenarle
@@ -586,6 +604,12 @@ export default function GitRepoTab({
     // "merge" | "cherry-pick" | "revert" | "rebase" | "" — drives the abort
     // banner. Without it a user who hits a conflict has no way out of the app.
     const [inProgress, setInProgress] = useState('')
+    // Aviso de que un comando dejó la operación a medias con conflictos (ver
+    // run). Se va solo cuando la operación termina o se aborta.
+    const [conflictNotice, setConflictNotice] = useState<string | null>(null)
+    useEffect(() => {
+        if (!inProgress) setConflictNotice(null)
+    }, [inProgress])
     const [showSettings, setShowSettings] = useState(false)
     // Pestaña con la que abre la configuración. La lista de ramas remotas la
     // abre directo en "Remotos": la pregunta "¿a dónde apunta esto?" se hace
@@ -655,7 +679,8 @@ export default function GitRepoTab({
                     st.gitPanelTab === 'terminal' ||
                     st.gitPanelTab === 'commands' ||
                     st.gitPanelTab === 'agents' ||
-                    st.gitPanelTab === 'reflog'
+                    st.gitPanelTab === 'reflog' ||
+                    st.gitPanelTab === 'context'
                         ? st.gitPanelTab
                         : null
                 const initial =
@@ -956,7 +981,7 @@ export default function GitRepoTab({
             // contexto: entrar en modo agente para tener que hacer un clic
             // más y llegar a lo que ya estabas hablando es una fricción sin
             // motivo.
-            setAgentsView(sessions.some((s) => s.kind === 'chat') ? 'chats' : 'context')
+            setAgentsView('chats')
             return
         }
         const prev = beforeAgentMode.current
@@ -1404,7 +1429,25 @@ export default function GitRepoTab({
                 setLogToken((n) => n + 1)
                 return true
             } catch (e) {
-                if (!onError?.(e)) setError(String(e))
+                if (!onError?.(e)) {
+                    // Un merge, pull, rebase o cherry-pick que choca devuelve
+                    // un «exit status 1» que no dice nada. Si lo que quedó es
+                    // una operación a medias con archivos en conflicto, se
+                    // abre el resolutor y se explica qué pasó, en vez de
+                    // dejar el error crudo y que haya que encontrar dónde se
+                    // resuelve. El error completo sigue en Registro.
+                    const [prog, conflicted] = await Promise.all([
+                        GitInProgress(repoId).catch(() => ''),
+                        GitConflictedFiles(repoId).catch(() => [] as string[]),
+                    ])
+                    if (prog && (conflicted ?? []).length > 0) {
+                        setInProgress(prog)
+                        setView('conflicts')
+                        setConflictNotice(i18n().git.tab.inProgress.stopped({op: prog, n: conflicted.length}))
+                    } else {
+                        setError(String(e))
+                    }
+                }
                 // A failed command is exactly the one worth seeing in the log.
                 setLogToken((n) => n + 1)
                 return false
@@ -1412,7 +1455,7 @@ export default function GitRepoTab({
                 setBusy(null)
             }
         },
-        [onChanged],
+        [onChanged, repoId, setView],
     )
 
     // Reload whenever anything Git-related changed, here or elsewhere. The
@@ -2384,7 +2427,7 @@ export default function GitRepoTab({
 
     // El panel derecho nunca se come el grafo: deja al centro al menos 300px.
     const effDiffWidth =
-        layoutW > 0 ? Math.max(200, Math.min(diffWidth, layoutW - (sideHidden ? 36 : sideWidth) - 300)) : diffWidth
+        layoutW > 0 ? Math.max(200, Math.min(diffWidth, layoutW - (workHost ? 0 : sideHidden ? 36 : sideWidth) - 300)) : diffWidth
 
     const staged = status?.files?.filter((f) => f.staged) ?? []
     const unstaged = status?.files?.filter((f) => !f.staged) ?? []
@@ -2416,6 +2459,10 @@ export default function GitRepoTab({
     // dibuja su árbol (portal). Estado y no ref: el editor tiene que enterarse
     // cuando aparece.
     const [filesHost, setFilesHost] = useState<HTMLDivElement | null>(null)
+    // Dónde dibuja el chat visible sus controles (modelo, Validar con otro,
+    // buscar, reiniciar, cerrar): la derecha de la tira de conversaciones, para
+    // que el panel no apile una barra más solo para ellos.
+    const [chatHeaderHost, setChatHeaderHost] = useState<HTMLDivElement | null>(null)
 
     // Prellena el buscador de commits y deja el cursor adentro: lo que se
     // prellena es el ÁMBITO («en esta rama»), lo que falta escribir es el
@@ -2441,6 +2488,19 @@ export default function GitRepoTab({
     // un tag en el grafo, buscar en una rama, y el aviso de ramas ancladas
     // cambiadas. El handler se lee de un ref para suscribirse UNA vez por
     // pestaña sin quedar atado a las funciones de un render viejo.
+    // Abre el resolutor si de verdad hay una operación a medias, con el aviso
+    // de qué pasó cuando quedan archivos en conflicto.
+    const openConflicts = async () => {
+        const [prog, conflicted] = await Promise.all([
+            GitInProgress(repoId).catch(() => ''),
+            GitConflictedFiles(repoId).catch(() => [] as string[]),
+        ])
+        if (!prog) return
+        setInProgress(prog)
+        setView('conflicts')
+        if ((conflicted ?? []).length > 0) setConflictNotice(i18n().git.tab.inProgress.stopped({op: prog, n: conflicted.length}))
+    }
+
     const gitRequestRef = useRef<(r: GitRequest) => void>(() => {})
     gitRequestRef.current = (r) => {
         if (r.kind === 'reveal-branch') {
@@ -2449,6 +2509,7 @@ export default function GitRepoTab({
         } else if (r.kind === 'reveal-commit') void revealCommit(r.hash)
         else if (r.kind === 'search-branch') prefillSearch(`hash:${r.name} `)
         else if (r.kind === 'pinned-changed') setPinned(r.pinned)
+        else if (r.kind === 'open-conflicts') void openConflicts()
     }
     useEffect(() => onGitRequest(repoId, (r) => gitRequestRef.current(r)), [repoId])
 
@@ -2471,11 +2532,23 @@ export default function GitRepoTab({
     // la barra y, cuando no entran, en su «⋯».
     const viewItems: (DropdownItem | 'separator')[] = [
         {
-            label: sideHidden ? g.viewMenu.showBranches : g.viewMenu.hideBranches,
-            icon: sideHidden ? 'visibility' : 'visibility_off',
-            hint: sideHidden ? g.viewMenu.nowHidden : g.viewMenu.left,
-            onSelect: toggleSide,
+            label: workInSidebar ? g.viewMenu.workInTab : g.viewMenu.workInSidebar,
+            icon: workInSidebar ? 'dock_to_right' : 'left_panel_open',
+            hint: workInSidebar ? g.viewMenu.workInTabHint : g.viewMenu.workInSidebarHint,
+            onSelect: onToggleWorkInSidebar,
         },
+        // Plegarla solo tiene sentido cuando vive en la pestaña: en la barra
+        // lateral se pliega con la barra.
+        ...(workHost
+            ? []
+            : [
+                  {
+                      label: sideHidden ? g.viewMenu.showBranches : g.viewMenu.hideBranches,
+                      icon: sideHidden ? 'visibility' : 'visibility_off',
+                      hint: sideHidden ? g.viewMenu.nowHidden : g.viewMenu.left,
+                      onSelect: toggleSide,
+                  },
+              ]),
         {
             label: diffHidden ? g.viewMenu.showDiff : g.viewMenu.hideDiff,
             icon: diffHidden ? 'visibility' : 'visibility_off',
@@ -2610,6 +2683,94 @@ export default function GitRepoTab({
         })
     }
 
+    // Las conversaciones abiertas, y qué se ve en la solapa Chat: sin ninguna
+    // abierta (o con la elegida ya cerrada) se muestra el historial, que es
+    // además desde donde se empieza una nueva — una solapa en blanco no dice
+    // qué hacer.
+    // Al restaurar el layout las conversaciones vuelven sin ninguna elegida:
+    // se muestra la primera en vez del historial.
+    const chatSessions = sessions.filter((x) => x.kind === 'chat')
+    const shownChatId = chatSessions.some((x) => x.id === activeChatId) ? activeChatId : (chatSessions[0]?.id ?? null)
+    const agentsShown: 'chats' | 'history' = agentsView === 'chats' && !shownChatId ? 'history' : agentsView
+
+    // La columna de trabajo. Se dibuja en la barra lateral de la app cuando
+    // hay dónde (workHost) y, si no, dentro de la pestaña como antes.
+    const workPanel = (
+        <GitWorkPanel
+            view={view === 'conflicts' ? 'conflicts' : view}
+            onView={(v) => setView(v)}
+            changesCount={status?.files.length ?? 0}
+            stashCount={stashes.length}
+            width={sideWidth}
+            docked={!!workHost}
+            dockCollapsed={dockCollapsed}
+            onToggleDockCollapsed={onToggleDockCollapsed}
+            repoName={repoName}
+            collapsed={workHost ? false : sideHidden}
+            onToggleCollapsed={toggleSide}
+            onFilesHost={setFilesHost}
+        >
+            {view === 'commits' ? (
+                <HistoryPanel
+                    searchText={searchText}
+                    onSearchText={setSearchText}
+                    search={search}
+                    onSearch={setSearch}
+                    inputRef={searchInputRef}
+                    focusMode={focusMode}
+                    onFocusMode={setFocusMode}
+                    commitCount={commits.length}
+                    loading={loadingLog}
+                    quickRefs={quickRefs}
+                    pinned={pinned}
+                    selectedBranch={selectedBranch}
+                    busy={!!busy}
+                    onRevealBranch={(b) => void selectBranch(b)}
+                    onCheckout={checkoutBranch}
+                    onTogglePin={(name) => void togglePinned(name)}
+                />
+            ) : view === 'stash' ? (
+                <StashPanel
+                    stashes={stashes}
+                    selected={selectedStash}
+                    onSelect={setSelectedStash}
+                    busy={!!busy}
+                    onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
+                    onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
+                    onDrop={stashToConfirmDrop}
+                />
+            ) : (
+                <ChangesPanel
+                    staged={staged}
+                    unstaged={unstaged}
+                    selectedPath={selectedPath}
+                    busy={!!busy}
+                    commitMessage={commitMessage}
+                    lastCommitMessage={lastCommitMessage}
+                    branchName={status?.branch ?? ''}
+                    onSelectPath={setSelectedPath}
+                    onStage={(paths) => run('add', () => GitStage(repoId, paths))}
+                    onStageAll={() => run('add --all', () => GitStageAll(repoId))}
+                    onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
+                    onDiscard={(paths) => setConfirmDiscard(paths)}
+                    onChangeMessage={setCommitMessage}
+                    inlineDiffs={inlineDiffs}
+                    onToggleDiff={toggleInlineDiff}
+                    drafting={drafting}
+                    draft={draft}
+                    onDraftMessage={draftables.length > 0 ? () => void draftCommitMessage() : undefined}
+                    onPickDraftAgent={draftables.length > 1 ? pickDraftAgent : undefined}
+                    onCommit={(amend) =>
+                        run(amend ? 'commit --amend' : 'commit', async () => {
+                            await GitCommit(repoId, commitMessage, amend)
+                            setCommitMessage('')
+                        })
+                    }
+                />
+            )}
+        </GitWorkPanel>
+    )
+
     return (
         // min-w-0 is load-bearing, not cosmetic: without it this root's
         // min-width defaults to its content (min-content), which includes the
@@ -2680,7 +2841,9 @@ export default function GitRepoTab({
                     {g.toolbar.running.before}<span className="font-mono">{GIT} {busy}</span>{g.toolbar.running.after}
                 </div>
             )}
-            {inProgress && (
+            {/* Con el resolutor abierto el cartel sobra: tiene las mismas dos
+                acciones en su encabezado. */}
+            {inProgress && view !== 'conflicts' && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-error-container/50 px-3 py-1.5 text-ui-11 text-on-error-container">
                     <Icon name="warning" size={14} className="shrink-0" />
                     <span className="min-w-0 flex-1">
@@ -2866,6 +3029,7 @@ export default function GitRepoTab({
             )}
 
             {error && <Banner kind="error" text={error} onClose={() => setError(null)} />}
+            {conflictNotice && <Banner kind="info" text={conflictNotice} onClose={() => setConflictNotice(null)} />}
             {notice && (
                 <GitOutputNotice
                     text={notice}
@@ -2903,79 +3067,9 @@ export default function GitRepoTab({
                     de ramas/remotas/tags que vivía acá repetía el de la barra
                     lateral principal y se fue; el cambio rápido de rama está en
                     el chip de la barra de arriba. */}
-                {(!sideHidden || !agentMode) && (
-                    <GitWorkPanel
-                        view={view === 'conflicts' ? 'conflicts' : view}
-                        onView={(v) => setView(v)}
-                        changesCount={status?.files.length ?? 0}
-                        stashCount={stashes.length}
-                        width={sideWidth}
-                        collapsed={sideHidden}
-                        onToggleCollapsed={toggleSide}
-                        onFilesHost={setFilesHost}
-                    >
-                        {view === 'commits' ? (
-                            <HistoryPanel
-                                searchText={searchText}
-                                onSearchText={setSearchText}
-                                search={search}
-                                onSearch={setSearch}
-                                inputRef={searchInputRef}
-                                focusMode={focusMode}
-                                onFocusMode={setFocusMode}
-                                commitCount={commits.length}
-                                loading={loadingLog}
-                                quickRefs={quickRefs}
-                                pinned={pinned}
-                                selectedBranch={selectedBranch}
-                                busy={!!busy}
-                                onRevealBranch={(b) => void selectBranch(b)}
-                                onCheckout={checkoutBranch}
-                                onTogglePin={(name) => void togglePinned(name)}
-                            />
-                        ) : view === 'stash' ? (
-                            <StashPanel
-                                stashes={stashes}
-                                selected={selectedStash}
-                                onSelect={setSelectedStash}
-                                busy={!!busy}
-                                onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
-                                onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
-                                onDrop={stashToConfirmDrop}
-                            />
-                        ) : (
-                            <ChangesPanel
-                                staged={staged}
-                                unstaged={unstaged}
-                                selectedPath={selectedPath}
-                                busy={!!busy}
-                                commitMessage={commitMessage}
-                                lastCommitMessage={lastCommitMessage}
-                                branchName={status?.branch ?? ''}
-                                onSelectPath={setSelectedPath}
-                                onStage={(paths) => run('add', () => GitStage(repoId, paths))}
-                                onStageAll={() => run('add --all', () => GitStageAll(repoId))}
-                                onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
-                                onDiscard={(paths) => setConfirmDiscard(paths)}
-                                onChangeMessage={setCommitMessage}
-                                inlineDiffs={inlineDiffs}
-                                onToggleDiff={toggleInlineDiff}
-                                drafting={drafting}
-                                draft={draft}
-                                onDraftMessage={draftables.length > 0 ? () => void draftCommitMessage() : undefined}
-                                onPickDraftAgent={draftables.length > 1 ? pickDraftAgent : undefined}
-                                onCommit={(amend) =>
-                                    run(amend ? 'commit --amend' : 'commit', async () => {
-                                        await GitCommit(repoId, commitMessage, amend)
-                                        setCommitMessage('')
-                                    })
-                                }
-                            />
-                        )}
-                    </GitWorkPanel>
-                )}
+                {workHost ? createPortal(workPanel, workHost) : (!sideHidden || !agentMode) && workPanel}
 
-                {!sideHidden && (
+                {!workHost && !sideHidden && (
                     <PaneHandle onStart={() => setDragging('side')} title={g.panes.sideHandle} />
                 )}
 
@@ -2990,6 +3084,10 @@ export default function GitRepoTab({
                             onContinue={() => void run(`${inProgress} --continue`, () => GitContinue(repoId, inProgress))}
                             onAbort={() => void run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
                             onResolved={() => void reload()}
+                            onOpenFile={(path) => {
+                                setEditRequest({path, token: Date.now()})
+                                setView('files')
+                            }}
                             onAsk={(path) =>
                                 askAgentPicking(
                                     g.ask.conflictPrompt({op: inProgress || 'merge', path}),
@@ -3030,7 +3128,7 @@ export default function GitRepoTab({
                             // al siguiente poll para verlo en Cambios.
                             onSaved={() => void reload()}
                             onClose={() => setView('commits')}
-                            treeHost={sideHidden ? null : filesHost}
+                            treeHost={workHost || !sideHidden ? filesHost : null}
                         />
                     ) : view === 'commits' ? (
                         <CommitGraph
@@ -3151,61 +3249,66 @@ export default function GitRepoTab({
                         repetirlos en cada sesión sería repetir un ajuste que
                         no es de la sesión. */}
                     <div
-                        className={`flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-0.5 text-ui-11 ${
+                        className={`flex shrink-0 items-center gap-1 overflow-x-auto border-b border-outline-variant px-2 py-0.5 text-ui-11 ${
                             dock === 'bottom' ? 'mt-1.5' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
                         }`}
                     >
-                        <button
-                            onClick={() => openPanel('terminal')}
-                            title={g.panel.sessionsTitle}
-                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'terminal' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                        >
-                            <Icon name="terminal" size={13} />
-                            {g.panel.sessions}
-                        </button>
-                        <button
-                            onClick={() => {
-                                setPanelTab('commands')
-                                persistLayout({tab: 'commands'})
-                            }}
-                            title={g.panel.commandsTitle}
-                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'commands' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                        >
-                            <Icon name="history" size={13} />
-                            {dock === 'bottom' ? g.panel.commandsLong : g.panel.commands}
-                        </button>
-                        <button
-                            onClick={() => {
-                                setPanelTab('reflog')
-                                persistLayout({tab: 'reflog'})
-                            }}
-                            title={g.panel.reflogTitle}
-                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'reflog' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                        >
-                            <Icon name="restore" size={13} />
-                            {g.panel.reflog}
-                        </button>
-                        <button
+                        {/* Cuatro solapas, de lo más usado a lo menos: conversar
+                            con un agente, una terminal, qué tiene preparado el
+                            repo para los agentes, y el registro de lo que se
+                            ejecutó. Antes «Contexto» e «Historial» vivían como
+                            solapas DENTRO de Agentes, mezcladas con las
+                            conversaciones abiertas, y el «24» de la solapa
+                            Agentes contaba skills, no chats. */}
+                        <PanelTabButton
+                            active={panelTab === 'agents'}
                             onClick={() => {
                                 setPanelTab('agents')
                                 persistLayout({tab: 'agents'})
                                 enterAgentMode()
                             }}
+                            icon="forum"
+                            label={g.panel.chat}
+                            title={g.panel.chatTitle}
+                            badge={chatSessions.length}
+                        />
+                        <PanelTabButton
+                            active={panelTab === 'terminal'}
+                            onClick={() => openPanel('terminal')}
+                            icon="terminal"
+                            label={g.panel.sessions}
+                            title={g.panel.sessionsTitle}
+                            badge={sessions.length - chatSessions.length}
+                        />
+                        <PanelTabButton
+                            active={panelTab === 'context'}
+                            onClick={() => {
+                                setPanelTab('context')
+                                persistLayout({tab: 'context'})
+                            }}
+                            icon="dataset"
+                            label={g.panel.context}
                             title={g.panel.agentsTitle}
-                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'agents' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                        >
-                            <Icon name="smart_toy" size={13} />
-                            {g.bar.agents}
-                            {/* Un contador: una solapa que dice cuántas cosas
-                                tiene adentro invita a abrirla; una vacía de
-                                señales se ignora. Cuenta lo que ESTE repo
-                                tiene preparado, no lo que la app soporta. */}
-                            {agentBadge > 0 && (
-                                <span className="rounded-full bg-primary/20 px-1 text-ui-10 text-primary">{agentBadge}</span>
-                            )}
-                        </button>
+                            badge={agentBadge}
+                        />
+                        <PanelTabButton
+                            active={panelTab === 'commands' || panelTab === 'reflog'}
+                            onClick={() => {
+                                const tab = panelTab === 'reflog' ? 'reflog' : 'commands'
+                                setPanelTab(tab)
+                                persistLayout({tab})
+                            }}
+                            icon="history"
+                            label={g.panel.log}
+                            title={g.panel.logTitle}
+                        />
 
                         <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                            {/* Letra y paleta son de las terminales: en las
+                                otras solapas eran tres botones que no hacían
+                                nada visible. */}
+                            {panelTab === 'terminal' && (
+                            <>
                             <button
                                 onClick={() => onChangeTerminalFontSize(terminalFontSize - 1)}
                                 disabled={terminalFontSize <= TERMINAL_FONT_MIN}
@@ -3232,6 +3335,8 @@ export default function GitRepoTab({
                             </button>
                             <TerminalThemeMenu value={terminalThemeId} appTheme={appTheme} onChange={onChangeTerminalTheme} />
                             <span className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
+                            </>
+                            )}
                             {DOCK_BUTTONS.map((d) => (
                                 <button
                                     key={d.id}
@@ -3266,46 +3371,24 @@ export default function GitRepoTab({
                         las terminales. */}
                     {panelTab === 'agents' && (
                         <div
-                            className={`flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-1 ${
+                            // @container: el ancho de la tira (no el de la
+                            // ventana) decide qué rótulos de los controles del
+                            // chat caben, porque el panel puede estar anclado
+                            // al costado y medir la mitad.
+                            className={`@container flex shrink-0 items-center gap-1 border-b border-outline-variant px-1 py-1 ${
                                 dock === 'bottom' ? '' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
                             }`}
                         >
-                            <button
-                                onClick={() => setAgentsView('context')}
-                                title={g.panel.contextTitle}
-                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
-                                    agentsView === 'context'
-                                        ? 'bg-primary/15 text-primary'
-                                        : 'text-on-surface-variant hover:bg-surface-variant'
-                                }`}
-                            >
-                                <Icon name="dataset" size={12} />
-                                {g.panel.context}
-                            </button>
-                            <button
-                                onClick={() => setAgentsView('history')}
-                                data-agents-history
-                                title={g.panel.historyTitle}
-                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
-                                    agentsView === 'history'
-                                        ? 'bg-primary/15 text-primary'
-                                        : 'text-on-surface-variant hover:bg-surface-variant'
-                                }`}
-                            >
-                                <Icon name="history" size={12} />
-                                {g.panel.history}
-                                {chatHistory.length + cliChats.length > 0 && (
-                                    <span className="opacity-60">{chatHistory.length + cliChats.length}</span>
-                                )}
-                            </button>
-
+                            {/* Las conversaciones scrollean entre ellas; los
+                                controles de la derecha no se desplazan. */}
+                            <div className="flex min-w-16 flex-1 items-center gap-0.5 overflow-x-auto">
                             {sessions
                                 .filter((s) => s.kind === 'chat')
                                 .map((s) => (
                                     <span
                                         key={s.id}
                                         className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
-                                            agentsView === 'chats' && activeChatId === s.id
+                                            agentsShown === 'chats' && shownChatId === s.id
                                                 ? 'bg-primary/15 text-primary'
                                                 : 'text-on-surface-variant hover:bg-surface-variant'
                                         }`}
@@ -3379,12 +3462,61 @@ export default function GitRepoTab({
                                 ))}
 
                             <DropdownMenu
-                                label=""
+                                label={chatSessions.length === 0 ? g.panel.newChat : ''}
                                 icon="add"
                                 title={g.panel.newChatTitle}
                                 width={360}
                                 items={chatMenuItems()}
                             />
+                            </div>
+                            {/* Destino del portal de AgentChat (headerTarget). */}
+                            <div ref={setChatHeaderHost} className="flex min-w-0 shrink items-center gap-1 text-ui-11" />
+                            <button
+                                onClick={() => setAgentsView('history')}
+                                data-agents-history
+                                title={g.panel.historyTitle}
+                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
+                                    agentsShown === 'history'
+                                        ? 'bg-primary/15 text-primary'
+                                        : 'text-on-surface-variant hover:bg-surface-variant'
+                                }`}
+                            >
+                                <Icon name="history" size={12} />
+                                {g.panel.history}
+                                {chatHistory.length + cliChats.length > 0 && (
+                                    <span className="opacity-60">{chatHistory.length + cliChats.length}</span>
+                                )}
+                            </button>
+
+                        </div>
+                    )}
+
+                    {/* Registro: lo que ejecutó la app y por dónde estuvo
+                        HEAD. Son dos lecturas del pasado del repositorio, así
+                        que comparten solapa. */}
+                    {(panelTab === 'commands' || panelTab === 'reflog') && (
+                        <div
+                            className={`flex shrink-0 items-center gap-0.5 border-b border-outline-variant px-1 py-1 ${
+                                dock === 'bottom' ? '' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
+                            }`}
+                        >
+                            {(['commands', 'reflog'] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => {
+                                        setPanelTab(tab)
+                                        persistLayout({tab})
+                                    }}
+                                    title={tab === 'commands' ? g.panel.commandsTitle : g.panel.reflogTitle}
+                                    aria-pressed={panelTab === tab}
+                                    className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
+                                        panelTab === tab ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
+                                    }`}
+                                >
+                                    <Icon name={tab === 'commands' ? 'terminal' : 'restore'} size={12} />
+                                    {tab === 'commands' ? g.panel.commandsLong : g.panel.reflog}
+                                </button>
+                            ))}
                         </div>
                     )}
 
@@ -3593,9 +3725,8 @@ export default function GitRepoTab({
 
                                     <button
                                         onClick={() => {
-                                            setPanelTab('agents')
-                                            persistLayout({tab: 'agents'})
-                                            enterAgentMode()
+                                            setPanelTab('context')
+                                            persistLayout({tab: 'context'})
                                         }}
                                         title={g.launcher.contextTitle}
                                         className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
@@ -3635,7 +3766,7 @@ export default function GitRepoTab({
                                     // su proceso.
                                     display:
                                         s.kind === 'chat'
-                                            ? panelTab === 'agents' && agentsView === 'chats' && activeChatId === s.id
+                                            ? panelTab === 'agents' && agentsShown === 'chats' && shownChatId === s.id
                                                 ? undefined
                                                 : 'none'
                                             : panelTab === 'terminal' && activeSessionId === s.id
@@ -3649,7 +3780,17 @@ export default function GitRepoTab({
                                         // A la vista sólo con la pestaña activa y
                                         // esta conversación delante: el chat se
                                         // registra como visto (avisos y leído).
-                                        active={active && panelTab === 'agents' && agentsView === 'chats' && activeChatId === s.id}
+                                        active={active && panelTab === 'agents' && agentsShown === 'chats' && shownChatId === s.id}
+                                        // Dentro del repo el chip «Git · repo» es
+                                        // redundante, y los controles suben a la
+                                        // tira de conversaciones (solo los del
+                                        // chat visible: los demás están ocultos).
+                                        hideContextChip
+                                        headerTarget={
+                                            active && panelTab === 'agents' && agentsShown === 'chats' && shownChatId === s.id
+                                                ? chatHeaderHost
+                                                : null
+                                        }
                                         context={gitContext}
                                         agentId={s.agentId ?? ''}
                                         agentLabel={agentList.find((a) => a.id === s.agentId)?.label ?? s.title}
@@ -3770,7 +3911,7 @@ export default function GitRepoTab({
                                 />
                             </div>
                         )}
-                        {panelTab === 'agents' && agentsView === 'history' && (
+                        {panelTab === 'agents' && agentsShown === 'history' && (
                             <div className="absolute inset-0">
                                 <AgentChatHistory
                                     agents={agentList.filter((a) => chatCapable.has(a.id))}
@@ -3803,7 +3944,7 @@ export default function GitRepoTab({
                                 />
                             </div>
                         )}
-                        {panelTab === 'agents' && agentsView === 'context' && (
+                        {panelTab === 'context' && (
                             <div className="absolute inset-0">
                                 <GitAgentPanel
                                     repoId={repoId}
@@ -4153,4 +4294,21 @@ function focusRefsOf(branches: git.Branch[], pinned: string[]): string[] {
     // Never return an empty set: git would then walk HEAD only, which on a
     // detached HEAD is a single commit and looks like the graph broke.
     return refs.size > 0 ? [...refs] : []
+}
+
+// Una solapa del panel de abajo. El contador va pegado al rótulo: dice cuántas
+// cosas hay adentro (conversaciones, terminales, skills) sin tener que abrirla.
+function PanelTabButton({active, onClick, icon, label, title, badge}: {active: boolean; onClick: () => void; icon: string; label: string; title: string; badge?: number}) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            aria-pressed={active}
+            className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 ${active ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+        >
+            <Icon name={icon} size={13} />
+            {label}
+            {!!badge && badge > 0 && <span className="rounded-full bg-primary/20 px-1 text-ui-10 text-primary">{badge}</span>}
+        </button>
+    )
 }

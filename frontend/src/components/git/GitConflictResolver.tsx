@@ -22,6 +22,9 @@ interface GitConflictResolverProps {
     onAbort: () => void
     onResolved: () => void
     onClose: () => void
+    // Abre el archivo en el editor de la pestaña, para arreglarlo a mano con
+    // todo el archivo delante. Al volver, «Marcar resuelto tal cual» lo agrega.
+    onOpenFile?: (path: string) => void
     // Le pasa el conflicto abierto al agente, en el chat. Ausente = no hay
     // ningún agente con chat verificado instalado.
     //
@@ -42,6 +45,12 @@ interface GitConflictResolverProps {
 // Getting that backwards means confidently keeping the wrong version, so the
 // panes are labelled for the operation actually in progress instead of with
 // the raw git words.
+//
+// Resolver un bloque es un clic SOBRE el lado que se quiere conservar: antes
+// había que acertarle a uno de cuatro botoncitos en la esquina del bloque, y
+// no había forma de escribir una resolución propia aunque el formato de
+// archivo (resolution 'custom') ya la soportaba. Ahora cada bloque se puede
+// editar a mano, y el archivo entero se resuelve hacia un lado de un clic.
 export default function GitConflictResolver({
     repoId,
     operation,
@@ -50,11 +59,13 @@ export default function GitConflictResolver({
     onAbort,
     onResolved,
     onClose,
+    onOpenFile,
     onAsk,
 }: GitConflictResolverProps) {
     const t = useT()
     const tc = t.git.conflicts
     const [files, setFiles] = useState<string[]>([])
+    const [loaded, setLoaded] = useState(false)
     const [path, setPath] = useState<string | null>(null)
     const [blocks, setBlocks] = useState<FileBlock[]>([])
     const [loading, setLoading] = useState(false)
@@ -69,6 +80,8 @@ export default function GitConflictResolver({
             setPath((prev) => (prev && (list ?? []).includes(prev) ? prev : ((list ?? [])[0] ?? null)))
         } catch (e) {
             setError(String(e))
+        } finally {
+            setLoaded(true)
         }
     }, [repoId])
 
@@ -107,9 +120,42 @@ export default function GitConflictResolver({
     )
     const total = conflictCount(blocks)
     const done = resolvedCount(blocks)
+    const fileReady = isFullyResolved(blocks)
+
+    function update(blockIndex: number, patch: Partial<ConflictBlock>) {
+        setBlocks((prev) => prev.map((b, i) => (i === blockIndex && b.kind === 'conflict' ? {...b, ...patch} : b)))
+    }
 
     function resolve(blockIndex: number, resolution: ConflictBlock['resolution']) {
-        setBlocks((prev) => prev.map((b, i) => (i === blockIndex && b.kind === 'conflict' ? {...b, resolution} : b)))
+        update(blockIndex, {resolution})
+        // Elegido un lado, el foco pasa al siguiente sin decidir: es lo que
+        // uno haría a mano en un archivo con una docena de bloques.
+        if (resolution !== 'unresolved' && resolution !== 'custom') {
+            const pos = conflicts.findIndex((c) => c.index === blockIndex)
+            const next = conflicts.findIndex((c, n) => n > pos && c.block.resolution === 'unresolved' && c.index !== blockIndex)
+            if (next >= 0) goTo(next)
+        }
+    }
+
+    // Editar parte de lo que hay en el bloque AHORA: lo elegido si ya se
+    // eligió algo, o los dos lados uno detrás del otro si todavía no, que es
+    // de donde casi siempre se arranca a mano.
+    function startEdit(blockIndex: number) {
+        const b = blocks[blockIndex]
+        if (b?.kind !== 'conflict') return
+        const seed =
+            b.resolution === 'ours'
+                ? b.ours
+                : b.resolution === 'theirs'
+                  ? b.theirs
+                  : b.resolution === 'custom'
+                    ? b.custom
+                    : [...b.ours, ...b.theirs]
+        update(blockIndex, {resolution: 'custom', custom: seed})
+    }
+
+    function resolveAll(resolution: 'ours' | 'theirs') {
+        setBlocks((prev) => prev.map((b) => (b.kind === 'conflict' ? {...b, resolution} : b)))
     }
 
     function goTo(n: number) {
@@ -138,6 +184,9 @@ export default function GitConflictResolver({
         return () => window.removeEventListener('keydown', onKey)
     })
 
+    // Guardar y agregar. Sin bloques que decidir (el archivo ya se arregló a
+    // mano en el editor, o el conflicto es de borrado y no de contenido) se
+    // guarda tal cual: renderResolved devuelve el archivo sin tocar.
     async function markResolved() {
         if (!path) return
         try {
@@ -156,41 +205,26 @@ export default function GitConflictResolver({
     const theirsLabel = isRebase ? tc.theirsRebase : tc.theirsMerge
     // Merge y Rebase son nombres de git: se muestran igual en los dos idiomas.
     const opName = operation === 'merge' ? 'Merge' : operation === 'rebase' ? 'Rebase' : operation
+    const allDone = loaded && files.length === 0
+    // En qué paso está: decidir bloques, marcar el archivo, continuar.
+    const step = allDone ? 3 : fileReady || (path && !loading && total === 0) ? 2 : 1
 
     return (
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-error-container/30 px-3 py-1.5 text-xs">
                 <Icon name="merge_type" size={15} className="shrink-0 text-error" />
-                <span className="font-semibold text-on-surface">
-                    {tc.withConflicts({op: opName})}
-                </span>
-                <span className="text-on-surface-variant">
-                    {tc.unresolvedFiles(files.length)}
-                </span>
+                <span className="font-semibold text-on-surface">{tc.withConflicts({op: opName})}</span>
+                <span className="text-on-surface-variant">{tc.unresolvedFiles(files.length)}</span>
 
                 <div className="ml-auto flex items-center gap-1.5">
                     <button
                         onClick={onContinue}
                         disabled={busy || files.length > 0}
-                        title={
-                            files.length > 0
-                                ? tc.continuePending({n: files.length})
-                                : tc.continueTitle({op: operation})
-                        }
+                        title={files.length > 0 ? tc.continuePending({n: files.length}) : tc.continueTitle({op: operation})}
                         className="rounded bg-primary px-2.5 py-1 text-on-primary disabled:opacity-40"
                     >
                         {tc.continueOp({op: operation})}
                     </button>
-                    {onAsk && path && (
-                        <button
-                            onClick={() => onAsk(path)}
-                            title={tc.askTitle}
-                            className="flex items-center gap-1 rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                        >
-                            <Icon name="smart_toy" size={14} />
-                            {tc.ask}
-                        </button>
-                    )}
                     <button
                         onClick={onAbort}
                         disabled={busy}
@@ -199,20 +233,57 @@ export default function GitConflictResolver({
                     >
                         {tc.abort}
                     </button>
-                    <button onClick={onClose} title={tc.closeTitle} className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
+                    <button onClick={onClose} title={tc.closeTitle} aria-label={tc.closeTitle} className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
             </div>
 
-            <div className="flex min-h-0 flex-1">
-                <div className="w-56 shrink-0 overflow-y-auto border-r border-outline-variant">
-                    {files.length === 0 ? (
-                        <p className="p-3 text-ui-11 text-on-surface-variant">
-                            {tc.noneLeft({op: operation})}
-                        </p>
-                    ) : (
-                        files.map((f) => (
+            {/* Los tres pasos dichos en voz alta. Sin esto el resolutor era una
+                pantalla con botones, y no quedaba claro que después de elegir
+                hay que marcar el archivo, ni que después de marcarlos todos
+                hay que continuar la operación. */}
+            <ol className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-outline-variant bg-surface-container-low px-3 py-1.5 text-ui-11">
+                {[tc.step1, tc.step2, tc.step3({op: operation})].map((label, n) => {
+                    const num = n + 1
+                    const state = num < step ? 'done' : num === step ? 'now' : 'next'
+                    return (
+                        <li key={num} className={`flex items-center gap-1.5 ${state === 'next' ? 'text-on-surface-variant/60' : 'text-on-surface'}`}>
+                            <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-ui-10 font-semibold ${
+                                    state === 'done' ? 'bg-secondary text-on-secondary' : state === 'now' ? 'bg-primary text-on-primary' : 'border border-outline-variant'
+                                }`}
+                            >
+                                {state === 'done' ? <Icon name="check" size={11} /> : num}
+                            </span>
+                            <span className={state === 'now' ? 'font-medium' : ''}>{label}</span>
+                            {num < 3 && <Icon name="chevron_right" size={13} className="text-on-surface-variant/40" />}
+                        </li>
+                    )
+                })}
+            </ol>
+
+            {allDone ? (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary/15 text-secondary">
+                        <Icon name="check_circle" size={28} />
+                    </span>
+                    <p className="text-sm font-medium text-on-surface">{tc.allDoneTitle}</p>
+                    <p className="max-w-md text-xs text-on-surface-variant">{tc.noneLeft({op: operation})}</p>
+                    <button
+                        onClick={onContinue}
+                        disabled={busy}
+                        title={tc.continueTitle({op: operation})}
+                        className="mt-1 flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary hover:opacity-90 disabled:opacity-40"
+                    >
+                        <Icon name="done_all" size={16} />
+                        {tc.continueOp({op: operation})}
+                    </button>
+                </div>
+            ) : (
+                <div className="flex min-h-0 flex-1">
+                    <div className="w-56 shrink-0 overflow-y-auto border-r border-outline-variant">
+                        {files.map((f) => (
                             <button
                                 key={f}
                                 onClick={() => setPath(f)}
@@ -224,134 +295,208 @@ export default function GitConflictResolver({
                                 <Icon name="warning" size={12} className="shrink-0 text-error" />
                                 <span className="min-w-0 flex-1 truncate font-mono">{f}</span>
                             </button>
-                        ))
-                    )}
-                </div>
+                        ))}
+                    </div>
 
-                <div className="flex min-w-0 flex-1 flex-col">
-                    {path && (
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
-                            <span className="min-w-0 truncate font-mono text-on-surface-variant">{path}</span>
-                            <span
-                                className={done === total ? 'text-secondary' : 'text-tertiary'}
-                                title={tc.progressTitle}
-                            >
-                                {tc.progress({current: total === 0 ? 0 : Math.min(current + 1, total), total, done})}
-                            </span>
-                            <div className="ml-auto flex items-center gap-1">
-                                <button
-                                    onClick={() => goTo(current - 1)}
-                                    disabled={conflicts.length === 0}
-                                    title={tc.prevTitle}
-                                    className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
-                                >
-                                    <Icon name="arrow_upward" size={14} />
-                                </button>
-                                <button
-                                    onClick={() => goTo(current + 1)}
-                                    disabled={conflicts.length === 0}
-                                    title={tc.nextTitle}
-                                    className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
-                                >
-                                    <Icon name="arrow_downward" size={14} />
-                                </button>
-                                <button
-                                    onClick={() => void markResolved()}
-                                    disabled={busy || !isFullyResolved(blocks)}
-                                    title={
-                                        isFullyResolved(blocks)
-                                            ? tc.markResolvedTitle
-                                            : tc.markResolvedPending
-                                    }
-                                    className="rounded bg-primary px-2 py-0.5 text-on-primary disabled:opacity-40"
-                                >
-                                    {tc.markResolved}
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {error && <p className="px-2 py-1 text-ui-11 text-error">{error}</p>}
-                    {loading && <p className="px-2 py-2 text-xs text-on-surface-variant">{tc.loadingFile}</p>}
-
-                    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-ui-11 leading-relaxed">
-                        {blocks.map((block, i) =>
-                            block.kind === 'text' ? (
-                                <pre key={i} className="whitespace-pre-wrap break-all text-on-surface-variant/70">
-                                    {block.lines.join('\n')}
-                                </pre>
-                            ) : (
-                                <div
-                                    key={i}
-                                    ref={(el) => {
-                                        blockRefs.current[i] = el
-                                    }}
-                                    className={`my-2 rounded border ${
-                                        block.resolution === 'unresolved' ? 'border-error/50' : 'border-secondary/50'
-                                    }`}
-                                >
-                                    <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant/50 bg-surface-container px-1.5 py-1 font-sans text-ui-10">
-                                        <span className={block.resolution === 'unresolved' ? 'text-error' : 'text-secondary'}>
-                                            {block.resolution === 'unresolved' ? tc.unresolved : tc.resolved}
-                                        </span>
-                                        <div className="ml-auto flex flex-wrap gap-1">
-                                            <ChoiceButton
-                                                active={block.resolution === 'ours'}
-                                                onClick={() => resolve(i, 'ours')}
-                                                label={tc.keepMine}
-                                                title={tc.applyOnly({side: oursLabel.toLowerCase()})}
-                                            />
-                                            <ChoiceButton
-                                                active={block.resolution === 'theirs'}
-                                                onClick={() => resolve(i, 'theirs')}
-                                                label={tc.acceptIncoming}
-                                                title={tc.applyOnly({side: theirsLabel.toLowerCase()})}
-                                            />
-                                            <ChoiceButton
-                                                active={block.resolution === 'both'}
-                                                onClick={() => resolve(i, 'both')}
-                                                label={tc.both}
-                                                title={tc.bothTitle}
-                                            />
-                                            {block.resolution === 'unresolved' ? null : (
-                                                <ChoiceButton
-                                                    active={false}
-                                                    onClick={() => resolve(i, 'unresolved')}
-                                                    label={tc.undo}
-                                                    title={tc.undoTitle}
-                                                />
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 divide-x divide-outline-variant/40">
-                                        <Side
-                                            title={oursLabel}
-                                            detail={block.oursLabel}
-                                            lines={block.ours}
-                                            tone="ours"
-                                            dimmed={block.resolution === 'theirs'}
-                                        />
-                                        <Side
-                                            title={theirsLabel}
-                                            detail={block.theirsLabel}
-                                            lines={block.theirs}
-                                            tone="theirs"
-                                            dimmed={block.resolution === 'ours'}
-                                        />
-                                    </div>
-
-                                    {block.base.length > 0 && (
-                                        <div className="border-t border-outline-variant/40">
-                                            <Side title={tc.base} detail={tc.baseDetail} lines={block.base} tone="base" />
-                                        </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        {path && (
+                            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
+                                <span className="min-w-0 truncate font-mono text-on-surface-variant">{path}</span>
+                                {total > 0 && (
+                                    <span className={done === total ? 'text-secondary' : 'text-tertiary'} title={tc.progressTitle}>
+                                        {tc.progress({current: Math.min(current + 1, total), total, done})}
+                                    </span>
+                                )}
+                                <div className="ml-auto flex flex-wrap items-center gap-1">
+                                    {total > 1 && (
+                                        <>
+                                            <button
+                                                onClick={() => resolveAll('ours')}
+                                                title={tc.allMineTitle({side: oursLabel.toLowerCase()})}
+                                                className="rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-variant"
+                                            >
+                                                {tc.allMine}
+                                            </button>
+                                            <button
+                                                onClick={() => resolveAll('theirs')}
+                                                title={tc.allIncomingTitle({side: theirsLabel.toLowerCase()})}
+                                                className="rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-variant"
+                                            >
+                                                {tc.allIncoming}
+                                            </button>
+                                            <span className="mx-0.5 h-4 w-px bg-outline-variant" />
+                                        </>
                                     )}
+                                    {total > 0 && (
+                                        <>
+                                            <button
+                                                onClick={() => goTo(current - 1)}
+                                                title={tc.prevTitle}
+                                                aria-label={tc.prevTitle}
+                                                className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
+                                            >
+                                                <Icon name="arrow_upward" size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => goTo(current + 1)}
+                                                title={tc.nextTitle}
+                                                aria-label={tc.nextTitle}
+                                                className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
+                                            >
+                                                <Icon name="arrow_downward" size={14} />
+                                            </button>
+                                        </>
+                                    )}
+                                    {onAsk && (
+                                        <button
+                                            onClick={() => onAsk(path)}
+                                            title={tc.askTitle}
+                                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                        >
+                                            <Icon name="smart_toy" size={14} />
+                                            {tc.ask}
+                                        </button>
+                                    )}
+                                    {onOpenFile && (
+                                        <button
+                                            onClick={() => onOpenFile(path)}
+                                            title={tc.openInEditorTitle}
+                                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                        >
+                                            <Icon name="edit_document" size={14} />
+                                            {tc.openInEditor}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => void markResolved()}
+                                        disabled={busy || loading || (total > 0 && !fileReady)}
+                                        title={total === 0 ? tc.markAsIsTitle : fileReady ? tc.markResolvedTitle : tc.markResolvedPending}
+                                        className="flex items-center gap-1 rounded bg-primary px-2 py-0.5 text-on-primary disabled:opacity-40"
+                                    >
+                                        <Icon name="check" size={14} />
+                                        {total === 0 ? tc.markAsIs : tc.markResolved}
+                                    </button>
                                 </div>
-                            ),
+                            </div>
                         )}
+
+                        {error && <p className="px-2 py-1 text-ui-11 text-error">{error}</p>}
+                        {loading && <p className="px-2 py-2 text-xs text-on-surface-variant">{tc.loadingFile}</p>}
+                        {path && !loading && total === 0 && (
+                            <p className="mx-2 mt-2 flex items-start gap-1.5 rounded bg-surface-container px-2 py-1.5 text-ui-11 text-on-surface-variant">
+                                <Icon name="info" size={14} className="mt-px shrink-0" />
+                                {tc.noBlocks}
+                            </p>
+                        )}
+
+                        <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-ui-11 leading-relaxed">
+                            {blocks.map((block, i) =>
+                                block.kind === 'text' ? (
+                                    <pre key={i} className="whitespace-pre-wrap break-all text-on-surface-variant/70">
+                                        {block.lines.join('\n')}
+                                    </pre>
+                                ) : (
+                                    <div
+                                        key={i}
+                                        ref={(el) => {
+                                            blockRefs.current[i] = el
+                                        }}
+                                        className={`my-2 rounded border ${block.resolution === 'unresolved' ? 'border-error/50' : 'border-secondary/50'}`}
+                                    >
+                                        <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant/50 bg-surface-container px-1.5 py-1 font-sans text-ui-10">
+                                            <span className={block.resolution === 'unresolved' ? 'text-error' : 'text-secondary'}>
+                                                {block.resolution === 'unresolved'
+                                                    ? tc.unresolvedHint
+                                                    : block.resolution === 'custom'
+                                                      ? tc.edited
+                                                      : tc.resolved}
+                                            </span>
+                                            <div className="ml-auto flex flex-wrap gap-1">
+                                                <ChoiceButton
+                                                    active={block.resolution === 'ours'}
+                                                    onClick={() => resolve(i, 'ours')}
+                                                    label={tc.keepMine}
+                                                    title={tc.applyOnly({side: oursLabel.toLowerCase()})}
+                                                />
+                                                <ChoiceButton
+                                                    active={block.resolution === 'theirs'}
+                                                    onClick={() => resolve(i, 'theirs')}
+                                                    label={tc.acceptIncoming}
+                                                    title={tc.applyOnly({side: theirsLabel.toLowerCase()})}
+                                                />
+                                                <ChoiceButton
+                                                    active={block.resolution === 'both'}
+                                                    onClick={() => resolve(i, 'both')}
+                                                    label={tc.both}
+                                                    title={tc.bothTitle}
+                                                />
+                                                <ChoiceButton
+                                                    active={block.resolution === 'custom'}
+                                                    onClick={() => startEdit(i)}
+                                                    label={tc.edit}
+                                                    title={tc.editTitle}
+                                                />
+                                                {block.resolution !== 'unresolved' && (
+                                                    <ChoiceButton
+                                                        active={false}
+                                                        onClick={() => resolve(i, 'unresolved')}
+                                                        label={tc.undo}
+                                                        title={tc.undoTitle}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {block.resolution === 'custom' ? (
+                                            <div className="p-1.5">
+                                                <p className="mb-1 font-sans text-ui-10 text-on-surface-variant">{tc.editHint}</p>
+                                                <textarea
+                                                    autoFocus
+                                                    value={block.custom.join('\n')}
+                                                    onChange={(e) => update(i, {custom: e.target.value.split('\n')})}
+                                                    spellCheck={false}
+                                                    rows={Math.min(20, Math.max(3, block.custom.length + 1))}
+                                                    title={tc.editAreaTitle}
+                                                    className="w-full resize-y rounded border border-outline-variant bg-surface-container-lowest p-1.5 font-mono text-ui-11 text-on-surface outline-none focus:border-primary"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 divide-x divide-outline-variant/40">
+                                                <Side
+                                                    title={oursLabel}
+                                                    detail={block.oursLabel}
+                                                    lines={block.ours}
+                                                    tone="ours"
+                                                    chosen={block.resolution === 'ours' || block.resolution === 'both'}
+                                                    dimmed={block.resolution === 'theirs'}
+                                                    pickTitle={tc.pickSideTitle({side: oursLabel.toLowerCase()})}
+                                                    onPick={() => resolve(i, block.resolution === 'theirs' ? 'both' : 'ours')}
+                                                />
+                                                <Side
+                                                    title={theirsLabel}
+                                                    detail={block.theirsLabel}
+                                                    lines={block.theirs}
+                                                    tone="theirs"
+                                                    chosen={block.resolution === 'theirs' || block.resolution === 'both'}
+                                                    dimmed={block.resolution === 'ours'}
+                                                    pickTitle={tc.pickSideTitle({side: theirsLabel.toLowerCase()})}
+                                                    onPick={() => resolve(i, block.resolution === 'ours' ? 'both' : 'theirs')}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {block.base.length > 0 && block.resolution !== 'custom' && (
+                                            <div className="border-t border-outline-variant/40">
+                                                <Side title={tc.base} detail={tc.baseDetail} lines={block.base} tone="base" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ),
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     )
 }
@@ -361,6 +506,7 @@ function ChoiceButton({active, onClick, label, title}: {active: boolean; onClick
         <button
             onClick={onClick}
             title={title}
+            aria-pressed={active}
             className={`rounded px-1.5 py-0.5 ${active ? 'bg-primary text-on-primary' : 'border border-outline-variant text-on-surface hover:bg-surface-variant'}`}
         >
             {label}
@@ -368,26 +514,55 @@ function ChoiceButton({active, onClick, label, title}: {active: boolean; onClick
     )
 }
 
+// Un lado del bloque. Con onPick, el lado entero es el botón: clic para
+// quedarse con él; clic en el otro con uno ya elegido conserva los dos.
 function Side({
     title,
     detail,
     lines,
     tone,
+    chosen,
     dimmed,
+    pickTitle,
+    onPick,
 }: {
     title: string
     detail: string
     lines: string[]
     tone: 'ours' | 'theirs' | 'base'
+    chosen?: boolean
     dimmed?: boolean
+    pickTitle?: string
+    onPick?: () => void
 }) {
     const t = useT()
     const bg = tone === 'ours' ? 'bg-primary/5' : tone === 'theirs' ? 'bg-secondary/5' : 'bg-surface-variant/30'
+    const pickable = !!onPick
     return (
-        <div className={`${bg} ${dimmed ? 'opacity-40' : ''} p-1.5`}>
-            <div className="mb-0.5 font-sans text-ui-10 text-on-surface-variant" title={detail}>
+        <div
+            role={pickable ? 'button' : undefined}
+            tabIndex={pickable ? 0 : undefined}
+            title={pickTitle}
+            aria-pressed={pickable ? !!chosen : undefined}
+            onClick={onPick}
+            onKeyDown={
+                pickable
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              onPick?.()
+                          }
+                      }
+                    : undefined
+            }
+            className={`${bg} ${dimmed ? 'opacity-40' : ''} ${chosen ? 'ring-1 ring-inset ring-secondary' : ''} ${
+                pickable ? 'cursor-pointer outline-none hover:bg-surface-variant/50 focus-visible:ring-2 focus-visible:ring-primary' : ''
+            } p-1.5`}
+        >
+            <div className="mb-0.5 flex items-center gap-1 font-sans text-ui-10 text-on-surface-variant" title={detail}>
+                {chosen && <Icon name="check" size={12} className="text-secondary" />}
                 {title}
-                {detail && <span className="ml-1 opacity-60">({detail})</span>}
+                {detail && <span className="opacity-60">({detail})</span>}
             </div>
             <pre className="whitespace-pre-wrap break-all text-on-surface">{lines.length > 0 ? lines.join('\n') : t.git.conflicts.empty}</pre>
         </div>

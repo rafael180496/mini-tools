@@ -1,8 +1,8 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS**. **Esta versión se verificó en Windows 10 y
-Windows 11** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
+**cross-compilado desde macOS**. **Esta versión (2.10.4) todavía no se
+verificó en una Windows real** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
 solo empaqueta el `.exe` para distribuirlo manualmente (GitHub Releases, USB,
 red interna, etc.).
 
@@ -10,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.3 |
-| Archivo | `mini-tools-v2.10.3-windows-amd64.exe` |
-| Tamaño | ~78 MB (78,5 MB; 78 497 280 bytes) — es el binario suelto, bajo el techo de 100 MB |
-| SHA-256 | `1e9e952921401a9a19ae4847281b27f3ded2c66feaf3a1f3f5770bdef7eb2735` |
+| Versión | 2.10.4 |
+| Archivo | `mini-tools-v2.10.4-windows-amd64.exe` |
+| Tamaño | ~81 MB (81,1 MB; 81 076 224 bytes) — es el binario suelto, bajo el techo de 100 MB |
+| SHA-256 | `de15420412bd35c53a5ff8f45c97629e5d06caa6841bade8f8437e8d9ae509a4` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file`: `PE32+ executable (GUI) x86-64, for MS Windows` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.10.3-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.10.4-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -34,22 +34,21 @@ Get-FileHash mini-tools-v2.10.3-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**Verificado por el usuario en Windows 10 y Windows 11.** El usuario corrió la
-2.10.3 en las dos, y eso es lo único que se afirma aquí: que corre en esas dos
-versiones de Windows. Este documento no detalla qué flujos se ejercitaron, así
-que no se da por probado ningún flujo en particular más allá de eso.
-
-Además pasan `go build`, `go vet` y `go test` en el host de desarrollo, y el
+**No verificado en una Windows real (2.10.4).** Nadie corrió esta versión en
+Windows todavía; la 2.10.3 sí se probó en Windows 10 y Windows 11, pero eso no
+se extrapola a esta. Solo se confirmó que cross-compila limpio, que pasan
+`go build`, `go vet` y el build de Windows en el host de desarrollo, y que el
 binario es un `PE32+ x86-64`.
 
-Esto vale **para esta versión**: no se extrapola a la siguiente. Cuando salga
-la siguiente versión, vuelve la pregunta de si alguien la corrió en
-Windows y en cuál.
+Quedan sin confirmar, porque solo se ven corriendo el binario: que el WebView2
+Runtime esté presente o se detecte bien, el escalado de DPI y los diálogos
+nativos. Cuando alguien la corra en Windows, este apartado se reemplaza por lo
+que se confirmó y en qué versiones de Windows.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11** son los objetivos declarados, y esta versión se
-  corrió en las dos (ver la sección de arriba). Wails v2 en Windows depende del
+- **Windows 10 y Windows 11** son los objetivos declarados (esta versión aún no
+  se corrió en ninguna: ver la sección de arriba). Wails v2 en Windows depende del
   WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
   Windows 10 con Edge al día también (llega con las actualizaciones de
   Edge). Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
@@ -73,7 +72,7 @@ Windows y en cuál.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.10.3-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.10.4-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.
