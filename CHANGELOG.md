@@ -4,6 +4,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **Explain en Oracle fallaba con `ORA-00933` si la sentencia terminaba en `;`.** El plan se pide con `EXPLAIN PLAN ... FOR <sentencia>`, y el punto y coma final —que en el editor es solo el separador— quedaba dentro de la sentencia, donde el servidor no lo admite. Ahora se quita antes de enviarla, así que explicar el `SELECT` tal como está escrito en el editor funciona.
+
 ## [2.10.4] - 2026-10-23
 
 ### Mejorado

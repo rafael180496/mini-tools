@@ -24,6 +24,10 @@ func OraclePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) 
 	}
 	defer conn.Close()
 
+	// El ';' final es terminador de SQL*Plus, no parte de la sentencia: el
+	// servidor lo rechaza con ORA-00933 al quedar detrás del FOR.
+	query = strings.TrimRight(strings.TrimSpace(query), "; \t\r\n")
+
 	statementID := fmt.Sprintf("mt_%d", time.Now().UnixNano())
 
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", statementID, query)); err != nil {
