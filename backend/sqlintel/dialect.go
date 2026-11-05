@@ -226,6 +226,19 @@ var commonSnippets = []SnippetDef{
 	{Label: "pk", Detail: i18n.Msg{ES: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY", EN: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY"}, Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:pk_tabla} PRIMARY KEY (${3:columna});"},
 	{Label: "fk", Detail: i18n.Msg{ES: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY", EN: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY"}, Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:fk_tabla_otra} FOREIGN KEY (${3:columna})\n    REFERENCES ${4:otra_tabla} (${5:columna});"},
 	{Label: "ren", Detail: i18n.Msg{ES: "Renombrar una tabla", EN: "Rename a table"}, Body: "ALTER TABLE ${1:tabla} RENAME TO ${2:nombre_nuevo};"},
+
+	// Atajos de uso diario: contar, agrupar, fechas del día y las últimas filas.
+	{Label: "selc", Detail: i18n.Msg{ES: "SELECT COUNT(*) … (cuántas filas hay)", EN: "SELECT COUNT(*) … (how many rows)"}, Body: "SELECT COUNT(*) AS total\nFROM ${1:tabla}\nWHERE ${2:condicion};"},
+	{Label: "distc", Detail: i18n.Msg{ES: "COUNT(DISTINCT …) — cuántos valores distintos", EN: "COUNT(DISTINCT …) — how many distinct values"}, Body: "SELECT COUNT(DISTINCT ${1:columna}) AS distintos\nFROM ${2:tabla};"},
+	{Label: "gb", Detail: i18n.Msg{ES: "Contar filas por valor (GROUP BY + COUNT)", EN: "Count rows per value (GROUP BY + COUNT)"}, Body: "SELECT ${1:columna}, COUNT(*) AS total\nFROM ${2:tabla}\nGROUP BY ${1:columna}\nORDER BY total DESC;"},
+	{Label: "coal", Detail: i18n.Msg{ES: "COALESCE(…) — valor por defecto si es nulo", EN: "COALESCE(…) — default when null"}, Body: "COALESCE(${1:columna}, ${2:0})"},
+	{Label: "bak", Detail: i18n.Msg{ES: "Copia de respaldo de una tabla (CREATE TABLE AS SELECT)", EN: "Backup copy of a table (CREATE TABLE AS SELECT)"}, Body: "CREATE TABLE ${1:tabla_bak} AS\nSELECT * FROM ${2:tabla}\nWHERE ${3:condicion};"},
+	{Label: "runsum", Detail: i18n.Msg{ES: "Acumulado: SUM(…) OVER (PARTITION BY … ORDER BY …)", EN: "Running total: SUM(…) OVER (PARTITION BY … ORDER BY …)"}, Body: "SUM(${1:importe}) OVER (PARTITION BY ${2:grupo} ORDER BY ${3:fecha}) AS acumulado"},
+	{Label: "topn", Detail: i18n.Msg{ES: "Las N filas más recientes de cada grupo", EN: "The N latest rows of each group"}, Body: "SELECT *\nFROM (\n    SELECT t.*,\n           ROW_NUMBER() OVER (PARTITION BY ${1:grupo} ORDER BY ${2:fecha} DESC) AS rn\n    FROM ${3:tabla} t\n) x\nWHERE x.rn <= ${4:3};"},
+	{Label: "diff", Detail: i18n.Msg{ES: "Filas de A que no están en B (EXCEPT)", EN: "Rows of A missing from B (EXCEPT)"}, Body: "SELECT ${1:columnas} FROM ${2:tabla_a}\nEXCEPT\nSELECT ${1:columnas} FROM ${3:tabla_b};"},
+	{Label: "dup", Detail: i18n.Msg{ES: "Ver las filas repetidas completas (por una columna)", EN: "See the full duplicated rows (by one column)"}, Body: "SELECT t.*\nFROM ${1:tabla} t\nJOIN (\n    SELECT ${2:columna}\n    FROM ${1:tabla}\n    GROUP BY ${2:columna}\n    HAVING COUNT(*) > 1\n) d ON d.${2:columna} = t.${2:columna}\nORDER BY t.${2:columna};"},
+	{Label: "today", Detail: i18n.Msg{ES: "WHERE … es de hoy (rango del día)", EN: "WHERE … is today (day range)"}, Body: "WHERE ${1:fecha} >= CURRENT_DATE\n  AND ${1:fecha} < CURRENT_DATE + INTERVAL '1' DAY"},
+	{Label: "last", Detail: i18n.Msg{ES: "Las últimas N filas por fecha", EN: "The last N rows by date"}, Body: "SELECT *\nFROM ${1:tabla}\nORDER BY ${2:fecha} DESC\nLIMIT ${3:10};"},
 }
 
 // standardDialect backs an editor tab with no connection bound: shared

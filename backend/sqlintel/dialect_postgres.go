@@ -44,7 +44,10 @@ func init() {
 			{Label: "act", Detail: i18n.Msg{ES: "Consultas en curso (pg_stat_activity)", EN: "Running queries (pg_stat_activity)"}, Body: "SELECT pid, usename, state, now() - query_start AS duracion, query\nFROM pg_stat_activity\nWHERE state <> 'idle'\nORDER BY query_start;"},
 			{Label: "gen", Detail: i18n.Msg{ES: "generate_series (rango de fechas)", EN: "generate_series (date range)"}, Body: "SELECT d::date\nFROM generate_series('${1:2026-01-01}'::date, '${2:2026-12-31}'::date, interval '1 day') AS d;"},
 			{Label: "ilike", Detail: i18n.Msg{ES: "WHERE … ILIKE '%…%' (sin distinguir mayúsculas)", EN: "WHERE … ILIKE '%…%' (case-insensitive)"}, Body: "WHERE ${1:columna} ILIKE '%${2:texto}%'"},
-						{Label: "expl", Detail: i18n.Msg{ES: "EXPLAIN (ANALYZE, BUFFERS)", EN: "EXPLAIN (ANALYZE, BUFFERS)"}, Body: "EXPLAIN (ANALYZE, BUFFERS)\n${1:SELECT 1};"},
+			{Label: "expl", Detail: i18n.Msg{ES: "EXPLAIN (ANALYZE, BUFFERS)", EN: "EXPLAIN (ANALYZE, BUFFERS)"}, Body: "EXPLAIN (ANALYZE, BUFFERS)\n${1:SELECT 1};"},
+			{Label: "today", Detail: i18n.Msg{ES: "WHERE … es de hoy (CURRENT_DATE)", EN: "WHERE … is today (CURRENT_DATE)"}, Body: "WHERE ${1:fecha} >= CURRENT_DATE\n  AND ${1:fecha} < CURRENT_DATE + 1"},
+			{Label: "json", Detail: i18n.Msg{ES: "Leer un campo de una columna JSON (->>)", EN: "Read a field of a JSON column (->>)"}, Body: "SELECT ${1:columna}->>'${2:clave}' AS ${2:clave}\nFROM ${3:tabla}\nWHERE ${1:columna}->>'${2:clave}' = '${4:valor}';"},
+			{Label: "insr", Detail: i18n.Msg{ES: "INSERT … RETURNING (devuelve lo insertado)", EN: "INSERT … RETURNING (returns what was inserted)"}, Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:valores})\nRETURNING ${4:*};"},
 		},
 	})
 }

@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.10.4. Lo que está acá existe en ese binario.">2.10.4 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.5. Lo que está acá existe en ese binario.">2.10.5 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -653,7 +653,12 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
   <div class="codewrap"><pre><code>SELECT c.<span class="c">▮</span>            <span class="c">-- columnas de CLIENTES, porque c es su alias</span>
 FROM   SGCPRO.CLIENTES c
 JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN completo desde la clave foránea</span></code></pre></div>
-  <p><kbd>Ctrl+Espacio</kbd> lo fuerza donde no se abre solo, y <kbd>Tab</kbd> acepta la sugerencia en gris.</p>
+  <p>También se abre solo después de un operador de comparación (<code>col = ▮</code>), de <code>CASE</code>/<code>WHEN</code>/<code>THEN</code>/<code>BETWEEN</code>/<code>IS</code>,
+  y justo después de un operando completo (<code>WHERE col ▮</code>, <code>ORDER BY col ▮</code>), donde lo que sigue es un operador o <code>ASC</code>/<code>DESC</code>.
+  Un aviso del linter ya no estorba: se subraya solo el tramo culpable (el <code>*</code> de <code>SELECT *</code>, el
+  <code>UPDATE</code>/<code>DELETE</code> sin <code>WHERE</code>) y su tooltip no aparece mientras la lista de sugerencias está abierta.</p>
+  <p><kbd>Ctrl+Espacio</kbd> lo fuerza donde no se abre solo —en macOS esa combinación suele tomarla el cambio de idioma del teclado, así que
+  <kbd>⌥Espacio</kbd>, <kbd>⇧⌘Espacio</kbd> y <kbd>⌥/</kbd> hacen lo mismo— y <kbd>Tab</kbd> acepta la sugerencia en gris.</p>
   <p>Dentro de un <strong>bloque PL/SQL</strong> lee también el bloque: cada sentencia del cuerpo tiene su propio
   alcance (un <code>WHERE</code> ve solo las tablas de su sentencia), las variables del <code>DECLARE</code> y los
   parámetros del procedimiento que estás escribiendo se sugieren como valores, y dentro de la llamada a un
@@ -3290,7 +3295,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td><kbd>F2</kbd></td><td>En la pestaña de Chat de IA, su barra de pestañas o su fila de la barra lateral: renombrar la conversación (<a href="#utilidades-chat-ia--nombres">ponerle nombre a las conversaciones</a>)</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota, o una imagen o un archivo en el chat (<a href="#ia-adjuntos">adjuntos</a>)</td></tr>
-    <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
+    <tr><td><kbd>Ctrl+Espacio</kbd> · <kbd>⌥Espacio</kbd> · <kbd>⇧⌘Espacio</kbd> / <kbd>Ctrl+Shift+Espacio</kbd> · <kbd>⌥/</kbd> / <kbd>Alt+/</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
     <tr><td><kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd></td><td>Formatear lo seleccionado o el archivo entero</td></tr>
     <tr><td><kbd>⌘</kbd>+clic / <kbd>Ctrl</kbd>+clic</td><td>Abrir el DDL de la tabla o rutina bajo el puntero</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
@@ -3376,7 +3381,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.10.4; esta página no hace una sola petición externa.
+  v2.10.5; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

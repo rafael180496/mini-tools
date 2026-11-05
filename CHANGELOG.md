@@ -4,8 +4,41 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.5] - 2026-11-04
+
+### Agregado
+
+- **El autocompletado SQL predice lo que sigue.**
+  - Después de `WHERE col`, `AND col` o `ON col`, el popup se abre solo con los operadores: `=`, `IN (…)`, `IS NULL`, `LIKE`, `BETWEEN`… Su orden depende del tipo de la columna: `LIKE` sube en texto, `BETWEEN` en fechas, y `IS NULL` baja si la columna es NOT NULL.
+  - Tras `ORDER BY col` ofrece `DESC`/`ASC` (y `NULLS FIRST/LAST` donde el motor lo admite).
+  - Tras `FROM tabla` ofrece `WHERE`, los `JOIN`, `GROUP BY` y `ORDER BY`. Tras `UPDATE tabla` ofrece `SET`, y tras `INSERT INTO tabla` ofrece `VALUES`/`SELECT`.
+  - En `GROUP BY` sugiere de una vez todas las columnas del `SELECT` que no son agregados.
+  - También se abre solo después de un operador de comparación y de `CASE`, `WHEN`, `THEN`, `BETWEEN` o `IS`.
+- **26 atajos nuevos.**
+  - En todos los motores: `selc`, `distc`, `gb`, `coal`, `bak`, `runsum`, `topn`, `diff`, `dup`, `today` y `last`, con la sintaxis de cada motor (por ejemplo, `last` usa `FETCH FIRST` en Oracle y `TOP` en SQL Server).
+  - Oracle: `nvl`, `dec`, `tochar`, `dbms`, `exe`, `curx`, `ddl` y `expl`.
+  - PostgreSQL: `json` e `insr`. SQLite: `json`.
+  - SQL Server: `top`, `nolock`, `tryc` e `insid`.
+- **Más teclas para abrir el autocompletado:** <kbd>⌥Espacio</kbd>, <kbd>⇧⌘Espacio</kbd> y <kbd>⌥/</kbd>. En macOS, <kbd>Ctrl+Espacio</kbd> suele estar tomado por el cambio de idioma del teclado y nunca llegaba al editor.
+
+### Mejorado
+
+- **Sugerencias más limpias.**
+  - En la lista de columnas de un `INSERT` y en el `SET` de un `UPDATE` salen solo las columnas de esa tabla, sin las que ya escribiste.
+  - En `WHERE`, `SELECT` y demás cláusulas de expresión, el popup que se abre solo ya no mezcla nombres de tabla con las columnas.
+  - En esas mismas cláusulas ya no aparecen procedimientos, porque un procedimiento no puede ir en una expresión. Las funciones siguen saliendo.
+
+### Cambiado
+
+- **Node 26 LTS y dependencias al día.**
+  - El frontend se compila con Node 26, la LTS actual, fijada en `frontend/.nvmrc` y en el campo `engines`, y usa pnpm 11.28.11.
+  - Node 25 en adelante ya no trae corepack. Por eso `scripts/ensure-pnpm.sh` lo instala solo con npm cuando falta.
+  - Frontend: Tailwind 4.3.4, `@vitejs/plugin-react` 6.2, TanStack Virtual 3.14.26 y `@babel/runtime` 8.1.
+  - Go: Wails 2.17.1, pgx 5.12, excelize 2.11.1, driver de MongoDB 2.9.3, modernc SQLite 1.61.1 y `x/net` 0.62.
+
 ### Corregido
 
+- **Con un aviso del linter, el autocompletado parecía no abrirse.** El aviso subrayaba la sentencia entera. Por eso su tooltip aparecía apenas el mouse descansaba sobre la consulta y se dibujaba encima del popup de sugerencias o lo desplazaba. Ahora se subraya solo el tramo culpable: el `*` de `SELECT *`, o el `UPDATE`/`DELETE` sin `WHERE`. Además, el tooltip del aviso no se muestra mientras la lista de sugerencias está abierta.
 - **Explain en Oracle fallaba con `ORA-00933` si la sentencia terminaba en `;`.** El plan se pide con `EXPLAIN PLAN ... FOR <sentencia>`, y el punto y coma final —que en el editor es solo el separador— quedaba dentro de la sentencia, donde el servidor no lo admite. Ahora se quita antes de enviarla, así que explicar el `SELECT` tal como está escrito en el editor funciona.
 
 ## [2.10.4] - 2026-10-23

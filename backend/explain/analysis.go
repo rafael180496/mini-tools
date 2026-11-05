@@ -32,7 +32,7 @@ const (
 	misestimateMinRows = 100
 	// A hit rate under this, on a plan that read a meaningful number of
 	// blocks, is worth surfacing.
-	lowBufferHitRatePct = 90.0
+	lowBufferHitRatePct       = 90.0
 	minBlocksForBufferInsight = 1_000
 )
 

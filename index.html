@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.10.4. Everything here exists in that binary.">2.10.4 · Help</span>
+  <span class="ver" title="This documentation describes version 2.10.5. Everything here exists in that binary.">2.10.5 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -655,7 +655,12 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
   <div class="codewrap"><pre><code>SELECT c.<span class="c">▮</span>            <span class="c">-- columns of CLIENTES, because c is its alias</span>
 FROM   SGCPRO.CLIENTES c
 JOIN   <span class="c">▮</span>             <span class="c">-- suggests the complete JOIN from the foreign key</span></code></pre></div>
-  <p><kbd>Ctrl+Space</kbd> forces it where it doesn't open on its own, and <kbd>Tab</kbd> accepts the grey suggestion.</p>
+  <p>It also opens by itself after a comparison operator (<code>col = ▮</code>), after <code>CASE</code>/<code>WHEN</code>/<code>THEN</code>/<code>BETWEEN</code>/<code>IS</code>,
+  and right after a complete operand (<code>WHERE col ▮</code>, <code>ORDER BY col ▮</code>), where the next thing is an operator or <code>ASC</code>/<code>DESC</code>.
+  A lint warning no longer gets in the way: only the offending token is underlined (the <code>*</code> of <code>SELECT *</code>, the
+  <code>UPDATE</code>/<code>DELETE</code> without <code>WHERE</code>) and its tooltip stays hidden while the suggestion list is open.</p>
+  <p><kbd>Ctrl+Space</kbd> forces it where it doesn't open on its own — on macOS that combination is often taken by the keyboard-language switch, so
+  <kbd>⌥Space</kbd>, <kbd>⇧⌘Space</kbd> and <kbd>⌥/</kbd> do the same — and <kbd>Tab</kbd> accepts the grey suggestion.</p>
   <p>Inside a <strong>PL/SQL block</strong> it reads the block too: each statement of the body has its own scope
   (a <code>WHERE</code> sees only its own statement's tables), the variables of the <code>DECLARE</code> and the
   parameters of the procedure you're writing are suggested as values, and inside a call to a stored procedure
@@ -3272,7 +3277,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td><kbd>F2</kbd></td><td>In the AI Chat tab, its tab strip or its sidebar row: rename the conversation (<a href="#utilidades-chat-ia--nombres">name your conversations</a>)</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Save the active tab (query, note, file, request)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Paste an image into a note, or an image or file into the chat (<a href="#ia-adjuntos">attachments</a>)</td></tr>
-    <tr><td><kbd>Ctrl+Space</kbd></td><td>Force autocomplete, even where it doesn't open on its own</td></tr>
+    <tr><td><kbd>Ctrl+Space</kbd> · <kbd>⌥Space</kbd> · <kbd>⇧⌘Space</kbd> / <kbd>Ctrl+Shift+Space</kbd> · <kbd>⌥/</kbd> / <kbd>Alt+/</kbd></td><td>Force autocomplete, even where it doesn't open on its own</td></tr>
     <tr><td><kbd>⌥⌘L</kbd> / <kbd>Ctrl+Alt+L</kbd></td><td>Format the selection or the whole file</td></tr>
     <tr><td><kbd>⌘</kbd>+click / <kbd>Ctrl</kbd>+click</td><td>Open the DDL of the table or routine under the pointer</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Accept the grey suggestion, or jump to a shortcut's next placeholder</td></tr>
@@ -3357,7 +3362,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.10.4; this page doesn't make a single external request.
+  v2.10.5; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·

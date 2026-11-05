@@ -69,10 +69,10 @@ type Agent struct {
 // catalogEntry es la parte fija del catálogo, antes de resolver instalación y
 // configuración.
 type catalogEntry struct {
-	id      string
-	label   string
-	vendor  string
-	bin string
+	id     string
+	label  string
+	vendor string
+	bin    string
 	// altBins son nombres anteriores del mismo ejecutable, para que un
 	// renombre del producto no haga desaparecer un agente que sí está.
 	altBins []string
@@ -103,7 +103,7 @@ var catalog = []catalogEntry{
 			ES: "Asistente de Anthropic. Trabaja sobre el repositorio abierto: lee archivos, propone cambios y los aplica pidiendo confirmación.",
 			EN: "Anthropic's assistant. It works on the open repository: it reads files, proposes changes and applies them after asking for confirmation.",
 		},
-		docs:    "https://claude.com/claude-code",
+		docs: "https://claude.com/claude-code",
 	},
 	{
 		id:      "codex",
@@ -120,7 +120,7 @@ var catalog = []catalogEntry{
 			ES: "Asistente de OpenAI por línea de comandos, sobre el repositorio abierto.",
 			EN: "OpenAI's command-line assistant, on the open repository.",
 		},
-		docs:    "https://developers.openai.com/codex/cli",
+		docs: "https://developers.openai.com/codex/cli",
 	},
 	{
 		id:    "antigravity",
@@ -150,7 +150,7 @@ var catalog = []catalogEntry{
 			ES: "Asistente de Google por línea de comandos (binario `agy`), sobre el repositorio abierto. Trae sus propios skills y modos de ejecución.",
 			EN: "Google's command-line assistant (`agy` binary), on the open repository. It brings its own skills and execution modes.",
 		},
-		docs:   "https://antigravity.google/",
+		docs: "https://antigravity.google/",
 	},
 	{
 		id:      "opencode",

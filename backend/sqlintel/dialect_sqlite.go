@@ -40,7 +40,9 @@ func init() {
 			// SQLite no tiene TRUNCATE: el DELETE sin WHERE está optimizado
 			// justamente para este caso.
 			{Label: "trunc", Detail: i18n.Msg{ES: "Vaciar una tabla (SQLite no tiene TRUNCATE)", EN: "Empty a table (SQLite has no TRUNCATE)"}, Body: "DELETE FROM ${1:tabla};"},
-						{Label: "pragma", Detail: i18n.Msg{ES: "PRAGMA table_info(…)", EN: "PRAGMA table_info(…)"}, Body: "PRAGMA table_info(${1:tabla});"},
+			{Label: "pragma", Detail: i18n.Msg{ES: "PRAGMA table_info(…)", EN: "PRAGMA table_info(…)"}, Body: "PRAGMA table_info(${1:tabla});"},
+			{Label: "today", Detail: i18n.Msg{ES: "WHERE … es de hoy (date('now'))", EN: "WHERE … is today (date('now'))"}, Body: "WHERE ${1:fecha} >= date('now')\n  AND ${1:fecha} < date('now', '+1 day')"},
+			{Label: "json", Detail: i18n.Msg{ES: "Leer un campo de una columna JSON (json_extract)", EN: "Read a field of a JSON column (json_extract)"}, Body: "SELECT json_extract(${1:columna}, '$.${2:clave}') AS ${2:clave}\nFROM ${3:tabla};"},
 		},
 	})
 }

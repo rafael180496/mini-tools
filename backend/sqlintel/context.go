@@ -126,6 +126,13 @@ type Context struct {
 	// Call is the stored-routine call whose argument the cursor is starting,
 	// nil anywhere else. It is what lets "PROC(|" offer the parameter names.
 	Call *CallSlot `json:"-"`
+	// Slot es lo que el cursor está a punto de escribir cuando la cláusula no
+	// alcanza: un operador, un sentido de orden, la cláusula que sigue a una
+	// tabla. Ver intent.go.
+	Slot Slot `json:"-"`
+	// Listed son las columnas que la lista del cursor ya escribió (las de
+	// "INSERT INTO t (a, |" o los destinos de "SET a = 1, |"), en minúsculas.
+	Listed map[string]bool `json:"-"`
 }
 
 // Analyze resolves the cursor's context inside src. cursor is a rune offset.
@@ -167,6 +174,8 @@ func Analyze(src []rune, cursor int) Context {
 	// arguments can span lines the statement split does not care about.
 	ctx.Variables = BlockVariables(tokens, cursor)
 	ctx.Call = CallSlotAt(tokens, cursor, ctx.From)
+	ctx.Slot = detectSlot(stmt, ctx)
+	ctx.Listed = listedColumns(stmt, ctx)
 	return ctx
 }
 

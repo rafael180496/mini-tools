@@ -36,7 +36,7 @@ type RedisServerInfo struct {
 	// MaxMemoryBytes is 0 when no limit is configured, which is Redis's
 	// default and NOT the same as "no memory available" — the UI says
 	// "sin límite" rather than drawing a 0-capacity bar.
-	MaxMemoryBytes int64  `json:"maxMemoryBytes"`
+	MaxMemoryBytes  int64  `json:"maxMemoryBytes"`
 	MaxMemoryPolicy string `json:"maxMemoryPolicy,omitempty"`
 	// FragmentationRatio is used_memory_rss / used_memory. Meaningfully
 	// above 1 means the allocator is holding memory the dataset no longer

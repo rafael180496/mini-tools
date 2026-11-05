@@ -11,6 +11,7 @@ import (
 //
 // Hard rules for every entry added here — see .claude/specs/vault-migrations.md
 // and .claude/rules/technical.md:
+//
 //   - Additive only: CREATE TABLE IF NOT EXISTS, or ALTER TABLE ... ADD COLUMN
 //     ... DEFAULT .... Never DELETE/DROP/rewrite existing rows.
 //
@@ -22,7 +23,9 @@ import (
 //     reescritura de datos vivos: no hay ningún camino de la app que vuelva a
 //     escribir ahí. Cualquier otra migración destructiva necesita la misma
 //     decisión explícita; no alcanza con citar a esta.
+//
 //   - Never touch vault_meta.verifier or vault_meta.verifier_nonce.
+//
 //   - apply must be idempotent-safe within its own transaction — it only
 //     ever runs once per version per database (guarded by applyMigrations),
 //     but a migration that fails mid-way must not corrupt state on retry.

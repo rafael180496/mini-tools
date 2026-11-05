@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.4-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.5-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -748,8 +748,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.4.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.4/mini-tools-v2.10.4.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.10.4-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.4/mini-tools-v2.10.4-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **2.10.4 sin verificar en una Windows real** (la 2.10.3 sí se probó en Windows 10 y 11), ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.5.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.5/mini-tools-v2.10.5.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.10.5-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.5/mini-tools-v2.10.5-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **2.10.5 sin verificar en una Windows real** (la 2.10.3 sí se probó en Windows 10 y 11), ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -875,7 +875,7 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 
 ## Requisitos
 
-- [Go](https://go.dev/dl/) 1.26 o superior
+- [Go](https://go.dev/dl/) 1.27 o superior
 - [pnpm](https://pnpm.io/) — nunca `npm` ni `yarn`. **No lo instales con `npm install -g`**: los paquetes globales de npm son por versión de Node, así que el próximo `nvm install` lo deja atrás y el build muere con `exec: "pnpm": executable file not found in $PATH` desde adentro de wails. Sale de corepack, que viene con Node, y la versión la fija el campo `packageManager` de `frontend/package.json`:
 
   ```bash
@@ -883,7 +883,7 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
   ```
 
   Los scripts de `scripts/` lo habilitan solos si falta (ver `scripts/ensure-pnpm.sh`).
-- Node.js (solo para compilar el frontend; no hay runtime Node en producción)
+- Node.js 26 LTS (solo para compilar el frontend; no hay runtime Node en producción). La versión está fijada en `frontend/.nvmrc` (`cd frontend && nvm use`). Node 25 en adelante ya no trae corepack: `npm install -g corepack` una vez, o deja que `scripts/ensure-pnpm.sh` lo haga.
 - [Wails CLI v2](https://wails.io/) (el script de instalación de abajo lo instala si falta)
 
 ## Instalación
@@ -988,11 +988,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.4 |
+| Versión | 2.10.5 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.4.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.4/mini-tools-v2.10.4.dmg)** |
-| SHA-256 | `c69be59ec8410a8cde2adf73543c258aae679b9396ca5f03897487294f0334c6` |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.5.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.5/mini-tools-v2.10.5.dmg)** |
+| SHA-256 | `f952e7ef94f625a69e539305978b373615fcec96d8e901e11506dfc332f6e2a8` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -1004,7 +1004,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **2.10.4 todavía no se verificó en una Windows real** (la 2.10.3 se probó en Windows 10 y 11). Es un `.exe` cross-compilado desde macOS y sin firma Authenticode, así que SmartScreen igual avisa la primera vez. Detalle y qué conviene mirar en [releases/windows/README.md](releases/windows/README.md).
+> **2.10.5 todavía no se verificó en una Windows real** (la 2.10.3 se probó en Windows 10 y 11). Es un `.exe` cross-compilado desde macOS y sin firma Authenticode, así que SmartScreen igual avisa la primera vez. Detalle y qué conviene mirar en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -1012,10 +1012,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.4 |
+| Versión | 2.10.5 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **sin verificar en una Windows real** (la 2.10.3 se probó en Windows 10 y 11) |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.4-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.4/mini-tools-v2.10.4-windows-amd64.exe)** |
-| SHA-256 | `de15420412bd35c53a5ff8f45c97629e5d06caa6841bade8f8437e8d9ae509a4` |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.5-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.5/mini-tools-v2.10.5-windows-amd64.exe)** |
+| SHA-256 | `5d233c18d151276b21e02e05784e71328f64d4e7de3487e67335af459e6e0aa5` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

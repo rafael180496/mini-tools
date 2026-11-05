@@ -1,7 +1,7 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS**. **Esta versión (2.10.4) todavía no se
+**cross-compilado desde macOS**. **Esta versión (2.10.5) todavía no se
 verificó en una Windows real** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
 solo empaqueta el `.exe` para distribuirlo manualmente (GitHub Releases, USB,
 red interna, etc.).
@@ -10,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.4 |
-| Archivo | `mini-tools-v2.10.4-windows-amd64.exe` |
-| Tamaño | ~81 MB (81,1 MB; 81 076 224 bytes) — es el binario suelto, bajo el techo de 100 MB |
-| SHA-256 | `de15420412bd35c53a5ff8f45c97629e5d06caa6841bade8f8437e8d9ae509a4` |
+| Versión | 2.10.5 |
+| Archivo | `mini-tools-v2.10.5-windows-amd64.exe` |
+| Tamaño | ~81 MB (81,2 MB; 81 198 592 bytes) — es el binario suelto, bajo el techo de 100 MB |
+| SHA-256 | `5d233c18d151276b21e02e05784e71328f64d4e7de3487e67335af459e6e0aa5` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file`: `PE32+ executable (GUI) x86-64, for MS Windows` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.10.4-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.10.5-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -34,7 +34,7 @@ Get-FileHash mini-tools-v2.10.4-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**No verificado en una Windows real (2.10.4).** Nadie corrió esta versión en
+**No verificado en una Windows real (2.10.5).** Nadie corrió esta versión en
 Windows todavía; la 2.10.3 sí se probó en Windows 10 y Windows 11, pero eso no
 se extrapola a esta. Solo se confirmó que cross-compila limpio, que pasan
 `go build`, `go vet` y el build de Windows en el host de desarrollo, y que el
@@ -72,7 +72,7 @@ que se confirmó y en qué versiones de Windows.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.10.4-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.10.5-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

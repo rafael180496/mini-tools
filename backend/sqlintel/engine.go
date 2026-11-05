@@ -169,7 +169,7 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 		return resp
 	}
 
-	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen, explicit: req.Explicit}
+	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen, explicit: req.Explicit, dialect: dialect}
 	c.lowerKeywords = keywordsInLowerCase(text, ctx)
 
 	switch {
@@ -279,6 +279,12 @@ type collector struct {
 	// script written as "select … from … where" does not grow a "WHERE" in the
 	// middle of it. See keywordsInLowerCase.
 	lowerKeywords bool
+	// dialect lets the position-driven suggestions (sort direction, NULLS
+	// FIRST) ask what the engine supports instead of assuming it.
+	dialect *Dialect
+	// predictedWords are the keywords already offered by position
+	// (see predicted), which the generic sweep must not repeat.
+	predictedWords map[string]bool
 }
 
 // styleKeywords are the words whose spelling says how the author writes
@@ -408,6 +414,9 @@ func (c *collector) schemaRoutines(idx *SchemaIndex, ctx Context) {
 			}
 			continue
 		}
+		if exprClause(ctx.Clause) && !r.IsFunction {
+			continue
+		}
 		c.add(r.Name, KindRoutine, r.Detail(), r.Name+r.ArgSnippet(), r.Info(), bonus)
 	}
 }
@@ -477,35 +486,67 @@ func (c *collector) variables(ctx Context) {
 	}
 }
 
+// exprClause reports whether the clause holds an EXPRESSION — a place where
+// only something that returns a value can go. A procedure cannot: it has no
+// result to compare, project or sort by, so offering one there is a
+// suggestion that cannot compile.
+func exprClause(cl Clause) bool {
+	switch cl {
+	case ClauseSelect, ClauseWhere, ClauseOn, ClauseGroupBy, ClauseHaving,
+		ClauseOrderBy, ClauseSet, ClauseValues:
+		return true
+	default:
+		return false
+	}
+}
+
 // unqualified is the bare-prefix path, where the clause decides what is
 // even a candidate.
 func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context) {
+	// A list of columns of ONE table (the INSERT column list, the target of a
+	// SET assignment) has a closed set of candidates. When the table
+	// resolves, nothing else is offered: not the other tables, not functions.
+	if c.targetColumns(idx, ctx) {
+		return
+	}
+
 	switch ctx.Clause {
 	case ClauseFrom, ClauseJoin:
 		// Proposed before the catalog sweep so it is in the list even if the
 		// table count later truncates it.
 		c.aliasHint(idx, ctx)
-		c.tables(idx)
-		c.schemas(idx)
+		c.nextClauses(ctx)
+		// Right after a table the next word is a clause or an alias, never
+		// another table; the catalog sweep would only bury them.
+		if ctx.Slot.Kind != SlotAfterTable || c.prefix != "" {
+			c.tables(idx)
+			c.schemas(idx)
+		}
 		c.keywords(dialect, 0)
 
 	case ClauseSelect, ClauseWhere, ClauseOn, ClauseGroupBy, ClauseHaving,
 		ClauseOrderBy, ClauseSet, ClauseInsertColumns:
+		c.slotItems(idx, ctx)
 		c.projected(ctx)
+		c.groupByList(ctx)
 		c.starExpansion(idx, ctx)
-		c.columnsInScope(idx, ctx)
+		found := c.columnsInScope(idx, ctx)
 		c.variables(ctx)
 		c.functions(dialect, ctx.Clause)
-		c.routines(idx)
+		c.routines(idx, true)
 		c.keywords(dialect, 0)
 		// Table names stay available but sink below columns: writing
 		// "orders.id" in a WHERE is legal, just rarer than naming a column.
-		c.tablesWithBonus(idx, -150)
+		// On the self-opened popup they go altogether once the scope gave
+		// columns — with nothing typed, a table list in a WHERE is noise.
+		if !(found && c.schemaOnly) {
+			c.tablesWithBonus(idx, -150)
+		}
 
 	case ClauseValues:
 		c.variables(ctx)
 		c.functions(dialect, ctx.Clause)
-		c.routines(idx)
+		c.routines(idx, true)
 		c.keywords(dialect, 0)
 
 	default:
@@ -523,7 +564,7 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		// invoke one — "CALL x(...)", "EXEC x ...", or a bare "PKG.PROC(...)"
 		// inside a PL/SQL block. Without this the completion knew the
 		// routines but never offered them where they are actually written.
-		c.routines(idx)
+		c.routines(idx, false)
 	}
 }
 
@@ -552,6 +593,11 @@ func (c *collector) projected(ctx Context) {
 	}
 	for _, p := range ctx.Projected {
 		if p.IsAlias {
+			// GROUP BY cannot group by an aggregate: "total" in
+			// "COUNT(*) AS total" is the last name it wants.
+			if ctx.Clause == ClauseGroupBy && isAggregateExpr(p.Expr) {
+				continue
+			}
 			detail := i18n.T(i18n.Msg{ES: "alias de esta consulta", EN: "alias in this query"})
 			if p.Expr != "" {
 				detail += " · " + p.Expr
@@ -822,9 +868,9 @@ func (c *collector) schemas(idx *SchemaIndex) {
 // references. When nothing resolved yet — a query whose FROM is not typed —
 // it falls back to every indexed column rather than to nothing, so the
 // engine never suggests less than it could.
-func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) {
+func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) bool {
 	if idx == nil {
-		return
+		return false
 	}
 	found := false
 	for _, ref := range ctx.Refs {
@@ -848,7 +894,7 @@ func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) {
 		}
 	}
 	if found {
-		return
+		return true
 	}
 	seen := make(map[string]bool, len(idx.Columns))
 	idx.AllTables(func(t *TableEntry) {
@@ -860,10 +906,18 @@ func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) {
 			c.add(col.Name, KindColumn, columnDetail(col), "", "", 250)
 		}
 	})
+	return false
 }
 
-func (c *collector) columnsOf(t *TableEntry, bonus int) {
+func (c *collector) columnsOf(t *TableEntry, bonus int) { c.columnsOfExcept(t, bonus, nil) }
+
+// columnsOfExcept is columnsOf leaving out the columns already written in the
+// list being edited (lower case names).
+func (c *collector) columnsOfExcept(t *TableEntry, bonus int, skip map[string]bool) {
 	for _, col := range t.Columns {
+		if skip[col.Lower] {
+			continue
+		}
 		extra := 0
 		// A primary key is what a WHERE or an ON is usually about, and a
 		// foreign key is the next most likely; small nudges, not overrides.
@@ -905,11 +959,16 @@ func (c *collector) functions(d *Dialect, clause Clause) {
 // tab stop per argument. Accepting a routine therefore lands a call whose
 // arguments are already named and ordered, instead of an empty pair of
 // parentheses the caller has to go look the signature up for.
-func (c *collector) routines(idx *SchemaIndex) {
+func (c *collector) routines(idx *SchemaIndex, onlyFunctions bool) {
 	if idx == nil || c.schemaOnly {
 		return
 	}
 	for _, r := range idx.Routines {
+		// Where an expression goes, a procedure cannot: only what returns a
+		// value is a candidate.
+		if onlyFunctions && !r.IsFunction {
+			continue
+		}
 		c.add(r.Call, KindRoutine, r.Detail(), r.Snippet(), r.Info(), 120)
 	}
 }
@@ -920,6 +979,9 @@ func (c *collector) routines(idx *SchemaIndex) {
 // the list.
 func (c *collector) packageMembers(members []RoutineEntry) {
 	for _, r := range members {
+		if exprClause(c.clause) && !r.IsFunction {
+			continue
+		}
 		c.add(r.Name, KindRoutine, r.Detail(), r.Name+r.ArgSnippet(), r.Info(), 400)
 	}
 }
@@ -931,6 +993,9 @@ func (c *collector) keywords(d *Dialect, bonus int) {
 	for _, k := range d.AllKeywords() {
 		if c.lowerKeywords {
 			k = strings.ToLower(k)
+		}
+		if c.predictedWords[strings.ToLower(k)] {
+			continue
 		}
 		c.add(k, KindKeyword, "", "", "", bonus)
 	}
@@ -975,7 +1040,7 @@ func (c *collector) joins(idx *SchemaIndex, ctx Context) {
 		// are most useful. They are appended pre-scored instead.
 		c.items = append(c.items, Item{
 			Label: label, Kind: KindJoin, Detail: detail, Apply: apply,
-			Info: i18n.T(i18n.Msg{ES: "Condición derivada de la llave foránea declarada en el esquema.", EN: "Condition derived from the foreign key declared in the schema."}),
+			Info:  i18n.T(i18n.Msg{ES: "Condición derivada de la llave foránea declarada en el esquema.", EN: "Condition derived from the foreign key declared in the schema."}),
 			Score: 1600,
 		})
 	}

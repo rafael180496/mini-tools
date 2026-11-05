@@ -56,8 +56,8 @@ type HTTPRunResult struct {
 
 // HTTPRunSummary es el informe completo.
 type HTTPRunSummary struct {
-	RunID      string          `json:"runId"`
-	Collection string          `json:"collection"`
+	RunID      string `json:"runId"`
+	Collection string `json:"collection"`
 	// Environment es el nombre del entorno con el que se corrió, o "" si no
 	// había ninguno. Va en el informe porque el mismo resumen contra otro
 	// entorno significa otra cosa.

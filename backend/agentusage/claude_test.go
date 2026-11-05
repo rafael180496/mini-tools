@@ -177,7 +177,7 @@ func TestAntigravityReportsActivityNotTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO conversation_summaries VALUES
-		('a', 12, 'file://`+repo+`', '2026-08-14T10:00:00Z'),
+		('a', 12, 'file://` + repo + `', '2026-08-14T10:00:00Z'),
 		('b', 3, 'file:///otro/lado', '2026-08-10T10:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}

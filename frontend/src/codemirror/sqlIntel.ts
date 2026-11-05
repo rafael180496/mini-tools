@@ -14,7 +14,7 @@
 // engine itself measures in microseconds; the bridge hop is the cost, and
 // this is what keeps it off the hot path.
 
-import {acceptCompletion, completionStatus, snippetCompletion} from '@codemirror/autocomplete'
+import {acceptCompletion, completionStatus, snippetCompletion, startCompletion} from '@codemirror/autocomplete'
 import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete'
 import {StateEffect, StateField, Prec} from '@codemirror/state'
 import type {Extension} from '@codemirror/state'
@@ -209,7 +209,21 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         // "into" and "update" name a table just like "from" does; "=>" opens
         // the value of a named argument, where the block's variables are the
         // answer (Go only answers there when the block declares some).
-        const autoOpen = /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in|into|update)\s+|[,(]\s*|=>\s*)$/i.test(before)
+        //
+        // Además abre solo después de un operador de comparación ("col = |",
+        // "col <> |") y de las palabras que siempre van seguidas de una
+        // expresión (CASE/WHEN/THEN/ELSE, NOT, EXISTS, BETWEEN, IS, USING,
+        // TABLE, RETURNING, DISTINCT): ahí lo próximo es casi seguro una columna,
+        // un valor o una palabra clave, y esperar al Ctrl-Espacio era lo que
+        // hacía sentir al editor poco predictivo.
+        const autoOpen =
+            /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in|into|update|case|when|then|else|not|exists|between|is|using|table|returning|distinct)\s+|[,(]\s*|=>\s*|(?:<>|!=|<=|>=|[=<>])\s*)$/i.test(
+                before,
+            )
+        // "WHERE col |", "AND t.col |", "ORDER BY col |": después de un
+        // operando completo lo que sigue es un operador (=, IN, IS NULL,
+        // LIKE…) o ASC/DESC. El motor sabe proponerlos; hacía falta abrir.
+        const operandSlot = /\b(?:where|and|or|on|having|by)\s+[\w$#]+(?:\.[\w$#]+)?\s+$/i.test(before)
         // "FROM clientes |" is the alias position, and it is the one place
         // the engine PROPOSES a name instead of looking one up — so it has
         // to open by itself. The rule above cannot see it: the word right
@@ -220,7 +234,7 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         // por escribir. Go aplica la misma exclusión del lado del motor.
         const aliasSlot = /\b(?:from|join|update|using)\s+[\w$#]+(?:\.[\w$#]+){0,2}\s+$/i.test(before)
 
-        if (!context.explicit && !qualified && !autoOpen && !aliasSlot && (!word || word.from === word.to)) return null
+        if (!context.explicit && !qualified && !autoOpen && !aliasSlot && !operandSlot && (!word || word.from === word.to)) return null
 
         // Vault bloqueado, conexión cerrada o una respuesta que nunca llega:
         // en los tres casos no hay nada que sugerir, y en ninguno se deja la
@@ -532,7 +546,20 @@ function replaceCompletion(view: EditorView): boolean {
 
 // Va con la precedencia más alta, igual que la Tab del texto fantasma, y
 // ANTES que ella: con el popup abierto, Tab elige del popup.
-export const sqlCompletionKeys: Extension = Prec.highest(keymap.of([{key: 'Tab', run: replaceCompletion}]))
+//
+// Abrir el popup a mano: Ctrl-Espacio (el de CodeMirror) en macOS lo suele
+// tomar el sistema para cambiar el idioma del teclado y nunca llega al editor,
+// así que hay tres alternativas que no chocan con ningún atajo de la app:
+// Alt-Espacio, Mod-Shift-Espacio y Alt-/ (el de Emacs / IntelliJ).
+const openCompletion = (view: EditorView) => startCompletion(view)
+export const sqlCompletionKeys: Extension = Prec.highest(
+    keymap.of([
+        {key: 'Tab', run: replaceCompletion},
+        {key: 'Alt-Space', run: openCompletion, preventDefault: true},
+        {key: 'Mod-Shift-Space', run: openCompletion, preventDefault: true},
+        {key: 'Alt-/', run: openCompletion, preventDefault: true},
+    ]),
+)
 
 // --- Inline ghost text ----------------------------------------------------
 

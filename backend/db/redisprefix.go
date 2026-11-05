@@ -46,7 +46,7 @@ type RedisPrefixReport struct {
 	// than reaching the end of the keyspace.
 	Truncated bool `json:"truncated,omitempty"`
 	// MemorySampled reports whether Bytes means anything.
-	MemorySampled bool `json:"memorySampled,omitempty"`
+	MemorySampled bool   `json:"memorySampled,omitempty"`
 	Separator     string `json:"separator"`
 }
 

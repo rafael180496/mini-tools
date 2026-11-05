@@ -714,7 +714,6 @@ func readResponse(hresp *http.Response, s Settings) (*Response, error) {
 		data = data[:s.MaxBodyBytes]
 	}
 
-
 	resp := &Response{
 		Status:     hresp.StatusCode,
 		StatusText: strings.TrimSpace(strings.TrimPrefix(hresp.Status, fmt.Sprint(hresp.StatusCode))),

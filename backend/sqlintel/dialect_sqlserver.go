@@ -42,7 +42,14 @@ func init() {
 			{Label: "act", Detail: i18n.Msg{ES: "Consultas en curso (sys.dm_exec_requests)", EN: "Running queries (sys.dm_exec_requests)"}, Body: "SELECT r.session_id, r.status, r.wait_type, r.total_elapsed_time, t.text\nFROM sys.dm_exec_requests r\nCROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t\nWHERE r.session_id <> @@SPID;"},
 			// SQL Server no renombra con ALTER TABLE.
 			{Label: "ren", Detail: i18n.Msg{ES: "Renombrar una tabla (sp_rename)", EN: "Rename a table (sp_rename)"}, Body: "EXEC sp_rename '${1:tabla}', '${2:nombre_nuevo}';"},
-						{Label: "try", Detail: i18n.Msg{ES: "BEGIN TRY … BEGIN CATCH", EN: "BEGIN TRY … BEGIN CATCH"}, Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_MESSAGE();\nEND CATCH"},
+			{Label: "try", Detail: i18n.Msg{ES: "BEGIN TRY … BEGIN CATCH", EN: "BEGIN TRY … BEGIN CATCH"}, Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_MESSAGE();\nEND CATCH"},
+			{Label: "today", Detail: i18n.Msg{ES: "WHERE … es de hoy (CAST(GETDATE() AS date))", EN: "WHERE … is today (CAST(GETDATE() AS date))"}, Body: "WHERE ${1:fecha} >= CAST(GETDATE() AS date)\n  AND ${1:fecha} < DATEADD(day, 1, CAST(GETDATE() AS date))"},
+			{Label: "last", Detail: i18n.Msg{ES: "Las últimas N filas por fecha (TOP)", EN: "The last N rows by date (TOP)"}, Body: "SELECT TOP ${3:10} *\nFROM ${1:tabla}\nORDER BY ${2:fecha} DESC;"},
+			{Label: "bak", Detail: i18n.Msg{ES: "Copia de respaldo de una tabla (SELECT … INTO)", EN: "Backup copy of a table (SELECT … INTO)"}, Body: "SELECT *\nINTO ${1:tabla_bak}\nFROM ${2:tabla}\nWHERE ${3:condicion};"},
+			{Label: "top", Detail: i18n.Msg{ES: "SELECT TOP n … ORDER BY … DESC", EN: "SELECT TOP n … ORDER BY … DESC"}, Body: "SELECT TOP ${1:10} ${2:*}\nFROM ${3:tabla}\nORDER BY ${4:columna} DESC;"},
+			{Label: "nolock", Detail: i18n.Msg{ES: "SELECT … WITH (NOLOCK) (lectura sin bloqueos)", EN: "SELECT … WITH (NOLOCK) (lock-free read)"}, Body: "SELECT ${1:*}\nFROM ${2:tabla} WITH (NOLOCK)\nWHERE ${3:condicion};"},
+			{Label: "tryc", Detail: i18n.Msg{ES: "TRY/CATCH que informa el error y lo relanza (THROW)", EN: "TRY/CATCH that reports the error and rethrows (THROW)"}, Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_NUMBER() AS numero, ERROR_MESSAGE() AS mensaje, ERROR_LINE() AS linea;\n    THROW;\nEND CATCH"},
+			{Label: "insid", Detail: i18n.Msg{ES: "INSERT y devolver el id nuevo (SCOPE_IDENTITY)", EN: "INSERT and return the new id (SCOPE_IDENTITY)"}, Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:valores});\n\nSELECT SCOPE_IDENTITY() AS id_nuevo;"},
 		},
 	})
 }

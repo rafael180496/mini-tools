@@ -27,6 +27,15 @@
 # no interactivo eso queda colgado esperando una tecla que nadie va a apretar.
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
+# Node 25 en adelante (la LTS del proyecto es la 26, ver frontend/.nvmrc) ya NO trae
+# corepack. Se instala una vez como paquete de npm y desde ahí sigue mandando el
+# `packageManager` de frontend/package.json: la versión de pnpm no depende de
+# qué haya quedado instalado globalmente.
+if ! command -v pnpm >/dev/null 2>&1 && ! command -v corepack >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  echo "==> Este Node no trae corepack (Node 25+); instalándolo con npm"
+  npm install -g corepack >/dev/null 2>&1 || true
+fi
+
 if ! command -v pnpm >/dev/null 2>&1 && command -v corepack >/dev/null 2>&1; then
   echo "==> pnpm no está en el PATH; habilitándolo con corepack"
   corepack enable pnpm >/dev/null 2>&1 || true
@@ -36,6 +45,7 @@ if ! command -v pnpm >/dev/null 2>&1; then
   echo "pnpm no está disponible, y este proyecto usa pnpm siempre (nunca npm ni yarn)."
   echo "Con Node ya instalado, habilitalo con:"
   echo "    corepack enable pnpm"
-  echo "Si tampoco tenés corepack, actualizá Node: viene incluido desde la 16."
+  echo "Si tampoco tenés corepack (Node 25+ ya no lo incluye):"
+  echo "    npm install -g corepack && corepack enable pnpm"
   exit 1
 fi
