@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.6] - 2026-11-18
+
+### Cambiado
+
+- **Herramientas y dependencias al día.** Node pasa a la LTS 26.13.1 (`frontend/.nvmrc`), Go a 1.27.4 (`go.mod`) y pnpm a 11.28.12.
+  - Backend: los drivers de PostgreSQL (pgx 5.13), SQL Server (go-mssqldb 1.12) y MongoDB (2.10), SQLite (modernc 1.62) y las librerías `golang.org/x/*`, entre otras.
+  - Frontend: Vite 8.3.8, Tailwind 4.3.5, `@vitejs/plugin-react` 6.3.0, `@codemirror/lint` 6.9.8 y `@babel/runtime` 8.1.2.
+
 ## [2.10.5] - 2026-11-04
 
 ### Agregado
