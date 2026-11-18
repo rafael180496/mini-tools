@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/agents"
 	"mini-tools/backend/i18n"
 )
@@ -82,6 +84,7 @@ func runOpencodeStats(ctx context.Context, bin, dir string, days int, project bo
 		args = append(args, "--project", ".")
 	}
 	cmd := exec.CommandContext(ctx, argv[0], args...)
+	hidewin.Hide(cmd)
 	cmd.Dir = dir
 	cmd.Env = agents.Env("PWD=" + dir)
 	return cmd.Output()

@@ -2,11 +2,13 @@ package git
 
 import (
 	"context"
-	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"mini-tools/backend/hidewin"
+	"mini-tools/backend/i18n"
 )
 
 // runNetwork executes a command that talks to a remote: longer deadline, and
@@ -522,6 +524,7 @@ func (r *Runner) runWithStdin(root, stdin string, args ...string) error {
 	defer cancel()
 
 	cmd := execCommand(ctx, bin, args...)
+	hidewin.Hide(cmd)
 	cmd.Dir = root
 	cmd.Env = hardenedEnv(nil)
 	cmd.Stdin = strings.NewReader(stdin)

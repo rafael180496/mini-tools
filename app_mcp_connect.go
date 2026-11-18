@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/agents"
 	"mini-tools/backend/i18n"
 	"mini-tools/backend/mcpconf"
@@ -147,6 +149,7 @@ func (a *App) ConnectMCP(agentID string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), mcpConnectTimeout)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], args...)...)
+			hidewin.Hide(cmd)
 			cmd.Env = agents.Env()
 			out, err := cmd.CombinedOutput()
 			return strings.TrimSpace(string(out)), err

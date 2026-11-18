@@ -29,7 +29,9 @@ export default function ConfirmDialog({title, description, confirmLabel, danger,
                     <Icon name={danger ? 'warning' : 'help'} size={18} className={danger ? 'text-error' : 'text-primary'} />
                     {title}
                 </h2>
-                <p className="text-xs text-on-surface-variant">{description}</p>
+                {/* wrap-anywhere: una ruta o un nombre largo sin espacios
+                    (p. ej. la carpeta de un repo) se salía del diálogo. */}
+                <p className="text-xs text-on-surface-variant wrap-anywhere">{description}</p>
                 {children}
                 <div className="mt-2 flex justify-end gap-2">
                     <button

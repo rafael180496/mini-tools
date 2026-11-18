@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/i18n"
 )
 
@@ -182,6 +184,7 @@ func (w *Workspace) gitFiles(ctx context.Context, rel string) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, gitListTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, gitBin, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", rel)
+	hidewin.Hide(cmd)
 	cmd.Dir = w.root
 	cmd.Env = append(env(), "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.Output()

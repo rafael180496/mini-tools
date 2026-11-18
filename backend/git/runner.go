@@ -3,13 +3,15 @@ package git
 import (
 	"bytes"
 	"context"
-	"mini-tools/backend/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"mini-tools/backend/hidewin"
+	"mini-tools/backend/i18n"
 )
 
 // defaultTimeout bounds local, non-network commands. Network operations pass
@@ -73,6 +75,7 @@ func (r *Runner) probe() {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
+	hidewin.Hide(cmd)
 	cmd.Env = hardenedEnv(nil)
 	out, verr := cmd.Output()
 	if verr != nil {
@@ -171,6 +174,7 @@ func (r *Runner) runRaw(ctx context.Context, repoPath string, env []string, args
 	}
 
 	cmd := exec.CommandContext(ctx, bin, args...)
+	hidewin.Hide(cmd)
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}

@@ -31,8 +31,6 @@ package agentmodels
 import (
 	"context"
 	"encoding/json"
-	"mini-tools/backend/agents"
-	"mini-tools/backend/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +38,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"mini-tools/backend/agents"
+	"mini-tools/backend/hidewin"
+	"mini-tools/backend/i18n"
 )
 
 // Model es una opción del selector.
@@ -197,7 +199,9 @@ func antigravityModels() []Model {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, argv[0], append(argv[1:], "models")...).Output()
+	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "models")...)
+	hidewin.Hide(cmd)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}

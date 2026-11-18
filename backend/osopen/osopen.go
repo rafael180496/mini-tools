@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/i18n"
 )
 
@@ -95,6 +97,8 @@ func OpenInEditor(editorID, path string) error {
 		// quedar corriendo horas. Esperarla dejaría esta llamada colgada todo
 		// ese tiempo.
 		cmd := exec.Command(e.Path, dir)
+		// En Windows un editor suele ser un .cmd (code.cmd): sin esto abre una consola.
+		hidewin.NoConsole(cmd)
 		if err := cmd.Start(); err != nil {
 			return i18n.Errorf(i18n.Msg{ES: "no se pudo abrir %s: %w", EN: "couldn't open %s: %w"}, e.Label, err)
 		}
@@ -125,6 +129,7 @@ func Reveal(path string) error {
 		cmd = exec.Command("xdg-open", dir)
 	}
 
+	hidewin.NoConsole(cmd)
 	if err := cmd.Start(); err != nil {
 		return i18n.Errorf(i18n.Msg{ES: "no se pudo abrir el explorador de archivos: %w", EN: "couldn't open the file manager: %w"}, err)
 	}

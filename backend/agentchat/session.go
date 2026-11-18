@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"mini-tools/backend/i18n"
-	"mini-tools/backend/llm"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"mini-tools/backend/hidewin"
+	"mini-tools/backend/i18n"
+	"mini-tools/backend/llm"
 )
 
 // maxLineBytes acota una línea del stream. Un evento puede traer el contenido
@@ -359,6 +361,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 
 	args = withExec(t, args)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	hidewin.Hide(cmd)
 	cmd.Dir = t.Cwd
 	cmd.Env = append(append([]string{}, t.Env...), turnEnv(t)...)
 
@@ -483,6 +486,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter,
 
 	args = withExec(t, args)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	hidewin.Hide(cmd)
 	cmd.Dir = t.Cwd
 	// El entorno del hook viaja al proceso del agente para que lo herede el
 	// re-exec que el CLI va a lanzar: el hook necesita saber a qué socket

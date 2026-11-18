@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/agents"
 	"mini-tools/backend/i18n"
 )
@@ -145,6 +147,7 @@ func opencodeTurnUsage(t Turn, session string) *Usage {
 	ctx, cancel := context.WithTimeout(context.Background(), opencodeExportTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "session", "export", session, "--standalone")...)
+	hidewin.Hide(cmd)
 	cmd.Dir = t.Cwd
 	cmd.Env = append(append([]string{}, t.Env...), opencodeEnv(t.Cwd, "", nil)...)
 	out, err := cmd.Output()
@@ -295,6 +298,7 @@ func opencodeConversations(repoRoot string) ([]Conversation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opencodeListTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "session", "list", "--format", "json", "--standalone")...)
+	hidewin.Hide(cmd)
 	cmd.Dir = repoRoot
 	cmd.Env = agents.Env(opencodeEnv(repoRoot, "", nil)...)
 	out, err := cmd.Output()

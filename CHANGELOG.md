@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.7] - 2026-11-18
+
+### Corregido
+
+- **"Recordar clave maestra" volvía a pedir la clave en cada inicio (Windows 11).** El interruptor se guarda en el vault, pero la clave vive en el llavero del sistema de cada máquina. Al restaurar un backup hecho con la opción activa, o si el Administrador de credenciales de Windows perdía la entrada, el interruptor seguía encendido sin nada con qué desbloquear, y nada volvía a guardar la clave. Ahora, al desbloquear con la clave maestra, si la opción está activa se vuelve a guardar en el llavero, y desde el siguiente inicio entra sola. Si el llavero no deja guardarla, el interruptor se apaga para no mostrar algo que no está pasando.
+- **Las rutas largas se salían de los diálogos de confirmación.** En "Quitar repositorio", la carpeta del repo cruzaba el borde del diálogo. Ahora una ruta o un nombre sin espacios corta en la línea siguiente, en todos los diálogos de confirmación.
+- **En Windows se abrían decenas de ventanas "Terminal" al cargar un repositorio o correr un comando.** Cada proceso que lanza la app (git, los agentes de IA, los comandos y la búsqueda del workspace, el chequeo de MCP, abrir el editor o el explorador) abría su propia consola, y el grafo de Git corre muchos `git` seguidos. Ahora esos procesos corren sin ventana, igual que ya lo hacían docker y la lista de puertos. En macOS y Linux no cambia nada.
+
 ## [2.10.6] - 2026-11-18
 
 ### Cambiado

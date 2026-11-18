@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"mini-tools/backend/hidewin"
+
 	"mini-tools/backend/i18n"
 )
 
@@ -91,6 +93,7 @@ func queryAntigravity(ctx context.Context, spec QuerySpec) (AgentLimits, error) 
 
 	args := append(append([]string{}, spec.Argv[1:]...), "--print", "/usage", "--output-format", "json")
 	cmd := exec.CommandContext(ctx, spec.Argv[0], args...)
+	hidewin.Hide(cmd)
 	cmd.Env = spec.Env
 	cmd.Dir = spec.Cwd
 

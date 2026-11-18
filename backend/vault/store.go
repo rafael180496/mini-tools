@@ -197,7 +197,11 @@ func (s *Store) Unlock(password string) error {
 	key := mtcrypto.DeriveKey(passwordBytes, salt)
 	mtcrypto.Zero(passwordBytes)
 
-	return s.validateAndSetKey(key)
+	if err := s.validateAndSetKey(key); err != nil {
+		return err
+	}
+	s.syncRememberedKey()
+	return nil
 }
 
 // validateAndSetKey tries to decrypt the stored verifier with key — if GCM
