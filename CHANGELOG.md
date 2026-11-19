@@ -4,6 +4,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **Los archivos nuevos (`?`) de la lista de cambios de Git se ven completos.** Al abrir o desplegar un archivo sin seguimiento, el visor decía "Sin cambios para mostrar" o "Sin cambios de contenido", porque git no compara un archivo que todavía no está en el índice. Ahora se muestra entero como archivo nuevo, con todas sus líneas agregadas, y se puede preparar desde el visor igual que cualquier cambio. Un binario sin seguimiento se avisa como binario.
+
+### Agregado
+
+- **Los diffs de Git se ven con los colores del lenguaje.** El visor (vista unificada y lado a lado) y el diff desplegado en la lista de cambios colorean el código según el tipo de archivo, sobre el verde y el rojo de siempre. Un archivo de un lenguaje que no se reconoce se sigue mostrando como texto con su diff.
+- **Resaltado para más lenguajes y tipos de archivo** en los diffs, en el editor de archivos de Git y en los bloques de código: fuentes de PowerBuilder (`.srw`, `.srd`, `.sru`, `.srf`… con un modo propio de PowerScript), COBOL y Pro\*COBOL, Pro\*C (`.pc`), Makefile, scripts `.unx`, `.env.*`, `.gitignore`/`.dockerignore`/`.gitattributes`, Visual Basic y VBScript, CMake, Nginx, Protocol Buffers, Haskell, Clojure, Erlang, Elm, Julia, Fortran, Pascal/Delphi, Tcl, Verilog, VHDL, Crystal, D, CoffeeScript, Lisp, Scheme, Stylus, Pug, Jinja/Twig, HTTP, ensamblador, Smalltalk, LaTeX, Haxe, OCaml, F#, NSIS, RPM spec, XQuery, Gherkin, Cypher, SPARQL, Turtle y Octave/MATLAB (este último, eligiéndolo a mano).
+
 ## [2.10.7] - 2026-11-18
 
 ### Corregido

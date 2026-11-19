@@ -58,6 +58,47 @@ export type LanguageId =
     | 'dockerfile'
     | 'diff'
     | 'sql'
+    | 'powerbuilder'
+    | 'cobol'
+    | 'vb'
+    | 'vbscript'
+    | 'cmake'
+    | 'nginx'
+    | 'protobuf'
+    | 'haskell'
+    | 'clojure'
+    | 'erlang'
+    | 'elm'
+    | 'julia'
+    | 'fortran'
+    | 'pascal'
+    | 'tcl'
+    | 'verilog'
+    | 'vhdl'
+    | 'crystal'
+    | 'd'
+    | 'coffeescript'
+    | 'lisp'
+    | 'scheme'
+    | 'stylus'
+    | 'pug'
+    | 'jinja2'
+    | 'http'
+    | 'asm'
+    | 'smalltalk'
+    | 'latex'
+    | 'haxe'
+    | 'ocaml'
+    | 'fsharp'
+    | 'nsis'
+    | 'rpmspec'
+    | 'xquery'
+    | 'gherkin'
+    | 'cypher'
+    | 'sparql'
+    | 'turtle'
+    | 'octave'
+    | 'ignore'
 
 interface LanguageDef {
     id: LanguageId
@@ -135,7 +176,8 @@ const DEFS: LanguageDef[] = [
     {
         id: 'cpp',
         name: 'C / C++',
-        extensions: ['c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hh', 'hxx', 'ino'],
+        // .pc es Pro*C: C con SQL embebido.
+        extensions: ['c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hh', 'hxx', 'ino', 'pc', 'cu', 'cuh'],
         load: async () => (await import('@codemirror/lang-cpp')).cpp(),
     },
     {
@@ -203,8 +245,11 @@ const DEFS: LanguageDef[] = [
     {
         id: 'shell',
         name: 'Shell',
-        extensions: ['sh', 'bash', 'zsh', 'ksh', 'fish', 'bashrc', 'zshrc'],
-        filenames: ['.bashrc', '.zshrc', '.bash_profile', '.profile', '.zprofile'],
+        // Makefile no tiene modo propio en CodeMirror: comparte con shell los
+        // comentarios '#', las variables $(…) y las recetas, que son comandos.
+        // .unx son los scripts de los batches del SGC.
+        extensions: ['sh', 'bash', 'zsh', 'ksh', 'fish', 'bashrc', 'zshrc', 'mk', 'make', 'unx', 'command'],
+        filenames: ['.bashrc', '.zshrc', '.bash_profile', '.profile', '.zprofile', 'makefile', 'gnumakefile', 'bsdmakefile', '.envrc'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/shell')).shell),
     },
     {
@@ -301,6 +346,261 @@ const DEFS: LanguageDef[] = [
         extensions: ['groovy', 'gradle'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/groovy')).groovy),
     },
+    // Fuentes exportados de PowerBuilder: modo propio (./powerscript.ts),
+    // porque el de Visual Basic toma el apóstrofo de una cadena como comentario.
+    {
+        id: 'powerbuilder',
+        name: 'PowerBuilder (PowerScript)',
+        extensions: ['srw', 'srd', 'sru', 'srf', 'srs', 'srm', 'srj', 'srq', 'srp', 'srx', 'srt', 'sra', 'pbg', 'pbt'],
+        load: async () => StreamLanguage.define((await import('./powerscript')).powerScript),
+    },
+    // .pco es Pro*COBOL: COBOL con SQL embebido.
+    {
+        id: 'cobol',
+        name: 'COBOL',
+        extensions: ['cbl', 'cob', 'cpy', 'cobol', 'pco'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/cobol')).cobol),
+    },
+    {
+        id: 'vb',
+        name: 'Visual Basic',
+        extensions: ['vb', 'bas', 'frm', 'cls'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/vb')).vb),
+    },
+    {
+        id: 'vbscript',
+        name: 'VBScript',
+        extensions: ['vbs'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/vbscript')).vbScript),
+    },
+    {
+        id: 'cmake',
+        name: 'CMake',
+        extensions: ['cmake'],
+        filenames: ['cmakelists.txt'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/cmake')).cmake),
+    },
+    {
+        id: 'nginx',
+        name: 'Nginx',
+        extensions: ['nginx'],
+        filenames: ['nginx.conf'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/nginx')).nginx),
+    },
+    {
+        id: 'protobuf',
+        name: 'Protocol Buffers',
+        extensions: ['proto'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/protobuf')).protobuf),
+    },
+    {
+        id: 'haskell',
+        name: 'Haskell',
+        extensions: ['hs', 'lhs'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/haskell')).haskell),
+    },
+    {
+        id: 'clojure',
+        name: 'Clojure',
+        extensions: ['clj', 'cljs', 'cljc', 'edn'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clojure')).clojure),
+    },
+    {
+        id: 'erlang',
+        name: 'Erlang',
+        extensions: ['erl', 'hrl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/erlang')).erlang),
+    },
+    {
+        id: 'elm',
+        name: 'Elm',
+        extensions: ['elm'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/elm')).elm),
+    },
+    {
+        id: 'julia',
+        name: 'Julia',
+        extensions: ['jl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/julia')).julia),
+    },
+    {
+        id: 'fortran',
+        name: 'Fortran',
+        extensions: ['f', 'for', 'f77', 'f90', 'f95', 'f03'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/fortran')).fortran),
+    },
+    {
+        id: 'pascal',
+        name: 'Pascal / Delphi',
+        extensions: ['pas', 'dpr', 'lpr'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/pascal')).pascal),
+    },
+    {
+        id: 'tcl',
+        name: 'Tcl',
+        extensions: ['tcl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/tcl')).tcl),
+    },
+    {
+        id: 'verilog',
+        name: 'Verilog / SystemVerilog',
+        extensions: ['v', 'sv', 'svh', 'vh'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/verilog')).verilog),
+    },
+    {
+        id: 'vhdl',
+        name: 'VHDL',
+        extensions: ['vhd', 'vhdl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/vhdl')).vhdl),
+    },
+    {
+        id: 'crystal',
+        name: 'Crystal',
+        extensions: ['cr'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/crystal')).crystal),
+    },
+    {
+        id: 'd',
+        name: 'D',
+        extensions: ['d', 'di'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/d')).d),
+    },
+    {
+        id: 'coffeescript',
+        name: 'CoffeeScript',
+        extensions: ['coffee'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/coffeescript')).coffeeScript),
+    },
+    {
+        id: 'lisp',
+        name: 'Common Lisp / Emacs Lisp',
+        extensions: ['lisp', 'lsp', 'el', 'cl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/commonlisp')).commonLisp),
+    },
+    {
+        id: 'scheme',
+        name: 'Scheme / Racket',
+        extensions: ['scm', 'ss', 'rkt'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/scheme')).scheme),
+    },
+    {
+        id: 'stylus',
+        name: 'Stylus',
+        extensions: ['styl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/stylus')).stylus),
+    },
+    {
+        id: 'pug',
+        name: 'Pug',
+        extensions: ['pug', 'jade'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/pug')).pug),
+    },
+    {
+        id: 'jinja2',
+        name: 'Jinja / Twig',
+        extensions: ['j2', 'jinja', 'jinja2', 'twig', 'njk'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/jinja2')).jinja2),
+    },
+    {
+        id: 'http',
+        name: 'HTTP',
+        extensions: ['http', 'rest'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/http')).http),
+    },
+    {
+        id: 'asm',
+        name: 'Assembler (GAS)',
+        extensions: ['s', 'asm'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/gas')).gas),
+    },
+    {
+        id: 'smalltalk',
+        name: 'Smalltalk',
+        extensions: ['st'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/smalltalk')).smalltalk),
+    },
+    {
+        id: 'latex',
+        name: 'LaTeX',
+        extensions: ['tex', 'sty', 'ltx', 'bib'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/stex')).stex),
+    },
+    {
+        id: 'haxe',
+        name: 'Haxe',
+        extensions: ['hx'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/haxe')).haxe),
+    },
+    {
+        id: 'ocaml',
+        name: 'OCaml',
+        extensions: ['ml', 'mli'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/mllike')).oCaml),
+    },
+    {
+        id: 'fsharp',
+        name: 'F#',
+        extensions: ['fs', 'fsi', 'fsx'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/mllike')).fSharp),
+    },
+    {
+        id: 'nsis',
+        name: 'NSIS',
+        extensions: ['nsi', 'nsh'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/nsis')).nsis),
+    },
+    {
+        id: 'rpmspec',
+        name: 'RPM spec',
+        extensions: ['spec'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/rpm')).rpmSpec),
+    },
+    {
+        id: 'xquery',
+        name: 'XQuery',
+        extensions: ['xq', 'xquery', 'xqy'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/xquery')).xQuery),
+    },
+    {
+        id: 'gherkin',
+        name: 'Gherkin',
+        extensions: ['feature'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/gherkin')).gherkin),
+    },
+    {
+        id: 'cypher',
+        name: 'Cypher',
+        extensions: ['cypher', 'cql'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/cypher')).cypher),
+    },
+    {
+        id: 'sparql',
+        name: 'SPARQL',
+        extensions: ['rq', 'sparql'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/sparql')).sparql),
+    },
+    {
+        id: 'turtle',
+        name: 'Turtle (RDF)',
+        extensions: ['ttl'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/turtle')).turtle),
+    },
+    // Sin extensión: .m ya es Objective-C. Se elige a mano o por bloque ```matlab.
+    {
+        id: 'octave',
+        name: 'Octave / MATLAB',
+        extensions: [],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/octave')).octave),
+    },
+    // Listas de patrones con comentarios '#': el modo de properties colorea
+    // los comentarios y deja el resto como texto, que es lo que hace falta.
+    {
+        id: 'ignore',
+        name: 'Ignore / atributos',
+        extensions: ['gitignore', 'dockerignore', 'npmignore', 'eslintignore', 'prettierignore', 'gitattributes', 'hgignore'],
+        filenames: ['.gitignore', '.dockerignore', '.npmignore', '.eslintignore', '.prettierignore', '.gitattributes', '.gitmodules', '.helmignore', '.vscodeignore', 'codeowners'],
+        load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/properties')).properties),
+    },
     {
         id: 'diff',
         name: 'Diff / Patch',
@@ -355,6 +655,10 @@ export function languageForPath(path: string): LanguageId {
 
     const exact = BY_FILENAME.get(name)
     if (exact) return exact
+
+    // .env.local, .env.production, .env.example…: la parte después de .env
+    // es el entorno, no una extensión.
+    if (name === '.env' || name.startsWith('.env.')) return 'ini'
 
     // Se prueba de la extensión más larga a la más corta para que
     // "index.d.ts" y "app.blade.php" caigan donde corresponde.
@@ -454,6 +758,15 @@ const FENCE_ALIASES: Record<string, LanguageId> = {
     sqlite: 'sql',
     oracle: 'sql',
     tsql: 'sql',
+    make: 'shell',
+    makefile: 'shell',
+    matlab: 'octave',
+    cobol: 'cobol',
+    powerscript: 'powerbuilder',
+    vba: 'vb',
+    proto: 'protobuf',
+    tex: 'latex',
+    gitignore: 'ignore',
 }
 
 // languageForFence resuelve la etiqueta de un bloque de código de markdown

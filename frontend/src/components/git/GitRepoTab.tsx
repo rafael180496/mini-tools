@@ -4246,7 +4246,7 @@ function CommitDetail({
                                     </span>
                                 )}
                             </div>
-                            {diff && <InlineDiff state={diff} onOpenFull={() => onSelectPath(f.path)} />}
+                            {diff && <InlineDiff state={diff} path={f.path} onOpenFull={() => onSelectPath(f.path)} />}
                         </div>
                     )
                 })}

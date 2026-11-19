@@ -1,9 +1,11 @@
 package git
 
 import (
-	"mini-tools/backend/i18n"
+	"os"
 	"strconv"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // GetStatus reads the working tree. `status --porcelain=v1 -z` is used rather
@@ -162,6 +164,15 @@ func (r *Runner) GetDiff(repoPath string, target DiffTarget) (*FileDiff, error) 
 		return nil, err
 	}
 
+	// Un archivo sin seguimiento no está en el índice, así que `git diff` no
+	// tiene contra qué compararlo y devuelve vacío: la UI decía "sin cambios"
+	// sobre un archivo que es todo cambio. Se arma el parche de archivo nuevo.
+	if (target.Mode == "worktree" || target.Mode == "") && target.Path != "" && strings.TrimSpace(out) == "" {
+		if d, ok := r.untrackedDiff(root, target.Path); ok {
+			return d, nil
+		}
+	}
+
 	d := &FileDiff{Path: target.Path, Patch: out}
 	// git announces an unrenderable file rather than emitting a patch body.
 	if strings.Contains(out, "Binary files ") || strings.Contains(out, "GIT binary patch") {
@@ -260,4 +271,69 @@ func (r *Runner) GetFileAtCommit(repoPath, commit, path string) (string, error) 
 	// commit:path is git's object syntax; the path is relative to the repo
 	// root, never to the process working directory.
 	return r.runLocal(root, "show", commit+":"+path)
+}
+
+// untrackedDiff devuelve el diff de un archivo sin seguimiento como archivo
+// nuevo (todas sus líneas agregadas), con la misma forma que daría
+// `git diff --no-index /dev/null <archivo>`. Se arma acá y no con ese comando
+// porque --no-index sale con código 1 cuando hay diferencias (siempre, en
+// este caso) y /dev/null no es una ruta en Windows. ok es false si el archivo
+// no es un sin seguimiento o no se puede leer: el llamador sigue con lo que
+// devolvió git.
+func (r *Runner) untrackedDiff(root, path string) (*FileDiff, bool) {
+	listed, err := r.runLocal(root, "ls-files", "-z", "--others", "--exclude-standard", "--", path)
+	if err != nil || len(splitNUL(listed)) == 0 {
+		return nil, false
+	}
+	full, err := r.editablePath(root, path)
+	if err != nil {
+		return nil, false
+	}
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		return nil, false
+	}
+
+	d := &FileDiff{Path: path, Stat: DiffStat{FilesChanged: 1}}
+	header := "diff --git a/" + path + " b/" + path + "\nnew file mode 100644\n"
+	if info.Size() > maxEditableBytes {
+		// Demasiado grande para mostrarlo línea por línea: se avisa como
+		// binario, igual que git con un archivo que no puede diffear.
+		d.IsBinary = true
+		return d, true
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return nil, false
+	}
+	if looksBinary(data) {
+		d.IsBinary = true
+		return d, true
+	}
+	if len(data) == 0 {
+		d.Patch = header
+		return d, true
+	}
+
+	content := string(data)
+	noEOL := !strings.HasSuffix(content, "\n")
+	content = strings.TrimSuffix(content, "\n")
+	lines := strings.Split(content, "\n")
+
+	var b strings.Builder
+	b.Grow(len(data) + len(lines) + 128)
+	b.WriteString(header)
+	b.WriteString("--- /dev/null\n+++ b/" + path + "\n")
+	b.WriteString("@@ -0,0 +1," + strconv.Itoa(len(lines)) + " @@\n")
+	for _, l := range lines {
+		b.WriteByte('+')
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	if noEOL {
+		b.WriteString("\\ No newline at end of file\n")
+	}
+	d.Patch = b.String()
+	d.Stat.Insertions = len(lines)
+	return d, true
 }

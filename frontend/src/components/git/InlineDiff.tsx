@@ -2,6 +2,8 @@ import {useMemo} from 'react'
 import {parsePatch} from '../../lib/gitPatch'
 import Icon from '../Icon'
 import {useT} from '../../i18n'
+import TokenText from './DiffTokenText'
+import {buildDiffSyntax, tokensFor, useDiffParser} from './diffSyntax'
 
 // El diff de un archivo, desplegado DENTRO de la lista de cambios.
 //
@@ -33,6 +35,8 @@ export interface InlineDiffState {
 
 interface Props {
     state: InlineDiffState
+    // Ruta del archivo: decide el lenguaje con el que se colorea el diff.
+    path: string
     // Abre el archivo en el panel de diff, que es donde se puede stagear por
     // bloques y editar. Es la salida cuando el diff se cortó por tamaño.
     onOpenFull: () => void
@@ -40,7 +44,7 @@ interface Props {
 
 type Row = {kind: 'hunk' | 'add' | 'del' | 'context'; oldNo: number | null; newNo: number | null; text: string; section?: string}
 
-export default function InlineDiff({state, onOpenFull}: Props) {
+export default function InlineDiff({state, path, onOpenFull}: Props) {
     const t = useT()
     const ti = t.git.diff.inline
     // Se reusa el mismo parser que usa el stage por líneas del panel derecho:
@@ -67,6 +71,18 @@ export default function InlineDiff({state, onOpenFull}: Props) {
         }
         return out
     }, [state.patch])
+
+    // Mismos colores que el panel de la derecha; un lenguaje desconocido se ve
+    // como texto.
+    const parser = useDiffParser(path)
+    const syntax = useMemo(
+        () =>
+            buildDiffSyntax(
+                rows.filter((r) => r.kind !== 'hunk').map((r) => ({kind: r.kind === 'context' ? 'ctx' : r.kind === 'add' ? 'add' : 'del', oldNo: r.oldNo, newNo: r.newNo, text: r.text})),
+                parser,
+            ),
+        [rows, parser],
+    )
 
     if (state.loading) {
         return (
@@ -99,7 +115,7 @@ export default function InlineDiff({state, onOpenFull}: Props) {
     const hidden = rows.length - shown.length
 
     return (
-        <div className="max-h-96 overflow-auto border-y border-outline-variant bg-surface-container-lowest">
+        <div className="syn max-h-96 overflow-auto border-y border-outline-variant bg-surface-container-lowest">
             <table className="w-full border-collapse font-mono text-[10.5px] leading-[1.45]">
                 <tbody>
                     {shown.map((r, i) =>
@@ -124,7 +140,9 @@ export default function InlineDiff({state, onOpenFull}: Props) {
                             <td className="w-3 select-none px-1 text-center align-top text-on-surface-variant/60">
                                 {r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : ''}
                             </td>
-                            <td className="whitespace-pre px-1 align-top">{r.text || ' '}</td>
+                            <td className="whitespace-pre px-1 align-top">
+                                {r.text ? <TokenText tokens={tokensFor(syntax, r.kind === 'context' ? 'ctx' : r.kind, r.oldNo, r.newNo)} text={r.text} /> : ' '}
+                            </td>
                         </tr>
                         ),
                     )}

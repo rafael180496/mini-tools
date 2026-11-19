@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {EditorState, Prec, RangeSetBuilder, type Extension} from '@codemirror/state'
+import {Compartment, EditorState, Prec, RangeSetBuilder, type Extension} from '@codemirror/state'
 import {
     Decoration,
     drawSelection,
@@ -23,6 +23,9 @@ import {buildPatch, docLineMap, hunkSummary, parsePatch, selectionFromDocLines, 
 import Icon from '../Icon'
 import {useT} from '../../i18n'
 import {parseSplitDiff, type SplitRow} from './splitDiff'
+import TokenText from './DiffTokenText'
+import {buildDiffSyntax, tokensFor, useDiffParser, type DiffSyntax, type DiffSyntaxLine} from './diffSyntax'
+import type {Token} from '../../codemirror/highlightStatic'
 
 type ViewMode = 'unified' | 'split'
 
@@ -343,6 +346,42 @@ function patchDecorations(model: PatchModel, ctrl: {current: HunkCtrl}): Extensi
     )
 }
 
+// Colores del lenguaje sobre el parche: un tramo por token, corrido un
+// carácter para saltar el prefijo (+, -, espacio). Es un conjunto fijo por
+// documento —el parche no se edita—, así que se arma una vez y no en cada
+// scroll como las decoraciones de fondo.
+const synMarks = new Map<string, Decoration>()
+function synMark(cls: string): Decoration {
+    let d = synMarks.get(cls)
+    if (!d) {
+        d = Decoration.mark({class: cls})
+        synMarks.set(cls, d)
+    }
+    return d
+}
+
+function syntaxDecorations(model: PatchModel, syntax: DiffSyntax | null): Extension {
+    if (!syntax) return []
+    const builder = new RangeSetBuilder<Decoration>()
+    let pos = 0
+    model.text.split('\n').forEach((line, i) => {
+        const kind = model.kinds[i]
+        if (kind === 'add' || kind === 'del' || kind === 'ctx') {
+            const tokens = tokensFor(syntax, kind, model.oldNo[i], model.newNo[i])
+            if (tokens) {
+                let at = pos + 1
+                for (const t of tokens) {
+                    const end = Math.min(at + t.text.length, pos + line.length)
+                    if (t.cls && end > at) builder.add(at, end, synMark(t.cls))
+                    at = end
+                }
+            }
+        }
+        pos += line.length + 1
+    })
+    return EditorView.decorations.of(builder.finish())
+}
+
 class CellMarker extends GutterMarker {
     constructor(
         readonly text: string,
@@ -432,6 +471,19 @@ export default function DiffViewer({
     const parsed = useMemo(() => (patch ? parsePatch(patch) : {headers: [], hunks: []}), [patch])
     const lineMap = useMemo(() => (patch ? docLineMap(patch) : []), [patch])
     const model = useMemo(() => buildModel(patch), [patch])
+
+    // Resaltado del lenguaje del archivo, si se conoce. Sin parser (lenguaje
+    // desconocido, binario, chunk que no cargó) el diff se ve como texto.
+    const parser = useDiffParser(path)
+    const syntax = useMemo(() => {
+        const lines: DiffSyntaxLine[] = []
+        model.text.split('\n').forEach((raw, i) => {
+            const kind = model.kinds[i]
+            if (kind === 'add' || kind === 'del' || kind === 'ctx') lines.push({kind, oldNo: model.oldNo[i], newNo: model.newNo[i], text: raw.slice(1)})
+        })
+        return buildDiffSyntax(lines, parser)
+    }, [model, parser])
+    const syntaxComp = useRef(new Compartment())
 
     const totals = useMemo(
         () => parsed.hunks.reduce((n, h) => ({a: n.a + hunkSummary(h).added, r: n.r + hunkSummary(h).removed}), {a: 0, r: 0}),
@@ -534,6 +586,7 @@ export default function DiffViewer({
                     ...noGutters,
                     diffTheme(appearance),
                     patchDecorations(model, ctrlRef),
+                    syntaxComp.current.of(syntaxDecorations(model, syntax)),
                     resolveEditorTheme(editorThemeId, appTheme),
                     EditorView.editable.of(false),
                     EditorState.readOnly.of(true),
@@ -567,6 +620,13 @@ export default function DiffViewer({
         // recrear el editor (se vuelve a leer al elegir otro archivo).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, model, isBinary, loading, error, editorThemeId, appTheme, wrap, appearance, blameRows, patch])
+
+    // El parser llega después del primer render la primera vez que se abre un
+    // archivo de ese lenguaje: se cambian solo los colores, sin recrear el
+    // editor (que perdería el scroll y la selección).
+    useEffect(() => {
+        viewRef.current?.dispatch({effects: syntaxComp.current.reconfigure(syntaxDecorations(model, syntax))})
+    }, [model, syntax])
 
     function goToHunk(dir: 1 | -1) {
         const view = viewRef.current
@@ -705,9 +765,9 @@ export default function DiffViewer({
             </div>
 
             {unified ? (
-                <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden bg-surface-container-lowest" />
+                <div ref={containerRef} className="syn min-h-0 flex-1 overflow-hidden bg-surface-container-lowest" />
             ) : (
-                <SplitView rows={rows} wrap={wrap} appearance={appearance} />
+                <SplitView rows={rows} wrap={wrap} appearance={appearance} syntax={syntax} />
             )}
         </div>
     )
@@ -729,20 +789,20 @@ function IconBtn({icon, title, onClick, active}: {icon: string; title: string; o
 
 // Side-by-side rendering is plain DOM rather than two CodeMirror views.
 //
-// Two synced editors would buy syntax highlighting — except a diff has no
-// language attached in either mode here, so there is none to lose — at the cost
+// Two synced editors would buy syntax highlighting — now it comes from
+// diffSyntax.ts, keyed by line number, so it costs nothing here — at the cost
 // of scroll synchronisation between independent viewports and of injecting
 // blank padding lines into both documents to keep the columns aligned. One
 // scroll container holding both columns gets the alignment for free and cannot
 // desynchronise, which is the property that actually matters for reading a diff.
-function SplitView({rows, wrap, appearance}: {rows: SplitRow[]; wrap: boolean; appearance: EditorAppearance}) {
+function SplitView({rows, wrap, appearance, syntax}: {rows: SplitRow[]; wrap: boolean; appearance: EditorAppearance; syntax: DiffSyntax | null}) {
     const t = useT()
     if (rows.length === 0) {
         return <Placeholder icon="check_circle" text={t.git.diff.noTextChanges} />
     }
     return (
         <div
-            className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest"
+            className="syn min-h-0 flex-1 overflow-auto bg-surface-container-lowest"
             style={{fontFamily: editorFontStack(appearance.fontFamily), fontSize: appearance.fontSize, lineHeight: 1.5}}
         >
             <table className={`border-collapse ${wrap ? 'w-full table-fixed' : 'min-w-full'}`}>
@@ -755,8 +815,8 @@ function SplitView({rows, wrap, appearance}: {rows: SplitRow[]; wrap: boolean; a
                 <tbody>
                     {rows.map((r, i) => (
                         <tr key={i}>
-                            <Cell no={r.leftNo} text={r.leftText} kind={r.leftKind} side="left" wrap={wrap} />
-                            <Cell no={r.rightNo} text={r.rightText} kind={r.rightKind} side="right" wrap={wrap} />
+                            <Cell no={r.leftNo} text={r.leftText} kind={r.leftKind} side="left" wrap={wrap} tokens={splitTokens(syntax, r.leftKind, 'left', r.leftNo)} />
+                            <Cell no={r.rightNo} text={r.rightText} kind={r.rightKind} side="right" wrap={wrap} tokens={splitTokens(syntax, r.rightKind, 'right', r.rightNo)} />
                         </tr>
                     ))}
                 </tbody>
@@ -777,7 +837,14 @@ const CELL_BG: Record<SplitRow['leftKind'], string> = {
     context: '',
 }
 
-function Cell({no, text, kind, side, wrap}: {no: number | null; text: string | null; kind: SplitRow['leftKind']; side: 'left' | 'right'; wrap: boolean}) {
+// La columna izquierda es el archivo de antes y la derecha el de después: el
+// número de línea de la celda alcanza para encontrar sus tramos.
+function splitTokens(syntax: DiffSyntax | null, kind: SplitRow['leftKind'], side: 'left' | 'right', no: number | null): Token[] | null {
+    if (!syntax || no == null || kind === 'hunk' || kind === 'empty') return null
+    return (side === 'left' ? syntax.old : syntax.new).get(no) ?? null
+}
+
+function Cell({no, text, kind, side, wrap, tokens}: {no: number | null; text: string | null; kind: SplitRow['leftKind']; side: 'left' | 'right'; wrap: boolean; tokens: Token[] | null}) {
     return (
         <>
             <td
@@ -788,7 +855,7 @@ function Cell({no, text, kind, side, wrap}: {no: number | null; text: string | n
                 {no ?? ''}
             </td>
             <td className={`px-2 align-top text-on-surface ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'} ${CELL_BG[kind]}`}>
-                {kind === 'hunk' ? text : (text ?? '')}
+                {kind === 'hunk' ? text : <TokenText tokens={tokens} text={text ?? ''} />}
             </td>
         </>
     )
