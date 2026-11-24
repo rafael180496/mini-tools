@@ -93,9 +93,32 @@ de las opciones de un `Select`.
   `App.js`, `App.d.ts` y los métodos de `*App`, y verifica que toda clase
   que el frontend usa exista en los modelos generados.
 
-## CodeGraph
+## Equipo de agentes (3 roles)
 
-- Este repo tiene `.codegraph/` (índice de símbolos/edges). Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
+Toda tarea no trivial pasa por el equipo de [.claude/agents/](../agents/). Un cambio de una línea no necesita el equipo.
+
+| Agente | Modelo y esfuerzo | Estilo | Rol |
+| --- | --- | --- | --- |
+| `architect-orchestrator` | Opus, **medium** (escala a high/máximo solo cuando él lo declara: problema muy difícil, decisión crítica, bug que persiste) | lenguaje natural y detallado con el usuario, **nunca** caveman | dueño de `.claude/specs/` y de la arquitectura: divide el plan en sub-tareas atómicas con criterios de aceptación, fija el contrato, delega, sincroniza, lanza QA y cierra |
+| `fullstack-dev` ×2 | Sonnet, **high** | `/caveman full`; cierra con `CHANGED` / `SUMMARY` / `BLOCKERS` | implementan en paralelo su sub-tarea de punta a punta (Go → binding → React), sin archivos compartidos |
+| `qa-reviewer` ×2 | Haiku, **medium** | `/caveman ultra`; `PASS` o `FAIL` + `- [HIGH\|MED\|LOW] archivo:línea -> defecto -> fix` | auditan `git diff HEAD`: QA 1 contrato y spec, QA 2 edge cases y seguridad |
+| `marketing` | Opus, medium | — | difusión (videos, redes, Patreon) en `share/`; fuera del ciclo de una feature |
+
+Ciclo por feature:
+
+1. **Planificación** (`architect-orchestrator`): Graphify si existe, spec en `.claude/specs/` dividido en sub-tareas atómicas con criterios verificables, plan explicado al usuario en lenguaje normal.
+2. **Implementación en paralelo**: dos `fullstack-dev` en un solo mensaje, sin archivos compartidos (puntos de choque: `app.go`/`main.go`, `frontend/wailsjs/`, `backend/vault/migrations.go`, i18n, `CHANGELOG.md`, `index.html`/`es/index.html`, `Workspace.tsx`, `go.mod`/`package.json`).
+3. **Sync de código**: **un** `codegraph sync` sobre los cambios consolidados (no por archivo ni por dev).
+4. **QA en paralelo**: dos `qa-reviewer` en un solo mensaje sobre el diff de la sub-tarea.
+5. **Corrección y cierre**: con `FAIL`, solo las viñetas vuelven al dev dueño; con dos `PASS`, verificación final (`go build`/`vet`/`test`, `pnpm build`, `i18n-check.sh`, `check-bindings.py` si cambiaron bindings), `graphify update .` si cerró la feature o cambió un spec, y resumen al usuario.
+
+Si el `architect-orchestrator` corre como sub-agente sin la herramienta `Agent`, devuelve los briefs `dev A` / `dev B` y la sesión principal los lanza en un mismo mensaje. Los agentes de `.claude/agents/` se cargan al abrir la sesión: tras crear o editar uno, reiniciar Claude Code (o `/agents`).
+
+## CodeGraph y Graphify
+
+- Este repo tiene `.codegraph/` (índice de símbolos/edges). **`codegraph sync` se corre una sola vez por lote, no tras cada archivo**: cuando los `fullstack-dev` terminan su sub-tarea (justo antes de lanzar a los `qa-reviewer`) y antes de dar una tarea por cerrada. Lo corre el `architect-orchestrator` (o la sesión principal si trabaja sola); los devs no lo corren. Es incremental, rápido y seguro. No hay hooks de auto-sync por archivo y no se agregan. **No** correr `codegraph init`/`index`/`uninit` salvo pedido explícito del usuario.
+- **Graphify = capa macro, CodeGraph = capa micro, nunca los dos para la misma pregunta.** Graphify (`graphify query "…"`, `graphify explain "X"`, grafo en `graphify-out/`) responde qué spec, regla o documento cubre algo y cómo se relacionan los módulos; CodeGraph, dónde está un símbolo, quién lo llama y qué rompe un cambio. Mientras no exista `graphify-out/graph.json`, la capa macro es el índice de `CLAUDE.md`, `.claude/specs/` y `.claude/rules/`. El grafo inicial se construye con `/graphify .` (consume tokens: lo decide el usuario).
+- **`graphify update .` solo al crear o modificar un spec o al cerrar una feature completa**, nunca en ediciones intermedias.
 
 ## CHANGELOG — todo cambio se acumula en `[Unreleased]` primero
 
@@ -256,7 +279,7 @@ que nadie va a usar.
 ## Migraciones del vault
 
 - **Regla dura, no solo convención:** `vault.db` ya está instalado en varias máquinas con datos reales (conexiones, historial, settings). Toda columna o tabla nueva se agrega vía migración — nunca borrando/recreando la base, ni siquiera "momentáneamente" para probar algo local. Ver [.claude/rules/technical.md](technical.md) punto 13.
-- Para agregar una migración nueva: agregar una entrada `migration{version: N, ...}` en `backend/vault/migrations.go`, mantenerla aditiva (nunca `DELETE`/`DROP`/mutar filas, nunca tocar `vault_meta`; la única excepción es la 51, que retira datos de una funcionalidad eliminada y se decidió explícitamente — ver [technical.md](technical.md) punto 13), verificar con el patrón de script efímero sandboxeado (`HOME=$(mktemp -d) go run ./tmp_xxx`, nunca commiteado), y correr `codegraph sync` al final. Ver [.claude/specs/vault-migrations.md](../specs/vault-migrations.md) para el diseño completo y el porqué.
+- Para agregar una migración nueva: agregar una entrada `migration{version: N, ...}` en `backend/vault/migrations.go`, mantenerla aditiva (nunca `DELETE`/`DROP`/mutar filas, nunca tocar `vault_meta`; la única excepción es la 51, que retira datos de una funcionalidad eliminada y se decidió explícitamente — ver [technical.md](technical.md) punto 13), verificar con el patrón de script efímero sandboxeado (`HOME=$(mktemp -d) go run ./tmp_xxx`, nunca commiteado); el `codegraph sync` va con el lote, ver «CodeGraph y Graphify». Ver [.claude/specs/vault-migrations.md](../specs/vault-migrations.md) para el diseño completo y el porqué.
 - El `CREATE TABLE IF NOT EXISTS settings (...)` (y demás tablas) en `backend/vault/store.go` está congelado como la definición de la versión 1 — no se le agregan columnas directamente ahí ni para una instalación nueva. Una instalación nueva y una que actualiza deben terminar en el mismo camino: crear la tabla base (versión 1) y después aplicar las mismas migraciones que cualquier otra. Ver `open_tabs`/`sidebar_collapsed`/`editor_height` en `settings` como precedente — ninguna de las tres está en el `CREATE TABLE` de `store.go`, las tres llegaron por `ALTER TABLE ... ADD COLUMN` en `migrations.go`.
 
 ## Bindings en el camino de una tecla: nunca dejar una promesa colgada

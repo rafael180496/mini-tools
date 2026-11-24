@@ -34,7 +34,7 @@ go test ./...
 > Node. `corepack enable pnpm` lo resuelve, y los scripts de `scripts/` ya lo
 > hacen solos — ver `scripts/ensure-pnpm.sh`.
 
-Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice de `.codegraph/` al día antes de seguir trabajando.
+`codegraph sync` mantiene al día el índice de `.codegraph/`: se corre **una vez por lote** (al terminar los devs, antes de QA, y antes de cerrar la tarea), no tras cada archivo — ver «CodeGraph y Graphify» en [conventions.md](../rules/conventions.md).
 
 ## Capturas de la interfaz (`scripts/uishot.sh`)
 

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
    - Nunca tocar `vault_meta.verifier` ni `vault_meta.verifier_nonce`. No hay guard técnico para esto (parsear el SQL de una migración violaría la regla de "sin librería de parsing SQL" — ver `technical.md` punto 7) — se cuida por convención y code review.
    - `modernc.org/sqlite` trae una versión moderna de SQLite (soporta `ADD COLUMN` sin problema). Si algún día hiciera falta `DROP`/`RENAME COLUMN`, usar el patrón de copiar a tabla nueva y renombrar en vez de confiar en soporte parcial de `ALTER TABLE`.
 3. Verificar con el patrón de script efímero (abajo) **antes** de commitear.
-4. `codegraph sync` después de tocar `migrations.go`.
+4. `codegraph sync` con el lote de la tarea (una vez, al terminar los devs y antes de QA), no tras cada edición de `migrations.go`.
 
 ## Verificación (sin `_test.go` nuevos)
 
