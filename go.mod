@@ -8,16 +8,16 @@ require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/microsoft/go-mssqldb v1.12.0
-	github.com/pkg/sftp v1.13.12
-	github.com/redis/go-redis/v9 v9.23.0
+	github.com/pkg/sftp v1.13.13
+	github.com/redis/go-redis/v9 v9.24.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/wailsapp/wails/v2 v2.17.1
 	github.com/xuri/excelize/v2 v2.11.1
 	github.com/zalando/go-keyring v0.2.8
-	go.mongodb.org/mongo-driver/v2 v2.10.0
+	go.mongodb.org/mongo-driver/v2 v2.10.1
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
