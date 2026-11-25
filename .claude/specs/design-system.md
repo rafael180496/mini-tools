@@ -74,3 +74,9 @@ Para comprobar que una pantalla sigue entrando con el cuerpo agrandado:
 
 - El plan original de theming (`.claude/rules/conventions.md`, sección Frontend) sigue vigente: el toggle de tema se mantiene (no se fue dark-only, decisión explícita del usuario), sigue viviendo en `useTheme.ts`, sigue persistiendo en `settings.theme` sin cifrar.
 - Ningún componente pasó a cargar nada por red en runtime — todo el sistema de diseño (fuentes, iconos, colores) es estático, empaquetado en el bundle, funciona sin internet igual que el resto de la app.
+
+## Shell ADE (post-rediseño UX — ver [ux-ade-redesign.md](ux-ade-redesign.md))
+
+- **Utilidades de superficie (`globals.css`):** `@utility ade-pane`, `ade-pane-sunken`, `ade-tile` (con `[data-focused='true']`) y `ade-rail-btn` (botones circulares en los rails izquierdo y derecho con `[data-active='true']`), todas sobre tokens MD3 y `var(--radius-xl)` separadas con respiro `gap-1.5 p-1.5` sobre `bg-background`.
+- **`Select.tsx`:** buscador integrado sin acentos (automático con 8+ opciones) y navegación por teclado (`↑`/`↓`/`↵`/`Esc`), menú flotante `rounded-xl` MD3.
+- **Identidad / Logo:** guacamaya minimalista ADE sobre grid 3×3 en paleta MD3 (`build/appicon.png` 1024×1024, `frontend/src/assets/logo.png` 256×256, `frontend/public/favicon.png` 64×64, con fondo exterior transparente).

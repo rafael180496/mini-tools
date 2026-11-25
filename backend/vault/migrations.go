@@ -1516,6 +1516,36 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 66,
+		desc:    "agrega settings.hidden_sidebar_modules (personalización persistente de módulos visibles en el rail izquierdo)",
+		apply: func(tx *sql.Tx) error {
+			rows, err := tx.Query(`PRAGMA table_info(settings)`)
+			if err != nil {
+				return err
+			}
+			exists := false
+			for rows.Next() {
+				var cid int
+				var name, typ string
+				var notnull, pk int
+				var dflt sql.NullString
+				if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+					rows.Close()
+					return err
+				}
+				if name == "hidden_sidebar_modules" {
+					exists = true
+				}
+			}
+			rows.Close()
+			if exists {
+				return nil
+			}
+			_, err = tx.Exec(`ALTER TABLE settings ADD COLUMN hidden_sidebar_modules TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

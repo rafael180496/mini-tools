@@ -9,6 +9,8 @@ import {editorAppearanceExtension, type EditorAppearance} from '../../codemirror
 import {GitListWorkTree, GitReadWorkFile, GitWriteWorkFile} from '../../../wailsjs/go/main/App'
 import {git} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
+import {fileVisualFor} from '../../lib/fileIcons'
 import ConfirmDialog from '../ConfirmDialog'
 import {resolveEditorTheme} from '../../codemirror/themes'
 import {LANGUAGE_OPTIONS, languageForPath, languageIfLoaded, languageLabel, loadLanguage, type LanguageId} from '../../codemirror/languageRegistry'
@@ -87,6 +89,9 @@ interface GitFileEditorProps {
     // Contenedor (en la columna de trabajo de la pestaña) donde dibujar el árbol
     // de archivos. Sin él, el árbol va a la izquierda del editor, como antes.
     treeHost?: HTMLElement | null
+    // Cuando el explorador unificado de la barra lateral ya muestra el árbol
+    // de archivos, ocultamos el árbol interno para no duplicarlo.
+    hideTree?: boolean
 }
 
 const languageCompartment = new Compartment()
@@ -159,6 +164,7 @@ export default function GitFileEditor({
     onSaved,
     onClose,
     treeHost,
+    hideTree = false,
 }: GitFileEditorProps) {
     const tf = useT().git.fileEditor
     const [tree, setTree] = useState<git.WorkTree | null>(null)
@@ -693,34 +699,32 @@ export default function GitFileEditor({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
-                <Icon name="edit_document" size={15} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">{tf.title}</span>
-                {!treeHost && tree && <span className="text-on-surface-variant">{tree.files.length}</span>}
-                {saving && <span className="text-on-surface-variant">{tf.saving}</span>}
-                {!treeHost && (
-                    <button
-                        onClick={reloadTree}
-                        title={tf.reloadTitle}
-                        className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="refresh" size={15} />
+            {files.length === 0 && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1 text-xs">
+                    <Icon name="edit_document" size={14} className="shrink-0 text-primary" />
+                    <span className="font-semibold text-on-surface">{tf.title}</span>
+                    {!treeHost && tree && <span className="text-on-surface-variant">{tree.files.length}</span>}
+                    {saving && <span className="text-on-surface-variant">{tf.saving}</span>}
+                    {!treeHost && (
+                        <button
+                            onClick={reloadTree}
+                            title={tf.reloadTitle}
+                            className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            <Icon name="refresh" size={14} />
+                        </button>
+                    )}
+                    <button onClick={onClose} title={tf.closeTitle} className={`${treeHost ? 'ml-auto ' : ''}shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface`}>
+                        <Icon name="close" size={15} />
                     </button>
-                )}
-                <button onClick={onClose} title={tf.closeTitle} className={`${treeHost ? 'ml-auto ' : ''}shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface`}>
-                    <Icon name="close" size={16} />
-                </button>
-            </div>
+                </div>
+            )}
 
             {error && <p className="shrink-0 border-b border-outline-variant px-3 py-1 text-xs text-error">{error}</p>}
 
             <div className="flex min-h-0 flex-1">
-                {/* Lista de archivos */}
-                {/* El árbol tiene ancho fijo y el editor se lleva el resto:
-                    en modo agente el panel de la conversación se come parte de
-                    la pantalla, y un árbol proporcional se volvería ilegible
-                    justo cuando más se lo usa. */}
-                {treeHost ? (
+                {/* Lista de archivos — se oculta cuando el explorador lateral ya la muestra */}
+                {hideTree ? null : treeHost ? (
                     // El árbol se monta en la columna de trabajo de la pestaña (portal):
                     // el estado vive acá, el árbol se DIBUJA allá. Así el editor se queda
                     // con todo el ancho del área principal.
@@ -732,37 +736,64 @@ export default function GitFileEditor({
                 {/* Pestañas + editor */}
                 <div className="flex min-w-0 flex-1 flex-col">
                     {files.length > 0 && (
-                        <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-1">
-                            {files.map((f) => {
-                                const dirty = dirtyPaths.has(f.path)
-                                return (
-                                    <span
-                                        key={f.path}
-                                        // Clic central de la rueda para cerrar
-                                        // el archivo, como en VS Code.
-                                        {...closeOnMiddleClick(() => closeFile(f.path))}
-                                        className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                                            f.path === activePath ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'
-                                        }`}
-                                    >
-                                        <button
-                                            onClick={() => setActivePath(f.path)}
-                                            title={`${f.path}${middleClickHint()}`}
-                                            className="max-w-40 truncate"
+                        <div className="flex shrink-0 items-center gap-0.5 border-b border-outline-variant px-1 py-1">
+                            <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+                                {files.map((f) => {
+                                    const dirty = dirtyPaths.has(f.path)
+                                    const vis = fileVisualFor(f.path)
+                                    return (
+                                        <span
+                                            key={f.path}
+                                            // Clic central de la rueda para cerrar
+                                            // el archivo, como en VS Code.
+                                            {...closeOnMiddleClick(() => closeFile(f.path))}
+                                            className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs ${
+                                                f.path === activePath ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'
+                                            }`}
                                         >
-                                            {f.path.split('/').pop()}
-                                            {dirty && ' •'}
-                                        </button>
-                                        <button
-                                            onClick={() => closeFile(f.path)}
-                                            title={dirty ? tf.closeDirty : tf.close}
-                                            className="rounded hover:text-on-surface"
-                                        >
-                                            <Icon name="close" size={12} />
-                                        </button>
-                                    </span>
-                                )
-                            })}
+                                            {vis.badge ? (
+                                                <span className={`shrink-0 font-mono text-ui-9 font-bold leading-none ${vis.color}`}>
+                                                    {vis.badge}
+                                                </span>
+                                            ) : (
+                                                <Icon name={vis.icon} size={13} className={`shrink-0 ${vis.color}`} />
+                                            )}
+                                            <button
+                                                onClick={() => setActivePath(f.path)}
+                                                title={`${f.path}${middleClickHint()}`}
+                                                className="max-w-40 truncate"
+                                            >
+                                                {f.path.split('/').pop()}
+                                                {dirty && ' •'}
+                                            </button>
+                                            <button
+                                                onClick={() => closeFile(f.path)}
+                                                title={dirty ? tf.closeDirty : tf.close}
+                                                className="rounded hover:text-on-surface"
+                                            >
+                                                <Icon name="close" size={12} />
+                                            </button>
+                                        </span>
+                                    )
+                                })}
+                            </div>
+                            {saving && <span className="shrink-0 px-1 text-ui-11 text-on-surface-variant">{tf.saving}</span>}
+                            {!treeHost && (
+                                <button
+                                    onClick={reloadTree}
+                                    title={tf.reloadTitle}
+                                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                >
+                                    <Icon name="refresh" size={14} />
+                                </button>
+                            )}
+                            <button
+                                onClick={onClose}
+                                title={tf.closeTitle}
+                                className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                            >
+                                <Icon name="close" size={15} />
+                            </button>
                         </div>
                     )}
 
@@ -771,18 +802,15 @@ export default function GitFileEditor({
                             <span className="min-w-0 flex-1 truncate" title={active.path}>
                                 {active.path}
                             </span>
-                            <select
+                            <Select
+                                size="sm"
+                                searchable
                                 value={active.language}
-                                onChange={(e) => setLanguage(active.path, e.target.value as LanguageId)}
+                                onChange={(v) => setLanguage(active.path, v as LanguageId)}
                                 title={tf.languageTitle({language: languageLabel(active.language)})}
-                                className="shrink-0 rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
-                            >
-                                {LANGUAGE_OPTIONS.map((o) => (
-                                    <option key={o.id} value={o.id}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
+                                className="shrink-0"
+                                options={LANGUAGE_OPTIONS.map((o) => ({value: o.id, label: o.label}))}
+                            />
                             {isMarkdown && (
                                 <span className="flex shrink-0 items-center gap-0.5 rounded border border-outline-variant p-0.5">
                                     {(

@@ -58,57 +58,35 @@ export default function GitWorkPanel({view, onView, changesCount, stashCount, wi
     ]
     const compact = width < 300
 
-    // Acoplada a la barra de la app. El encabezado entero es el botón de
-    // plegar: es el blanco más grande y más obvio, y el chevron solo dice hacia
-    // dónde va. Plegado queda ÚNICAMENTE esa fila; el cuerpo (solapas y
-    // contenido) se oculta con `hidden` en vez de desmontarse, para no tirar el
-    // estado de la solapa activa ni volver a pedir los datos al desplegar.
+    // Acoplada al explorador unificado de la barra lateral (ProjectExplorer → Git).
+    // Ya tiene el encabezado del repo arriba y la solapa «Archivos» al lado, así
+    // que acá solo muestra las 3 vistas Git: Historial, Cambios y Stash.
     if (docked) {
-        const dockTitle = dockCollapsed ? w.dockShow : w.dockHide
+        const gitTabs = tabs.filter((t) => t.id !== 'files')
         return (
-            <div className={`flex min-h-0 flex-col overflow-hidden bg-surface-container-low ${dockCollapsed ? 'shrink-0' : 'flex-1'}`}>
-                <button
-                    onClick={onToggleDockCollapsed}
-                    title={dockTitle}
-                    aria-label={dockTitle}
-                    aria-expanded={!dockCollapsed}
-                    className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-left text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
-                >
-                    <Icon name="folder_code" size={13} className="shrink-0" />
-                    <span className="min-w-0 flex-1 truncate" title={w.dockedTitle({repo: repoName ?? ''})}>
-                        {repoName}
-                    </span>
-                    <Icon name={dockCollapsed ? 'expand_more' : 'expand_less'} size={16} className="shrink-0" />
-                </button>
-                <div className={dockCollapsed ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
-                    {/* Fila segmentada: ícono + rótulo al lado. Con la barra
-                        angosta los cuatro rótulos no entran (se cortaban en
-                        «Hist…»), así que por container query —según el ancho de
-                        ESTA fila, no de la ventana— se quedan solo los íconos;
-                        el title de cada solapa dice cuál es. */}
-                    <div role="tablist" className="@container flex shrink-0 items-center gap-0.5 border-b border-outline-variant px-1.5 pb-1.5">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                role="tab"
-                                onClick={() => onView(tab.id)}
-                                title={tab.title}
-                                aria-label={tab.label}
-                                aria-selected={view === tab.id}
-                                className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1 py-1 text-ui-11 transition-colors ${
-                                    view === tab.id ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
-                                }`}
-                            >
-                                <Icon name={tab.icon} size={15} className="shrink-0" />
-                                <span className="hidden min-w-0 truncate @[300px]:inline">{tab.label}</span>
-                                {!!tab.badge && tab.badge > 0 && (
-                                    <span className="shrink-0 rounded-full bg-secondary px-1 text-ui-10 font-medium leading-4 text-on-secondary">{tab.badge > 99 ? '99+' : tab.badge}</span>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                    {view === 'files' ? <div ref={onFilesHost} className="flex min-h-0 flex-1 flex-col" /> : children}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div role="tablist" className="@container flex shrink-0 items-center gap-0.5 border-b border-outline-variant/60 px-2 py-1.5">
+                    {gitTabs.map((tab) => (
+                        <button
+                            key={tab.id}
+                            role="tab"
+                            onClick={() => onView(tab.id)}
+                            title={tab.title}
+                            aria-label={tab.label}
+                            aria-selected={view === tab.id}
+                            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-ui-11 transition-colors ${
+                                view === tab.id ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                            }`}
+                        >
+                            <Icon name={tab.icon} size={14} className="shrink-0" />
+                            <span className="hidden min-w-0 truncate @[220px]:inline">{tab.label}</span>
+                            {!!tab.badge && tab.badge > 0 && (
+                                <span className="shrink-0 rounded-full bg-secondary px-1 text-ui-10 font-medium leading-4 text-on-secondary">{tab.badge > 99 ? '99+' : tab.badge}</span>
+                            )}
+                        </button>
+                    ))}
                 </div>
+                {children}
             </div>
         )
     }

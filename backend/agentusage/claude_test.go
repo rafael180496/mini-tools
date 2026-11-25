@@ -12,8 +12,8 @@ import (
 // El slug es lo que permite atribuir consumo AL repositorio abierto. Los casos
 // están tomados de directorios reales de ~/.claude/projects.
 func TestClaudeSlug(t *testing.T) {
-	got := claudeSlug("/Users/developer/Documents/project/github_project/golang/support-lab")
-	want := "-Users-developer-Documents-project-github-project-golang-support-lab"
+	got := claudeSlug("/Users/someone/code/go/example-app")
+	want := "-Users-someone-code-go-example-app"
 	if got != want {
 		t.Errorf("slug incorrecto:\n got %q\nwant %q", got, want)
 	}

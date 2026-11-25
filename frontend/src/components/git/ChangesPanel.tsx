@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react'
 import {git, main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 import {useT} from '../../i18n'
 import {applyPrefix, buildCommitPrefix, COMMIT_TYPES, currentPrefixOf, extractTicket} from '../../lib/gitCommitMessage'
 import InlineDiff, {type InlineDiffState} from './InlineDiff'
@@ -176,23 +177,20 @@ export default function ChangesPanel({
                     trabajo, y volver a escribirlo en cada mensaje es lo que se
                     olvida — justo cuando se rompe la trazabilidad. */}
                 <div className="flex items-center gap-1">
-                    <select
+                    <Select
+                        size="sm"
                         value={currentPrefixOf(commitMessage).type}
-                        onChange={(e) => {
-                            const type = e.target.value
+                        onChange={(type) => {
                             const scope = currentPrefixOf(commitMessage).scope || ticket
                             onChangeMessage(type ? applyPrefix(commitMessage, buildCommitPrefix(type, scope)) : commitMessage)
                         }}
                         title={c.typeTitle}
-                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-ui-11 text-on-surface"
-                    >
-                        <option value="">{c.typePlaceholder}</option>
-                        {COMMIT_TYPES.map((ct) => (
-                            <option key={ct.value} value={ct.value} title={ct.hint}>
-                                {ct.label}
-                            </option>
-                        ))}
-                    </select>
+                        className="min-w-0 flex-1"
+                        options={[
+                            {value: '', label: c.typePlaceholder},
+                            ...COMMIT_TYPES.map((ct) => ({value: ct.value, label: ct.label})),
+                        ]}
+                    />
                     {!!ticket && (
                         <button
                             onClick={() => {

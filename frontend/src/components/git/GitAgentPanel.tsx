@@ -16,6 +16,7 @@ import AgentLimitBars from '../agent/AgentLimitBars'
 import {agentIconName} from '../agent/agentIcon'
 import {isModelServerAgent} from '../../lib/modelServers'
 import Icon from '../Icon'
+import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import {formatList, formatNumber, useT} from '../../i18n'
 
@@ -46,9 +47,11 @@ interface GitAgentPanelProps {
     // Agente por defecto del repositorio (migración 30). "" = preguntar.
     defaultAgent: string
     onSetDefaultAgent: (agentId: string) => void
+    // Cuando vive embebido dentro de ProjectExplorer, no crea su propio scroll.
+    embedded?: boolean
 }
 
-export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAgent, onSetDefaultAgent}: GitAgentPanelProps) {
+export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAgent, onSetDefaultAgent, embedded = false}: GitAgentPanelProps) {
     const t = useT()
     const [ctx, setCtx] = useState<agentctx.Context | null>(null)
     const [mcp, setMcp] = useState<mcpconf.Config | null>(null)
@@ -122,7 +125,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
         pointerFiles.includes(file) ? ctx.instructions.find((i) => i.present && i.file !== file && pointerFiles.includes(i.file))?.file : undefined
 
     return (
-        <div className="h-full overflow-y-auto p-2 text-xs">
+        <div className={embedded ? 'px-1 pt-2 text-xs' : 'h-full overflow-y-auto p-2 text-xs'}>
             <div className="mb-2 flex items-center gap-2">
                 <Icon name="smart_toy" size={14} className="shrink-0 text-primary" />
                 <span className="font-semibold text-on-surface">{t.git.agent.heading}</span>
@@ -138,29 +141,28 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             {/* Agente por defecto. Vacío = preguntar cada vez, que es el
                 default correcto: elegir por el usuario un asistente que
                 consume su cuota no es algo que nadie haya pedido. */}
-            <label className="mb-2 flex items-center gap-2 px-1.5 text-ui-11 text-on-surface-variant">
-                {t.git.agent.defaultAgent}
-                <select
+            <div className="mb-2 flex items-center gap-2 px-1.5 text-ui-11 text-on-surface-variant">
+                <span className="shrink-0">{t.git.agent.defaultAgent}</span>
+                <Select
+                    size="sm"
                     value={defaultAgent}
-                    onChange={(e) => onSetDefaultAgent(e.target.value)}
+                    onChange={onSetDefaultAgent}
                     title={t.git.agent.defaultAgentTitle}
-                    className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
-                >
-                    <option value="">{t.git.agent.askEachTime}</option>
-                    {installed
-                        .filter((a) => a.available)
-                        .map((a) => (
-                            <option key={a.id} value={a.id}>
-                                {a.label}
-                            </option>
-                        ))}
-                </select>
-            </label>
+                    className="min-w-0 flex-1"
+                    options={[
+                        {value: '', label: t.git.agent.askEachTime},
+                        ...installed
+                            .filter((a) => a.available)
+                            .map((a) => ({value: a.id, label: a.label})),
+                    ]}
+                />
+            </div>
 
             {/* Instrucciones: lo primero, porque es lo que más seguido falta */}
             <Section title={t.git.agent.instructions.title} count={ctx.instructions.filter((i) => i.present).length}>
                 {ctx.instructions.map((i) => {
                     const source = i.present ? undefined : pointerSource(i.file)
+                    const agentsMeta = `${i.agents.map(agentLabel).join(' · ')}${i.present ? '' : t.git.agent.instructions.missingTag}`
                     return (
                         <div key={i.file} className="flex items-center gap-1 rounded hover:bg-surface-container-high">
                             <button
@@ -170,18 +172,32 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                                         ? t.git.agent.instructions.openTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
                                         : t.git.agent.instructions.missingTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
                                 }
-                                className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left"
+                                className={`flex min-w-0 flex-1 rounded px-1.5 py-1 text-left ${
+                                    embedded ? 'items-start gap-2' : 'items-center gap-2'
+                                }`}
                             >
                                 <Icon
                                     name={i.present ? 'description' : 'add_circle'}
                                     size={13}
-                                    className={i.present ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant/60'}
+                                    className={`${embedded ? 'mt-0.5 ' : ''}shrink-0 ${i.present ? 'text-primary' : 'text-on-surface-variant/60'}`}
                                 />
-                                <span className={i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}>{i.file}</span>
-                                <span className="ml-auto shrink-0 text-ui-10 text-on-surface-variant">
-                                    {i.agents.map(agentLabel).join(' · ')}
-                                    {i.present ? null : t.git.agent.instructions.missingTag}
-                                </span>
+                                {embedded ? (
+                                    <span className="min-w-0 flex-1">
+                                        <span className={`block truncate ${i.present ? 'font-medium text-on-surface' : 'text-on-surface-variant/80'}`}>
+                                            {i.file}
+                                        </span>
+                                        <span className="block truncate text-ui-10 text-on-surface-variant/75">
+                                            {agentsMeta}
+                                        </span>
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className={`truncate ${i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}`}>{i.file}</span>
+                                        <span className="ml-auto min-w-0 truncate text-ui-10 text-on-surface-variant">
+                                            {agentsMeta}
+                                        </span>
+                                    </>
+                                )}
                             </button>
                             {source && (
                                 <button
@@ -217,7 +233,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             )}
 
             {ctx.skills.length > 0 && (
-                <Section title={t.git.agent.skills} count={ctx.skills.length}>
+                <Section title={t.git.agent.skills} count={ctx.skills.length} defaultOpen={!embedded || ctx.skills.length <= 6}>
                     {ctx.skills.map((s) => (
                         <EntryRow
                             key={`${s.scope}:${s.path}`}
@@ -499,18 +515,13 @@ function McpSection({
                         </button>
                     ) : (
                         <div className="flex flex-col gap-1 rounded border border-outline-variant bg-surface-container p-1.5 text-ui-11">
-                            <select
+                            <Select
+                                size="sm"
                                 value={addingTo}
-                                onChange={(e) => setAddingTo(e.target.value)}
+                                onChange={setAddingTo}
                                 title={t.git.agent.mcp.fileTitle}
-                                className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-on-surface outline-none focus:border-primary"
-                            >
-                                {[...writableFiles].map((f) => (
-                                    <option key={f} value={f}>
-                                        {f}
-                                    </option>
-                                ))}
-                            </select>
+                                options={[...writableFiles].map((f) => ({value: f, label: f}))}
+                            />
                             <input
                                 value={draft.name}
                                 onChange={(e) => setDraft((d) => ({...d, name: e.target.value}))}
@@ -592,7 +603,7 @@ function McpSection({
                     // debería estar a un clic accidental de distancia.
                     style={undefined}
                     title={t.git.agent.mcp.serverTitle({
-                        target: s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url,
+                        target: s.transport === 'stdio' ? `${s.command} ${(s.args ?? []).join(' ')}`.trim() : s.url,
                         agent: agentLabel(s.agent),
                         project: s.scope === 'project',
                         source: s.source,
@@ -623,14 +634,14 @@ function McpSection({
                             ) : null}
                         </span>
                         <span className="block truncate text-ui-11 text-on-surface-variant">
-                            {s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url}
+                            {s.transport === 'stdio' ? `${s.command} ${(s.args ?? []).join(' ')}`.trim() : s.url}
                         </span>
-                        {s.envKeys.length > 0 && (
+                        {(s.envKeys ?? []).length > 0 && (
                             <span
                                 className="block truncate text-ui-10 text-on-surface-variant/70"
                                 title={t.git.agent.mcp.envKeysTitle}
                             >
-                                {t.git.agent.mcp.envKeys({keys: s.envKeys.join(', ')})}
+                                {t.git.agent.mcp.envKeys({keys: (s.envKeys ?? []).join(', ')})}
                             </span>
                         )}
                     </span>

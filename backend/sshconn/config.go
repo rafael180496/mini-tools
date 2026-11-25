@@ -55,7 +55,7 @@ func parseDSN(dsn string) (*connParams, error) {
 
 // clientConfig builds cp's ssh.ClientConfig. HostKeyCallback deliberately
 // never verifies the remote host key (ssh.InsecureIgnoreHostKey()) — same
-// documented tradeoff support-lab makes for its own SSH connections
+// documented tradeoff common to internal tooling
 // (acceptable only on internal/trusted networks; there is no host-key
 // pinning UI yet to configure otherwise).
 //

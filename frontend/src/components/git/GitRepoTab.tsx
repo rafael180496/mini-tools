@@ -107,7 +107,6 @@ import GitWorkPanel from './GitWorkPanel'
 import GitToolbar from './GitToolbar'
 import {onGitRequest, takePendingGit, type GitRequest} from '../../lib/gitBus'
 import GitFileEditor from './GitFileEditor'
-import GitAgentPanel from './GitAgentPanel'
 import GitOutputNotice from './GitOutputNotice'
 import AgentChat, {type ChatContextBlock, type ChatLastTurn} from '../agent/AgentChat'
 import type {WorkContext} from '../agent/workContext'
@@ -116,6 +115,7 @@ import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../../xterm/terminalFont'
 import PromptDialog from './PromptDialog'
 import {t as i18n, useT} from '../../i18n'
+import type {AdeMode} from '../../hooks/useLayoutMode'
 
 // Everything PromptDialog takes except onClose, which this component owns.
 interface PromptSpec {
@@ -183,17 +183,12 @@ interface GitRepoTabProps {
     // status live (see the polling effect) — polling every open-but-hidden Git
     // tab would run git on a timer for repositories the user isn't looking at.
     active: boolean
-    // Contenedor de la barra lateral de la app donde va la columna de trabajo
-    // (ver gitWorkInSidebar en Workspace). null = se dibuja dentro de la
-    // pestaña, como antes: barra plegada, otro módulo a la vista, o la
-    // preferencia apagada.
+    // Contenedor de la barra lateral de la app (ProjectExplorer → Git) donde
+    // vive siempre la columna de trabajo de Git.
     workHost: HTMLElement | null
-    workInSidebar: boolean
-    onToggleWorkInSidebar: () => void
-    // Panel acoplado plegado a su encabezado (preferencia global, la guarda
-    // Workspace porque es quien reparte el alto de la barra).
-    dockCollapsed: boolean
-    onToggleDockCollapsed: () => void
+    // Modo ADE y petición externa de abrir un archivo en el editor (Fase 9).
+    adeMode?: AdeMode
+    openFileRequest?: {path: string; token: number} | null
 }
 
 // Which of the two center views is showing. "commits" is the history graph;
@@ -327,10 +322,8 @@ export default function GitRepoTab({
     onChanged,
     active,
     workHost,
-    workInSidebar,
-    onToggleWorkInSidebar,
-    dockCollapsed,
-    onToggleDockCollapsed,
+    adeMode,
+    openFileRequest,
 }: GitRepoTabProps) {
     const t = useT()
     const g = t.git.tab
@@ -369,6 +362,27 @@ export default function GitRepoTab({
     // El token acompaña a la ruta para que pedir el mismo archivo dos veces
     // vuelva a enfocarlo en vez de no hacer nada.
     const [editRequest, setEditRequest] = useState<{path: string; token: number} | null>(null)
+    const prevAdeModeRef = useRef<AdeMode | undefined>(adeMode)
+
+    useEffect(() => {
+        if (!openFileRequest?.path) return
+        setView('files')
+        setEditRequest({path: openFileRequest.path, token: openFileRequest.token})
+    }, [openFileRequest?.path, openFileRequest?.token])
+
+    useEffect(() => {
+        if (!adeMode) return
+        const prev = prevAdeModeRef.current
+        prevAdeModeRef.current = adeMode
+        if (prev === adeMode) return
+        if (adeMode === 'pair') {
+            setView('files')
+            setPanelTab('agents')
+        } else if (adeMode === 'work' && panelTab === 'agents') {
+            setPanelTab(null)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [adeMode])
     // Estado por repositorio del banco de trabajo (migración 30): pestañas
     // abiertas del editor y agente por defecto.
     const [openFiles, setOpenFiles] = useState<string[] | null>(null)
@@ -403,6 +417,17 @@ export default function GitRepoTab({
     // reveal a commit on this tab's graph.
     const [tags, setTags] = useState<git.Tag[]>([])
     const [status, setStatus] = useState<git.RepoStatus | null>(null)
+    const initialViewCheckedRef = useRef(false)
+
+    // Si el repo abre recordando 'changes' pero el árbol está limpio, mostrar el
+    // grafo de commits en lugar de una pantalla vacía de diff.
+    useEffect(() => {
+        if (initialViewCheckedRef.current || !status) return
+        initialViewCheckedRef.current = true
+        if (view === 'changes' && status.files.length === 0) {
+            setView('commits')
+        }
+    }, [status, view, setView])
     const [loadingLog, setLoadingLog] = useState(true)
 
     const [selectedCommit, setSelectedCommit] = useState<git.CommitInfo | null>(null)
@@ -2531,14 +2556,7 @@ export default function GitRepoTab({
     // Cambiar/atajar la vista de paneles. Los mismos ítems viven en el menú de
     // la barra y, cuando no entran, en su «⋯».
     const viewItems: (DropdownItem | 'separator')[] = [
-        {
-            label: workInSidebar ? g.viewMenu.workInTab : g.viewMenu.workInSidebar,
-            icon: workInSidebar ? 'dock_to_right' : 'left_panel_open',
-            hint: workInSidebar ? g.viewMenu.workInTabHint : g.viewMenu.workInSidebarHint,
-            onSelect: onToggleWorkInSidebar,
-        },
-        // Plegarla solo tiene sentido cuando vive en la pestaña: en la barra
-        // lateral se pliega con la barra.
+        // Plegarla solo tiene sentido cuando no está acoplada a la barra lateral.
         ...(workHost
             ? []
             : [
@@ -2703,8 +2721,6 @@ export default function GitRepoTab({
             stashCount={stashes.length}
             width={sideWidth}
             docked={!!workHost}
-            dockCollapsed={dockCollapsed}
-            onToggleDockCollapsed={onToggleDockCollapsed}
             repoName={repoName}
             collapsed={workHost ? false : sideHidden}
             onToggleCollapsed={toggleSide}
@@ -2823,6 +2839,9 @@ export default function GitRepoTab({
                 agentMode={agentMode}
                 onToggleAgentMode={toggleAgentMode}
                 viewItems={viewItems}
+                activeView={view}
+                changesCount={status?.files?.length ?? 0}
+                onSelectView={(v) => setView(v)}
                 editors={editors}
                 onOpenEditor={(id) => {
                     void OpenRepoInEditor(repoId, id).catch((e) => setError(String(e)))
@@ -3062,16 +3081,9 @@ export default function GitRepoTab({
                           }
                 }
             >
-                {/* Izquierda: la columna de TRABAJO. Cuatro solapas —Historial,
-                    Cambios, Stash, Archivos— y lo que cada una opera. El árbol
-                    de ramas/remotas/tags que vivía acá repetía el de la barra
-                    lateral principal y se fue; el cambio rápido de rama está en
-                    el chip de la barra de arriba. */}
-                {workHost ? createPortal(workPanel, workHost) : (!sideHidden || !agentMode) && workPanel}
-
-                {!workHost && !sideHidden && (
-                    <PaneHandle onStart={() => setDragging('side')} title={g.panes.sideHandle} />
-                )}
+                {/* La columna de trabajo Git (Historial / Cambios / Stash) vive
+                    siempre portaleada en ProjectExplorer → Git del sidebar principal. */}
+                {workHost ? createPortal(workPanel, workHost) : null}
 
                 {/* Centro: lo que muestra la solapa activa — el grafo, el diff
                     del archivo elegido, el parche del stash, el editor. */}
@@ -3129,6 +3141,7 @@ export default function GitRepoTab({
                             onSaved={() => void reload()}
                             onClose={() => setView('commits')}
                             treeHost={workHost || !sideHidden ? filesHost : null}
+                            hideTree
                         />
                     ) : view === 'commits' ? (
                         <CommitGraph
@@ -3279,17 +3292,6 @@ export default function GitRepoTab({
                             label={g.panel.sessions}
                             title={g.panel.sessionsTitle}
                             badge={sessions.length - chatSessions.length}
-                        />
-                        <PanelTabButton
-                            active={panelTab === 'context'}
-                            onClick={() => {
-                                setPanelTab('context')
-                                persistLayout({tab: 'context'})
-                            }}
-                            icon="dataset"
-                            label={g.panel.context}
-                            title={g.panel.agentsTitle}
-                            badge={agentBadge}
                         />
                         <PanelTabButton
                             active={panelTab === 'commands' || panelTab === 'reflog'}
@@ -3940,26 +3942,6 @@ export default function GitRepoTab({
                                     onNew={(agentId) => {
                                         const agent = agentList.find((a) => a.id === agentId)
                                         if (agent) addSession('chat', agent)
-                                    }}
-                                />
-                            </div>
-                        )}
-                        {panelTab === 'context' && (
-                            <div className="absolute inset-0">
-                                <GitAgentPanel
-                                    repoId={repoId}
-                                    // Un skill o un CLAUDE.md que falta se
-                                    // arregla en el editor de al lado: el panel
-                                    // lista, la solapa Archivos edita.
-                                    onOpenFile={(path) => {
-                                        setEditRequest({path, token: Date.now()})
-                                        setView('files')
-                                    }}
-                                    onAskAgent={(prompt, about) => askAgentPicking(prompt, about)}
-                                    defaultAgent={defaultAgent}
-                                    onSetDefaultAgent={(id) => {
-                                        setDefaultAgent(id)
-                                        void GitSetDefaultAgent(repoId, id).catch(() => {})
                                     }}
                                 />
                             </div>

@@ -4,14 +4,35 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.8] - 2026-11-25
+
 ### Corregido
 
 - **Los archivos nuevos (`?`) de la lista de cambios de Git se ven completos.** Al abrir o desplegar un archivo sin seguimiento, el visor decía "Sin cambios para mostrar" o "Sin cambios de contenido", porque git no compara un archivo que todavía no está en el índice. Ahora se muestra entero como archivo nuevo, con todas sus líneas agregadas, y se puede preparar desde el visor igual que cualquier cambio. Un binario sin seguimiento se avisa como binario.
 
 ### Agregado
 
+- **La interfaz se reorganiza como un entorno de trabajo con agentes (ADE), sin perder ninguno de los seis módulos.**
+  - **Barra superior.** Muestra en qué estás (repositorio, conexión o nota), un selector **Proyectos (N) ▾** con buscador y **+ Abrir carpeta…** para sumar cualquier carpeta o repositorio, y los cuatro modos de trabajo: **Trabajo**, **Pareja**, **Chat** y **Terminales**. Se cambia de modo con un clic o con `⌃⌘1`–`⌃⌘4` en macOS (`Ctrl+Mayús+1`–`4` en Windows y Linux).
+  - **Paleta de comandos (`⌘K` / `Ctrl+K`).** Un solo buscador para saltar a cualquier archivo del proyecto abierto, a un modo, a una pestaña, a una conexión o a una acción rápida, sin acentos ni mayúsculas y todo con el teclado. Busca entre **todos** los archivos del proyecto y muestra los primeros 50 que coinciden. Con el foco en una terminal, `Ctrl+K` sigue siendo de la shell.
+  - **Barra lateral.** Los módulos pasan a una columna de íconos siempre visible, al lado de un explorador que se puede achicar, agrandar o devolver a su tamaño automático con doble clic. Con un repositorio abierto, el explorador junta **Archivos** (el árbol real de carpetas), **Git** (rama y cambios) y **Agentes** (las sesiones de chat y de terminal de ese proyecto, y un lanzador de los CLIs instalados).
+  - **Modos Pareja y Chat.** El chat de IA se pone al lado del editor, de la base o del diff, o ocupa toda la ventana, sin cortar la respuesta que se está generando al cambiar de modo.
+  - **Modo Terminales.** Un mosaico de terminales reales para correr varios agentes CLI (Claude Code, Codex, Antigravity, OpenCode) y shells en paralelo, sobre cualquier repositorio o la carpeta personal. Se distribuye solo (1 a 3 columnas) o con un número fijo, y cada celda se maximiza y se restaura sin cortar su proceso. Las terminales siguen vivas aunque cambies de modo. Cerrar una celda con un agente pide confirmación, porque termina su proceso.
+  - **Barra de estado.** Abajo, el repositorio o la conexión activa, cuántos agentes están corriendo o esperan una aprobación, la versión y un selector rápido del tamaño de la interfaz (90–150 % o un porcentaje propio).
+- **Elegir qué módulos se ven en la barra lateral.** En **Configuración → General** se puede ocultar cualquiera de los seis módulos (Conexiones, SSH, Git, Notas, HTTP y Utilidades). No borra nada: solo saca el ícono, y siempre queda al menos uno. La elección se guarda en el vault; si no se puede guardar, la barra vuelve a como estaba y Configuración lo avisa.
 - **Los diffs de Git se ven con los colores del lenguaje.** El visor (vista unificada y lado a lado) y el diff desplegado en la lista de cambios colorean el código según el tipo de archivo, sobre el verde y el rojo de siempre. Un archivo de un lenguaje que no se reconoce se sigue mostrando como texto con su diff.
 - **Resaltado para más lenguajes y tipos de archivo** en los diffs, en el editor de archivos de Git y en los bloques de código: fuentes de PowerBuilder (`.srw`, `.srd`, `.sru`, `.srf`… con un modo propio de PowerScript), COBOL y Pro\*COBOL, Pro\*C (`.pc`), Makefile, scripts `.unx`, `.env.*`, `.gitignore`/`.dockerignore`/`.gitattributes`, Visual Basic y VBScript, CMake, Nginx, Protocol Buffers, Haskell, Clojure, Erlang, Elm, Julia, Fortran, Pascal/Delphi, Tcl, Verilog, VHDL, Crystal, D, CoffeeScript, Lisp, Scheme, Stylus, Pug, Jinja/Twig, HTTP, ensamblador, Smalltalk, LaTeX, Haxe, OCaml, F#, NSIS, RPM spec, XQuery, Gherkin, Cypher, SPARQL, Turtle y Octave/MATLAB (este último, eligiéndolo a mano).
+
+### Mejorado
+
+- **Nuevo logo de la guacamaya, más simple.** Se renovaron el ícono de la app, el logo de la interfaz y el favicon, con la paleta de siempre y fondo transparente para que se vea nítido desde 16 px hasta el Dock.
+- **Las listas desplegables largas tienen buscador.** Desde ocho opciones (conexiones, esquemas, modelos, el espacio de las terminales…), el desplegable trae un buscador que no distingue acentos ni mayúsculas, y se recorre con las flechas, Enter y Esc.
+
+### Cambiado
+
+- **Dependencias de Go y frontend al día.**
+  - Backend: `pkg/sftp` 1.13.13, `go-redis/v9` 9.24.0, `mongo-driver/v2` 2.10.1 y `modernc.org/sqlite` 1.63.0.
+  - Frontend: `@babel/runtime` 8.1.3, `@tanstack/react-virtual` 3.14.28, `@types/react` 19.3.1 y temas `@uiw/codemirror-theme-*` 4.25.13 (sobre Node 26.13.1 LTS).
 
 ## [2.10.7] - 2026-11-18
 

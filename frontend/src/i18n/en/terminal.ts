@@ -42,5 +42,28 @@ const en: Messages<typeof es> = {
             `Close this session and open a new one at the repository root, with ${p.agent} again — you lose the directory you were in and anything still running`,
         reopenTooltip: 'Open a new session: the previous one ended (with exit, or because the process died)',
     },
+    grid: {
+        title: 'Terminal grid',
+        spaceLabel: 'Space',
+        spaceHome: 'Home directory (~)',
+        spaceTitle: 'Directory/repository where new terminals and agents will start',
+        launchAgent: (p) => `Open a new terminal running ${p.name}`,
+        newShell: 'Shell',
+        newShellTitle: 'Open a new local terminal in the selected space',
+        layoutAuto: 'Auto',
+        layoutAutoTitle: 'Automatic grid distribution based on the number of open terminals',
+        layoutColsTitle: (p) => `Pin the grid to ${p.cols} ${p.cols === 1 ? 'column' : 'columns'}`,
+        maximizeTile: 'Maximize this terminal to full canvas (others stay alive)',
+        restoreTile: 'Restore the multi-terminal grid view',
+        duplicateTile: 'Open another matching terminal beside this one',
+        closeTile: 'Close this terminal and stop its process',
+        confirmCloseAgentTitle: 'Close the agent?',
+        confirmCloseAgent: (p: {name: string}) =>
+            `This stops the ${p.name} process. If it is in the middle of a task, the task is cut short and anything unsaved is lost.`,
+        confirmCloseAgentButton: 'Close and stop',
+        emptyTitle: 'Run one or more CLI agents in parallel',
+        emptyHint: 'Each tile runs its own real PTY terminal and stays alive when you switch modes.',
+        activeCount: (p) => `${p.count} ${p.count === 1 ? 'session' : 'sessions'}`,
+    },
 }
 export default en

@@ -1,11 +1,12 @@
-import {useEffect, useState, type ReactNode} from 'react'
-import TitleBar from './components/TitleBar'
+import {useCallback, useEffect, useState, type ReactNode} from 'react'
+import TitleBar, {type TitleBarAdeProps} from './components/TitleBar'
 import UnlockScreen from './components/lock/UnlockScreen'
 import Workspace from './components/Workspace'
 import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock, CheckForUpdate} from '../wailsjs/go/main/App'
-import {updatecheck} from '../wailsjs/go/models'
+import {updatecheck, vault} from '../wailsjs/go/models'
 import {useTheme} from './hooks/useTheme'
 import {useUIFontScale} from './hooks/useUIFontScale'
+import {useLayoutMode} from './hooks/useLayoutMode'
 import {loadLanguage} from './hooks/useLanguage'
 import {useT} from './i18n'
 
@@ -14,12 +15,28 @@ function App() {
     const [unlocked, setUnlocked] = useState(false)
     const [updateInfo, setUpdateInfo] = useState<updatecheck.Info | null>(null)
     const {theme, toggleTheme} = useTheme()
-    // Acá arriba y no en Workspace, por el mismo motivo que el tema: Workspace
-    // se desmonta al bloquear el vault, y el tamaño de letra tiene que valer
-    // también en la pantalla de desbloqueo — quien no lee la app tampoco lee
-    // el formulario que le pide la clave para poder agrandarla.
     const {uiFontScale, changeUIFontScale} = useUIFontScale()
+    const {layout, setMode, toggleGridFiles, toggleGridChanges} = useLayoutMode()
+    const [paletteOpen, setPaletteOpen] = useState(false)
+    const [topBarContext, setTopBarContext] = useState<{label: string; icon: string; hasGitContext?: boolean; activeRepoId?: string | null}>({
+        label: '',
+        icon: 'workspaces',
+        hasGitContext: false,
+        activeRepoId: null,
+    })
+    const [pendingOpenRepo, setPendingOpenRepo] = useState<{repo: vault.GitRepo; token: number} | null>(null)
     const t = useT()
+
+    const handleTopBarContext = useCallback((ctx: {label: string; icon: string; hasGitContext?: boolean; activeRepoId?: string | null}) => {
+        setTopBarContext((prev) =>
+            prev.label === ctx.label &&
+            prev.icon === ctx.icon &&
+            prev.hasGitContext === ctx.hasGitContext &&
+            prev.activeRepoId === ctx.activeRepoId
+                ? prev
+                : ctx,
+        )
+    }, [])
 
     useEffect(() => {
         // isInitialized is only set once TryAutoUnlock (the "Recordar
@@ -52,13 +69,26 @@ function App() {
             .catch(() => {})
     }, [])
 
-    // La barra de título envuelve TODO, incluidas la pantalla de carga y la
-    // de desbloqueo: es el marco de la ventana, no una parte del workspace.
-    // Si solo estuviera adentro del workspace, la ventana arrancaría sin
-    // forma de moverse ni de cerrarse hasta desbloquear el vault.
+    const adeTopBar: TitleBarAdeProps | undefined = unlocked
+        ? {
+              mode: layout.mode,
+              onChangeMode: setMode,
+              contextLabel: topBarContext.label,
+              contextIcon: topBarContext.icon,
+              activeRepoId: topBarContext.activeRepoId,
+              hasGitContext: topBarContext.hasGitContext,
+              onSelectRepo: (repo) => setPendingOpenRepo({repo, token: Date.now()}),
+              onOpenPalette: () => setPaletteOpen((o) => !o),
+              gridFilesOpen: layout.gridFilesOpen,
+              gridChangesOpen: layout.gridChangesOpen,
+              onToggleGridFiles: toggleGridFiles,
+              onToggleGridChanges: toggleGridChanges,
+          }
+        : undefined
+
     const frame = (children: ReactNode) => (
         <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-on-background">
-            <TitleBar />
+            <TitleBar ade={adeTopBar} />
             <div className="min-h-0 flex-1">{children}</div>
         </div>
     )
@@ -95,10 +125,20 @@ function App() {
         <Workspace
             theme={theme}
             onToggleTheme={toggleTheme}
-            onLocked={() => setUnlocked(false)}
+            onLocked={() => {
+                setPaletteOpen(false)
+                setUnlocked(false)
+            }}
             updateInfo={updateInfo}
             uiFontScale={uiFontScale}
             onChangeUIFontScale={changeUIFontScale}
+            adeMode={layout.mode}
+            onChangeAdeMode={setMode}
+            paletteOpen={paletteOpen}
+            onTogglePalette={() => setPaletteOpen((o) => !o)}
+            onClosePalette={() => setPaletteOpen(false)}
+            onTopBarContextChange={handleTopBarContext}
+            openRepoRequest={pendingOpenRepo}
         />,
     )
 }

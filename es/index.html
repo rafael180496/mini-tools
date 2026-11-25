@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.10.7. Lo que está acá existe en ese binario.">2.10.7 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.10.8. Lo que está acá existe en ese binario.">2.10.8 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -594,8 +594,29 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio, utilidad) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral. Se arrastran para reordenarlas y se cierran con la ✕ o con el <strong>clic central de la rueda</strong>, como en VS Code.</li>
     <li>El <strong>panel inferior</strong> tiene Resultados y Consola (más DBMS_OUTPUT y el plan de ejecución cuando hay algo que mostrar); se arrastra para cambiarle el alto.</li>
     <li>La <strong>barra del editor</strong> es una sola fila de íconos: a la izquierda lo que se aprieta (guardar, ejecutar, explicar, refrescar), a la derecha contra qué corre la pestaña (esquema y conexión) y el chat. Lo que hace cada botón —y su atajo— está en su tooltip.</li>
-    <li>La <strong>barra lateral</strong> se arrastra para cambiarle el ancho y se oculta entera dejando una columna de íconos. Ancho, módulo abierto y alto del editor quedan guardados entre sesiones.</li>
+    <li>Arrastrá el tirador de la <strong>barra lateral</strong> o del panel de chat para fijar un ancho personalizado, o hacé <strong>doble clic</strong> (o <kbd>Enter</kbd> con foco) para volver al <strong>tamaño automático</strong>. Ancho, módulo abierto y modo de diseño se guardan entre sesiones.</li>
+    <li>Los selectores largos (conexiones, esquemas, modelos, espacios de terminal) incluyen un <strong>buscador integrado</strong> navegable con teclado (<kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>/<kbd>Esc</kbd>).</li>
     <li>Los cinco árboles de la barra (conexiones, SSH, Git, notas y HTTP) hablan igual: <strong>ícono por tipo</strong> —carpeta, motor de base, servidor, repositorio, rama, nota, método HTTP—, <strong>líneas guía</strong> por nivel y un botón en la cabecera para <strong>plegar o desplegar todo</strong>. El <strong>clic derecho</strong> en cualquier fila, o en el espacio vacío, abre su menú con todas las acciones (cambiar nombre, duplicar, mover a otra carpeta, copiar, borrar…); el botón <strong>⋯</strong> que aparece al pasar por encima abre el mismo. Se maneja también con el teclado: flechas, Enter y Esc.</li>
+  </ul>
+
+  <h2 id="la-ventana--modos-ade">Barra superior ADE, Proyectos, Paleta de comandos y 4 modos</h2>
+  <p>Una vez desbloqueado el vault, la cabecera de la ventana funciona como <strong>Top Bar ADE</strong>: a la izquierda la nueva guacamaya y el selector buscable <strong>Proyectos (N) ▾</strong> (con <strong>+ Abrir carpeta…</strong> para sumar cualquier carpeta o repositorio), al centro la <strong>Paleta de comandos</strong> (<kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd>) para saltar entre archivos del proyecto, modos, pestañas abiertas, conexiones y acciones rápidas, y a la derecha los cuatro modos de trabajo (<kbd>⌃⌘1</kbd>–<kbd>⌃⌘4</kbd> en macOS, <kbd>Ctrl+Mayús+1</kbd>–<kbd>4</kbd> en Windows y Linux):</p>
+  <div class="tablewrap"><table>
+    <tr><th>Modo</th><th>Qué muestra</th></tr>
+    <tr><td><strong>Trabajo</strong></td><td>Espacio enfocado para SQL/Mongo/Redis, Git, SSH/SFTP, Notas, HTTP y Utilidades sin el panel de chat ocupando ancho.</td></tr>
+    <tr><td><strong>Pareja</strong></td><td>Espacio de trabajo y <strong>Chat Harness</strong> lado a lado con tirador redimensionable (tamaño <code>auto</code> / <code>custom</code>). En SQL/SSH/Notas/HTTP el chat actúa como asistente de consultas, EXPLAIN y diagnóstico; los controles exclusivos de Git quedan ocultos.</td></tr>
+    <tr><td><strong>Chat</strong></td><td><strong>Chat Harness</strong> a pantalla completa sin desmontar editores ni cortar respuestas en streaming.</td></tr>
+    <tr><td><strong>Terminales</strong></td><td><strong>Terminal Harness</strong> en mosaico PTY multi-agente para ejecutar varios CLIs agénticos y shells en paralelo.</td></tr>
+  </table></div>
+
+  <h2 id="la-ventana--terminales-grid">Mosaico de terminales multi-agente (modo Terminales)</h2>
+  <p>El modo <strong>Terminales</strong> abre un mosaico de terminales PTY reales (<code>xterm.js</code> + <code>go-pty</code>) donde podés lanzar en 1 clic los agentes CLI instalados (Claude Code, Codex, Antigravity, OpenCode) y shells locales en paralelo sobre cualquier repositorio o en <code>~</code>. Elegí <strong>Auto</strong> (1–3 columnas) o columnas fijas (<code>1×</code>, <code>2×</code>, <code>3×</code>), duplicá o maximizá cualquier celda sin detener las demás y volvé a Trabajo/Pareja/Chat manteniendo las PTYs vivas en segundo plano. Incluye indicador <strong>MCP</strong> en vivo con acceso a Acceso de la IA (los CLIs lanzados en PTY heredan el entorno y se conectan a <code>mini-tools --mcp</code> cuando está activo). Las terminales dedicadas de SSH/SFTP y Git siguen intactas en sus módulos.</p>
+
+  <h2 id="la-ventana--rails-status">Explorador unificado, Activity Rail personalizable y Status Bar</h2>
+  <ul>
+    <li>El <strong>Activity Rail izquierdo</strong> queda siempre visible con botones circulares para los seis módulos. Desde <strong>Configuración → Apariencia → Módulos visibles en la barra lateral</strong> podés ocultar los módulos que no usás en tu día a día (la preferencia se guarda en SQLite dentro de tu vault).</li>
+    <li>Al abrir un proyecto/repositorio, el sidebar principal muestra el <strong>Explorador unificado</strong> con tres sub-pestañas: <strong>Archivos</strong> (árbol con íconos por lenguaje, estado Git y búsqueda fuzzy ranqueada desde el buscador superior), <strong>Git</strong> (Historial con filtros y ramas rápidas, Cambios con staging/commit y Stash unificados sin barras duplicadas) y <strong>Agentes</strong> (sesiones vivas de Chat/PTY, instrucciones del repo, Skills, Comandos, servidores MCP, consumo/límites y lanzador rápido de CLIs).</li>
+    <li>La <strong>Status Bar inferior</strong> muestra el repositorio o conexión BD activa, cantidad de agentes vivos, versión instalada y un selector rápido de <strong>escala de letra</strong> (presets <code>90%</code>–<code>150%</code> o porcentaje personalizado <code>80–200%</code>) sincronizado con Configuración.</li>
   </ul>
 </article>
 
@@ -3286,6 +3307,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p class="lead">Los que valen en toda la app. Cada módulo agrega los suyos en sus propios tooltips.</p>
   <div class="tablewrap"><table>
     <tr><th>Atajo</th><th>Qué hace</th></tr>
+    <tr><td><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd></td><td>Abrir la paleta de comandos para saltar a cualquier archivo del proyecto abierto, a un modo ADE, a una pestaña, a una conexión o a una acción rápida. Con el foco en una terminal, Ctrl+K sigue siendo de la shell</td></tr>
+    <tr><td><kbd>⌃⌘1</kbd>–<kbd>⌃⌘4</kbd> / <kbd>Ctrl+Mayús+1</kbd>–<kbd>4</kbd></td><td>Cambiar de modo ADE: Trabajo, Pareja, Chat o Terminales (en macOS es ⌃⌘ porque ⇧⌘3 y ⇧⌘4 son las capturas de pantalla del sistema)</td></tr>
     <tr><td><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd></td><td>Ejecutar la consulta, o mandar los cambios pendientes de la grilla</td></tr>
     <tr><td><kbd>Ctrl+Shift+↵</kbd></td><td>Ejecutar el bloque PL/SQL donde está el cursor</td></tr>
     <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Asistente de consultas: pedir una consulta o corregir la que falló</td></tr>
@@ -3381,7 +3404,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.10.7; esta página no hace una sola petición externa.
+  v2.10.8; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·

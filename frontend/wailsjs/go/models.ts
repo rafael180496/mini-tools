@@ -5634,6 +5634,7 @@ export namespace vault {
 	    uiFontScale: number;
 	    language: string;
 	    snippetsPanelWidth: number;
+	    hiddenSidebarModules: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -5682,6 +5683,7 @@ export namespace vault {
 	        this.uiFontScale = source["uiFontScale"];
 	        this.language = source["language"];
 	        this.snippetsPanelWidth = source["snippetsPanelWidth"];
+	        this.hiddenSidebarModules = source["hiddenSidebarModules"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

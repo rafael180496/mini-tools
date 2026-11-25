@@ -26,15 +26,26 @@ func find(list []Entry, name string) *Entry {
 }
 
 // Los dos layouts que existen de verdad en los repos del usuario:
-// .claude/skills (mini-tools) y .github/skills (support-lab). Omitir el
+// .claude/skills (mini-tools) y .github/skills (otros repos). Omitir el
 // segundo haría que ese proyecto se viera como si no tuviera ningún skill.
+// isolateHome apunta HOME (y USERPROFILE en Windows) a un directorio vacío:
+// Scan también lee los skills del usuario (~/.claude/skills…) y sin esto el
+// resultado depende de lo que tenga instalado la máquina que corre los tests.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 func TestScanFindsBothSkillLayouts(t *testing.T) {
+	isolateHome(t)
 	root := t.TempDir()
 
 	writeFile(t, filepath.Join(root, ".claude", "skills", "mini-tools-patterns", "SKILL.md"),
 		"---\nname: mini-tools-patterns\ndescription: Patrones de conectores de base de datos\n---\n\n# Contenido\n")
-	writeFile(t, filepath.Join(root, ".github", "skills", "backend-support-lab", "SKILL.md"),
-		"---\nname: backend-support-lab\ndescription: 'Reglas del backend Go/Fiber'\n---\n")
+	writeFile(t, filepath.Join(root, ".github", "skills", "backend-example", "SKILL.md"),
+		"---\nname: backend-example\ndescription: 'Reglas del backend Go/Fiber'\n---\n")
 
 	// Una carpeta sin SKILL.md no es un skill: listarla daría una entrada que
 	// ningún CLI va a cargar.
@@ -51,7 +62,7 @@ func TestScanFindsBothSkillLayouts(t *testing.T) {
 		t.Errorf("skill de .claude/skills mal leído: %+v", s)
 	}
 	// Las comillas simples del YAML no son parte del valor.
-	if s := find(ctx.Skills, "backend-support-lab"); s == nil || s.Description != "Reglas del backend Go/Fiber" {
+	if s := find(ctx.Skills, "backend-example"); s == nil || s.Description != "Reglas del backend Go/Fiber" {
 		t.Errorf("skill de .github/skills mal leído: %+v", s)
 	}
 	for _, s := range ctx.Skills {
@@ -68,6 +79,7 @@ func TestScanFindsBothSkillLayouts(t *testing.T) {
 // un catálogo al que le falta una entrada porque no supo parsearla es peor que
 // uno que la muestra sin descripción.
 func TestScanToleratesMissingFrontmatter(t *testing.T) {
+	isolateHome(t)
 	root := t.TempDir()
 
 	writeFile(t, filepath.Join(root, ".claude", "skills", "sin-frontmatter", "SKILL.md"), "# Solo un título\n")
@@ -92,6 +104,7 @@ func TestScanToleratesMissingFrontmatter(t *testing.T) {
 // Los ausentes se informan igual: la pregunta que contesta el panel no es solo
 // "qué tengo" sino "qué le falta a este repo para que el agente que uso lo lea".
 func TestScanReportsMissingInstructions(t *testing.T) {
+	isolateHome(t)
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "CLAUDE.md"), "# Proyecto\n")
 
@@ -123,6 +136,7 @@ func TestScanReportsMissingInstructions(t *testing.T) {
 
 // Un repositorio sin nada de esto es el caso NORMAL y no es un error.
 func TestScanEmptyRepo(t *testing.T) {
+	isolateHome(t)
 	ctx := Scan(t.TempDir())
 
 	if len(ctx.Skills) != 0 || len(ctx.Agents) != 0 || len(ctx.Commands) != 0 {

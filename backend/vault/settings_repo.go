@@ -215,6 +215,9 @@ type Settings struct {
 	// terminales, en píxeles. 0 = sin arrastrar, el frontend usa su default.
 	// Uno solo para todas las terminales: es el mismo panel. Migración 54.
 	SnippetsPanelWidth int `json:"snippetsPanelWidth"`
+	// HiddenSidebarModules guarda qué módulos del rail lateral eligió ocultar
+	// el usuario (migración 66). Vacío = se muestran los seis.
+	HiddenSidebarModules []string `json:"hiddenSidebarModules"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -283,10 +286,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var uiFontScale int
 	var snippetsPanelWidth int
 	var language string
+	var hiddenSidebarModulesJSON string
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale, snippets_panel_width, language FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale, snippets_panel_width, language, hidden_sidebar_modules FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale, &snippetsPanelWidth, &language,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale, &snippetsPanelWidth, &language, &hiddenSidebarModulesJSON,
 	); err != nil {
 		return Settings{}, i18n.Errorf(i18n.Msg{ES: "vault: leyendo settings: %w", EN: "vault: reading settings: %w"}, err)
 	}
@@ -318,6 +322,14 @@ func (s *Store) GetSettings() (Settings, error) {
 		var parsed []GitPanelSession
 		if err := json.Unmarshal([]byte(gitPanelSessionsJSON.String), &parsed); err == nil {
 			gitPanelSessions = parsed
+		}
+	}
+
+	hiddenSidebarModules := []string{}
+	if hiddenSidebarModulesJSON != "" {
+		var parsed []string
+		if err := json.Unmarshal([]byte(hiddenSidebarModulesJSON), &parsed); err == nil {
+			hiddenSidebarModules = parsed
 		}
 	}
 
@@ -356,6 +368,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		UIFontScale:             uiFontScale,
 		SnippetsPanelWidth:      snippetsPanelWidth,
 		Language:                language,
+		HiddenSidebarModules:    hiddenSidebarModules,
 	}, nil
 }
 
@@ -628,6 +641,33 @@ func (s *Store) SetUIFontScale(pct int) error {
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET ui_font_scale = ? WHERE id = 1`, pct); err != nil {
 		return i18n.Errorf(i18n.Msg{ES: "vault: guardando ui_font_scale: %w", EN: "vault: saving ui_font_scale: %w"}, err)
+	}
+	return nil
+}
+
+// SetHiddenSidebarModules persiste qué módulos del rail lateral están ocultos.
+func (s *Store) SetHiddenSidebarModules(ids []string) error {
+	allowed := map[string]bool{
+		"connections": true, "ssh": true, "git": true,
+		"notes": true, "http": true, "utilities": true,
+	}
+	clean := make([]string, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if allowed[id] && !seen[id] {
+			seen[id] = true
+			clean = append(clean, id)
+		}
+	}
+	if len(clean) >= len(allowed) {
+		clean = []string{}
+	}
+	raw, err := json.Marshal(clean)
+	if err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando hidden_sidebar_modules: %w", EN: "vault: encoding hidden_sidebar_modules: %w"}, err)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET hidden_sidebar_modules = ? WHERE id = 1`, string(raw)); err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando hidden_sidebar_modules: %w", EN: "vault: saving hidden_sidebar_modules: %w"}, err)
 	}
 	return nil
 }

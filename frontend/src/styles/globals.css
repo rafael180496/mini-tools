@@ -293,6 +293,62 @@
     }
 }
 
+/* Superficies y controles base del shell ADE (Fase 0 — ver .claude/specs/ux-ade-redesign.md).
+ * Usan exclusivamente roles MD3 y var(--radius-*), así funcionan igual en
+ * modo claro y oscuro y no interfieren con --ui-font-scale ni rounded-full. */
+@utility ade-pane {
+    border-radius: var(--radius-xl);
+    border: 1px solid color-mix(in oklab, var(--color-outline-variant) 70%, transparent);
+    background-color: var(--color-surface-container-low);
+}
+
+@utility ade-pane-sunken {
+    border-radius: var(--radius-xl);
+    border: 1px solid color-mix(in oklab, var(--color-outline-variant) 65%, transparent);
+    background-color: var(--color-surface-container-lowest);
+}
+
+@utility ade-tile {
+    border-radius: var(--radius-xl);
+    border: 1px solid color-mix(in oklab, var(--color-outline-variant) 70%, transparent);
+    background-color: var(--color-surface-container-lowest);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+
+    &[data-focused='true'] {
+        border-color: color-mix(in oklab, var(--color-primary) 75%, transparent);
+        box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-primary) 25%, transparent);
+    }
+}
+
+@utility ade-rail-btn {
+    display: flex;
+    height: 2rem;
+    width: 2rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid color-mix(in oklab, var(--color-outline-variant) 45%, transparent);
+    background-color: color-mix(in oklab, var(--color-surface-container) 70%, transparent);
+    color: var(--color-on-surface-variant);
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+
+    &:hover {
+        border-color: color-mix(in oklab, var(--color-outline) 65%, transparent);
+        background-color: var(--color-surface-container-high);
+        color: var(--color-on-surface);
+    }
+
+    &[data-active='true'] {
+        border-color: var(--color-primary);
+        background-color: var(--color-primary-container);
+        color: var(--color-on-primary-container);
+    }
+}
+
 :root {
     --md-primary: #0058bc;
     --md-on-primary: #ffffff;

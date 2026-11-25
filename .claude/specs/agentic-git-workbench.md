@@ -154,7 +154,7 @@ leerlos.
 
 **Verificación:** `go build ./...`; apuntar al propio repo de mini-tools, que
 ya tiene `.claude/skills/mini-tools-patterns/SKILL.md`, y contra
-`support-lab`, que tiene `.github/skills/` — dos layouts distintos a propósito.
+un repo con `.github/skills/` — dos layouts distintos a propósito.
 
 ---
 
@@ -328,8 +328,8 @@ archivos del árbol de trabajo con resaltado para más de treinta lenguajes.
 - S3 — `backend/agentctx` (`scan.go` + `frontmatter.go` + `scan_test.go`),
   binding `GitAgentContext` en `app_localterm.go` y solapa **Agentes** en el
   panel (`components/git/GitAgentPanel.tsx`). Verificado contra los dos
-  layouts reales: mini-tools (`.claude/skills`) y support-lab
-  (`.github/skills`).
+  layouts reales: mini-tools (`.claude/skills`) y un repo
+  con `.github/skills`.
 
 - S4 (lectura, 4.1–4.6) — `backend/mcpconf` con su lector JSON y su lector
   TOML acotado + binding `GitMCPConfig` + sección en el panel. **4.7

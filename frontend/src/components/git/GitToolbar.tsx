@@ -57,8 +57,8 @@ interface Props {
     forge: {provider: string; compareUrl: string} | null
     onCreatePr: () => void
     onDescribePr: () => void
-    agentMode: boolean
-    onToggleAgentMode: () => void
+    agentMode?: boolean
+    onToggleAgentMode?: () => void
     viewItems: MenuItem[]
     // --- abrir en…
     editors: osopen.Editor[]
@@ -69,6 +69,10 @@ interface Props {
     // ofrecer abrirlo otra vez.
     panelOpen: boolean
     onOpenAgentsPanel: () => void
+    // Vista central activa (Commits / Cambios / Archivos) siempre a un clic.
+    activeView?: 'commits' | 'changes' | 'stash' | 'files' | 'conflicts'
+    changesCount?: number
+    onSelectView?: (v: 'commits' | 'changes' | 'files') => void
 }
 
 // Umbrales medidos contra el contenido real: ver el cálculo en cada nivel.
@@ -80,8 +84,10 @@ const MEDIUM = 700
 const NARROW = 520
 
 export default function GitToolbar(p: Props) {
-    const tb = useT().git.workbench.toolbar
-    const g = useT().git.tab
+    const t = useT()
+    const tb = t.git.workbench.toolbar
+    const wp = t.git.workbench.panel
+    const g = t.git.tab
     const ref = useRef<HTMLDivElement>(null)
     const [width, setWidth] = useState(1200)
 
@@ -106,15 +112,9 @@ export default function GitToolbar(p: Props) {
             ? ([
                   {label: tb.createPr, icon: 'call_merge', hint: tb.createPrHint({provider: p.forge.provider}), onSelect: p.onCreatePr},
                   {label: tb.describePr, icon: 'auto_awesome', hint: tb.describePrHint, onSelect: p.onDescribePr},
+                  'separator',
               ] as MenuItem[])
             : []),
-        {
-            label: p.agentMode ? tb.agentModeOff : tb.agentModeOn,
-            icon: 'smart_toy',
-            hint: p.agentMode ? tb.agentModeOffHint : tb.agentModeOnHint,
-            onSelect: p.onToggleAgentMode,
-        },
-        'separator',
         ...p.viewItems,
     ]
 
@@ -169,6 +169,45 @@ export default function GitToolbar(p: Props) {
                 onManageRemotes={p.onManageRemotes}
             />
 
+            {p.onSelectView && (
+                <div className="flex shrink-0 items-center rounded-lg border border-outline-variant/70 bg-surface-container p-0.5">
+                    {(
+                        [
+                            ['commits', 'history', wp.history, g.views.commitsTitle, 0],
+                            ['changes', 'edit_note', g.views.changes, g.views.changesTitle, p.changesCount ?? 0],
+                            ['files', 'edit_document', g.views.files, g.views.filesTitle, 0],
+                        ] as const
+                    ).map(([id, icon, label, title, count]) => {
+                        const active = p.activeView === id
+                        return (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => p.onSelectView?.(id)}
+                                title={title}
+                                className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-ui-11 font-medium transition-colors ${
+                                    active
+                                        ? 'bg-primary-container text-on-primary-container'
+                                        : 'text-on-surface-variant hover:text-on-surface'
+                                }`}
+                            >
+                                <Icon name={icon} size={13} />
+                                {labels && <span>{label}</span>}
+                                {count > 0 && (
+                                    <span
+                                        className={`rounded-full px-1 font-mono text-ui-9 ${
+                                            active ? 'bg-on-primary-container/15 text-on-primary-container' : 'bg-surface-container-highest text-on-surface-variant'
+                                        }`}
+                                    >
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+
             {p.hiddenNames.length > 0 && (
                 <button
                     onClick={p.onUnhide}
@@ -196,21 +235,6 @@ export default function GitToolbar(p: Props) {
                             </button>
                         </>
                     )}
-                    {/* Modo agente: va en la barra y no en una columna porque el
-                        modo oculta las columnas — un interruptor tiene que
-                        sobrevivir a lo que apaga. */}
-                    <button
-                        onClick={p.onToggleAgentMode}
-                        data-agent-mode-toggle
-                        title={p.agentMode ? g.bar.agentModeOff : g.bar.agentModeOn}
-                        aria-label={tb.agentMode}
-                        aria-pressed={p.agentMode}
-                        className={`flex shrink-0 items-center justify-center rounded p-1 transition-colors ${
-                            p.agentMode ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
-                        }`}
-                    >
-                        <Icon name="smart_toy" size={17} />
-                    </button>
                     <DropdownMenu label="" icon="visibility" iconOnly title={g.viewMenu.title} width={300} items={p.viewItems} />
                 </>
             )}

@@ -9,6 +9,7 @@ import Select, {type SelectOption} from './Select'
 import Toggle from './Toggle'
 import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
 import {UI_FONT_SCALES} from '../hooks/useUIFontScale'
+import {ALL_SIDEBAR_MODULES, useHiddenSidebarModules} from '../hooks/useSidebarVisibility'
 import {useLanguage} from '../hooks/useLanguage'
 import {LANGUAGES, formatNumber, useT, type Lang} from '../i18n'
 import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, type TerminalThemeId} from '../xterm/terminalThemes'
@@ -141,6 +142,7 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
     const t = useT()
     const st = t.settings
+    const {hidden: hiddenModules, isVisible: isModuleVisible, visibleCount: visibleModulesCount, toggleModule: toggleSidebarModule, resetAll: resetSidebarModules, saveError: sidebarModulesSaveError} = useHiddenSidebarModules()
     const {lang, changeLanguage} = useLanguage()
 
     // Las listas de opciones se arman acá y no a nivel de módulo: sus textos
@@ -371,6 +373,74 @@ export default function SettingsDialog({
                                     <p className="text-xs text-on-surface-variant">
                                         {st.appearance.uiScaleNote}
                                     </p>
+                                </div>
+
+                                {/* Módulos visibles en el Activity Rail izquierdo */}
+                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                            <Icon name="view_sidebar" size={18} />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <span className="block text-sm font-medium text-on-surface">{st.appearance.sidebarModules}</span>
+                                            <span className="block truncate text-xs text-on-surface-variant">
+                                                {st.appearance.sidebarModulesHint}
+                                            </span>
+                                        </div>
+                                        {hiddenModules.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={resetSidebarModules}
+                                                title={st.appearance.sidebarModulesResetTitle}
+                                                className="shrink-0 rounded-md border border-outline-variant bg-surface-container px-2.5 py-1 text-xs font-medium text-on-surface transition-colors hover:bg-surface-variant"
+                                            >
+                                                {st.appearance.sidebarModulesReset}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                        {ALL_SIDEBAR_MODULES.map((id) => {
+                                            const meta: Record<string, {icon: string; label: string}> = {
+                                                connections: {icon: 'storage', label: t.workspace.modules.connections},
+                                                ssh: {icon: 'terminal', label: 'SSH'},
+                                                git: {icon: 'account_tree', label: 'Git'},
+                                                notes: {icon: 'description', label: t.workspace.modules.notes},
+                                                http: {icon: 'http', label: 'HTTP'},
+                                                utilities: {icon: 'handyman', label: t.workspace.modules.utilities},
+                                            }
+                                            const info = meta[id]
+                                            const visible = isModuleVisible(id)
+                                            const isLastVisible = visible && visibleModulesCount <= 1
+                                            return (
+                                                <div
+                                                    key={id}
+                                                    className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant/70 bg-surface-container px-2.5 py-1.5"
+                                                >
+                                                    <span className="flex min-w-0 items-center gap-1.5 text-xs text-on-surface">
+                                                        <Icon name={info.icon} size={15} className="shrink-0 text-primary" />
+                                                        <span className="truncate">{info.label}</span>
+                                                    </span>
+                                                    <Toggle
+                                                        checked={visible}
+                                                        disabled={isLastVisible}
+                                                        onChange={() => toggleSidebarModule(id)}
+                                                        ariaLabel={info.label}
+                                                        title={
+                                                            isLastVisible
+                                                                ? st.appearance.sidebarModuleLastTitle
+                                                                : st.appearance.sidebarModuleToggleTitle({label: info.label, visible})
+                                                        }
+                                                    />
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                    <p className="text-xs text-on-surface-variant">{st.appearance.sidebarModulesNote}</p>
+                                    {sidebarModulesSaveError && (
+                                        <p role="alert" className="text-xs text-error">
+                                            {st.appearance.sidebarModulesSaveError({error: sidebarModulesSaveError})}
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Apariencia del texto. Vale para el editor SQL

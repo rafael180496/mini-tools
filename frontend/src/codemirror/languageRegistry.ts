@@ -133,7 +133,7 @@ const DEFS: LanguageDef[] = [
     {
         id: 'typescript',
         name: 'TypeScript',
-        extensions: ['ts', 'mts', 'cts'],
+        extensions: ['ts', 'mts', 'cts', 'prisma', 'graphql', 'gql'],
         load: async () => (await import('@codemirror/lang-javascript')).javascript({typescript: true}),
     },
     {
@@ -146,7 +146,17 @@ const DEFS: LanguageDef[] = [
         id: 'json',
         name: 'JSON',
         extensions: ['json', 'jsonc', 'json5', 'webmanifest'],
-        filenames: ['.eslintrc', '.babelrc', '.prettierrc'],
+        filenames: [
+            '.eslintrc',
+            '.babelrc',
+            '.prettierrc',
+            '.all-contributorsrc',
+            '.swcrc',
+            '.stylelintrc',
+            '.commitlintrc',
+            '.lintstagedrc',
+            '.hintrc',
+        ],
         load: async () => (await import('@codemirror/lang-json')).json(),
     },
     {
@@ -159,12 +169,13 @@ const DEFS: LanguageDef[] = [
         id: 'go',
         name: 'Go',
         extensions: ['go'],
+        filenames: ['go.mod', 'go.work'],
         load: async () => (await import('@codemirror/lang-go')).go(),
     },
     {
         id: 'rust',
         name: 'Rust',
-        extensions: ['rs'],
+        extensions: ['rs', 'zig'],
         load: async () => (await import('@codemirror/lang-rust')).rust(),
     },
     {
@@ -189,7 +200,7 @@ const DEFS: LanguageDef[] = [
     {
         id: 'html',
         name: 'HTML',
-        extensions: ['html', 'htm', 'xhtml'],
+        extensions: ['html', 'htm', 'xhtml', 'erb', 'html.erb', 'svelte', 'astro', 'ejs', 'hbs', 'handlebars', 'twig', 'liquid', 'njk'],
         load: async () => (await import('@codemirror/lang-html')).html(),
     },
     {
@@ -282,8 +293,8 @@ const DEFS: LanguageDef[] = [
     {
         id: 'ruby',
         name: 'Ruby',
-        extensions: ['rb', 'rake', 'gemspec'],
-        filenames: ['gemfile', 'rakefile'],
+        extensions: ['rb', 'rake', 'gemspec', 'ru', 'jb', 'jbuilder', 'rbi', 'thor', 'podspec'],
+        filenames: ['gemfile', 'rakefile', 'brewfile', 'podfile', 'vagrantfile', 'fastfile', 'appfile', 'guardfile', 'capfile', 'dangerfile'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/ruby')).ruby),
     },
     {

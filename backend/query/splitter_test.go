@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Regression test for a real bug found against support-lab's database/init.sql:
+// Regression test for a real bug found against a real-world database/init.sql:
 // a DECLARE block preceded by the classic SQL*Plus "END;\n/\n" terminator
 // (optionally followed by a header comment) used to get misclassified as
 // plain SQL — classifyStatementStart saw the stray "/" (or a comment line)

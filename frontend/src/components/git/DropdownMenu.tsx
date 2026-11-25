@@ -126,7 +126,7 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                 <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} onContextMenu={(e) => { e.preventDefault(); setOpen(false) }} />
                 <div
                     style={{position: 'fixed', top: pos.top, left: pos.left, width}}
-                    className="z-50 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg"
+                    className="z-50 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg"
                 >
                     {tidySeparators(items).map((item, i) =>
                         item === 'separator' ? (
@@ -168,9 +168,9 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                                 }`}
                             >
                                 {item.icon && <Icon name={item.icon} size={15} className="shrink-0 opacity-70" />}
-                                <span className="shrink-0 font-mono">{item.label}</span>
+                                <span className="min-w-0 truncate font-mono">{item.label}</span>
                                 {item.hint && (
-                                    <span className="ml-auto truncate text-ui-10 text-on-surface-variant/70">{item.hint}</span>
+                                    <span className="ml-auto max-w-[45%] shrink-0 truncate text-ui-10 text-on-surface-variant/70">{item.hint}</span>
                                 )}
                             </button>
                         ),

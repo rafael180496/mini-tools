@@ -39,6 +39,13 @@ import AgentChatHost, {AgentChatButton, type AgentDock} from './agent/AgentChatH
 import AgentSessionsHost from './agent/AgentSessionsHost'
 import LocalTerminalTab from './terminal/LocalTerminalTab'
 import {NO_CONTEXT, UTILITIES_CHAT_OWNER, type WorkContext} from './agent/workContext'
+import CommandPalette, {type CommandPaletteItem} from './CommandPalette'
+import StatusBar from './StatusBar'
+import ProjectExplorer from './git/ProjectExplorer'
+import TerminalGridHost, {type TerminalGridTile, type TerminalLaunchRequest} from './terminal/TerminalGridHost'
+import {GitListWorkTree} from '../../wailsjs/go/main/App'
+import {adeModeFromKeyEvent, adeModeShortcut, type AdeMode} from '../hooks/useLayoutMode'
+import {useHiddenSidebarModules} from '../hooks/useSidebarVisibility'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
@@ -117,7 +124,7 @@ import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {dockerctl, query} from '../../wailsjs/go/models'
 import type {ParamDraftMap} from './editor/QueryParamsDialog'
 import Sidebar from './sidebar/Sidebar'
-import {sidebarModuleFromSettings, type SidebarModuleId} from './sidebar/SidebarMasterMenu'
+import {sidebarModuleFromSettings, type SidebarModuleId} from './sidebar/ActivityRail'
 import UtilitiesTree from './utilities/UtilitiesTree'
 import type {UtilityId} from './utilities/utilities'
 import type {DockerSection} from './utilities/docker/sections'
@@ -128,7 +135,7 @@ import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
 import {notifyAgentChatsChanged, requestRenameAiChatTab, onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiSessionsRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
-import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatLayout, useAiChatPanes, type PaneLayout} from '../lib/aiChatTabs'
+import {aiChatShortcuts, chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatLayout, useAiChatPanes, type PaneLayout} from '../lib/aiChatTabs'
 import {announceBackgroundChats, attentionCount, isLive, sessionsOfChats, useAgentSessions, useHiddenSessions, type AgentSessionInfo} from '../lib/agentSessions'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
@@ -139,18 +146,6 @@ import type {Theme} from '../hooks/useTheme'
 // Lazy: both are only mounted once the user opens them (showDialog /
 // showExplain), so they don't need to be in the initial bundle — unlike
 // the editor itself, which the workspace needs immediately and can't defer.
-// Ver gitWorkInSidebar.
-const GIT_WORK_IN_SIDEBAR_KEY = 'mt.git.workInSidebar'
-// Panel de trabajo acoplado: plegado a su encabezado y qué fracción del alto
-// del módulo Git se queda con el árbol de repositorios. Preferencias de la
-// máquina, no de un repo: se leen y escriben con try/catch como la anterior.
-const GIT_WORK_DOCK_COLLAPSED_KEY = 'mt.git.workDockCollapsed'
-const GIT_WORK_DOCK_SPLIT_KEY = 'mt.git.workDockSplit'
-const GIT_WORK_DOCK_SPLIT_DEFAULT = 0.38
-const GIT_WORK_DOCK_SPLIT_MIN = 0.12
-const GIT_WORK_DOCK_SPLIT_MAX = 0.85
-const clampGitWorkSplit = (v: number) => Math.min(GIT_WORK_DOCK_SPLIT_MAX, Math.max(GIT_WORK_DOCK_SPLIT_MIN, v))
-
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
@@ -421,6 +416,14 @@ interface WorkspaceProps {
     // acá solo baja hasta el diálogo de Configuración, que es donde se elige.
     uiFontScale: number
     onChangeUIFontScale: (pct: number) => void
+    // Props del shell ADE (Fase 1). Opcionales para no romper vistas aisladas de uishot.tsx.
+    adeMode?: AdeMode
+    onChangeAdeMode?: (mode: AdeMode) => void
+    paletteOpen?: boolean
+    onTogglePalette?: () => void
+    onClosePalette?: () => void
+    onTopBarContextChange?: (ctx: {label: string; icon: string; hasGitContext?: boolean; activeRepoId?: string | null}) => void
+    openRepoRequest?: {repo: vault.GitRepo; token: number} | null
 }
 
 // Las conversaciones de los paneles de una pestaña de Chat de IA y la que cada
@@ -473,8 +476,40 @@ export default function Workspace({
     updateInfo,
     uiFontScale,
     onChangeUIFontScale,
+    adeMode = 'work',
+    onChangeAdeMode,
+    paletteOpen,
+    onTogglePalette,
+    onClosePalette,
+    onTopBarContextChange,
+    openRepoRequest,
 }: WorkspaceProps) {
     const t = useT()
+    const [localPaletteOpen, setLocalPaletteOpen] = useState(false)
+    const [sidebarAutoWidth, setSidebarAutoWidth] = useState(true)
+    const {isVisible: isSidebarModuleVisible} = useHiddenSidebarModules()
+    // Se monta la primera vez que el usuario entra a modo Terminales y queda
+    // vivo (oculto) al volver a otros modos para no matar sus sesiones PTY.
+    const [terminalGridMounted, setTerminalGridMounted] = useState(adeMode === 'terminals')
+    const [gridTiles, setGridTiles] = useState<TerminalGridTile[]>([])
+    const [gridLaunchReq, setGridLaunchReq] = useState<TerminalLaunchRequest | null>(null)
+    const [gridFocusTileId, setGridFocusTileId] = useState<string | null>(null)
+    const [gridCloseTileReq, setGridCloseTileReq] = useState<{id: string; token: number} | null>(null)
+    const [gitOpenFileReq, setGitOpenFileReq] = useState<{repoId: string; path: string; token: number} | null>(null)
+    const [gitBrowseAllRepos, setGitBrowseAllRepos] = useState(false)
+    const [paletteRepoFiles, setPaletteRepoFiles] = useState<string[]>([])
+    useEffect(() => {
+        if (adeMode === 'terminals') setTerminalGridMounted(true)
+    }, [adeMode])
+    const isPaletteOpen = paletteOpen ?? localPaletteOpen
+    const togglePalette = useCallback(() => {
+        if (onTogglePalette) onTogglePalette()
+        else setLocalPaletteOpen((o) => !o)
+    }, [onTogglePalette])
+    const closePalette = useCallback(() => {
+        if (onClosePalette) onClosePalette()
+        else setLocalPaletteOpen(false)
+    }, [onClosePalette])
     // `selected` is ONLY the sidebar's own navigation state — which
     // connection's table/key tree is expanded there. It is deliberately
     // never synced with the active editor tab in either direction (a
@@ -1329,112 +1364,17 @@ export default function Workspace({
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     sidebarCollapsedRef.current = sidebarCollapsed
 
-    // La columna de trabajo de un repositorio (Historial, Cambios, Stash,
-    // Archivos) se dibuja en ESTA barra lateral, debajo de la lista de
-    // repositorios, y no como una segunda barra dentro de la pestaña: dos
-    // columnas angostas una al lado de la otra se comían el ancho del grafo y
-    // la de la app quedaba con media pantalla vacía. GitRepoTab la manda acá
-    // por un portal; si la barra está plegada o muestra otro módulo, vuelve a
-    // dibujarla adentro, como antes. Es una preferencia de esta máquina.
+    // La columna de trabajo Git (Historial, Cambios, Stash) vive unificada en
+    // ProjectExplorer → Git del sidebar principal vía portal desde GitRepoTab.
     const [gitWorkHost, setGitWorkHost] = useState<HTMLDivElement | null>(null)
-    const [gitWorkInSidebar, setGitWorkInSidebar] = useState(() => {
-        try {
-            return localStorage.getItem(GIT_WORK_IN_SIDEBAR_KEY) !== '0'
-        } catch {
-            return true
-        }
-    })
-    const toggleGitWorkInSidebar = useCallback(() => {
-        setGitWorkInSidebar((v) => {
-            try {
-                localStorage.setItem(GIT_WORK_IN_SIDEBAR_KEY, v ? '0' : '1')
-            } catch {
-                // sin almacenamiento: vuelve al valor por defecto la próxima vez
-            }
-            return !v
-        })
-    }, [])
-    // Plegar el panel acoplado a su encabezado le devuelve todo el alto al árbol
-    // de repositorios; el reparto del alto entre los dos es una fracción del
-    // cuerpo del módulo (no píxeles) para que siga proporcionado si la ventana
-    // cambia de tamaño. Se persiste al soltar el divisor, no en cada movimiento.
-    const [gitWorkDockCollapsed, setGitWorkDockCollapsed] = useState(() => {
-        try {
-            return localStorage.getItem(GIT_WORK_DOCK_COLLAPSED_KEY) === '1'
-        } catch {
-            return false
-        }
-    })
-    const toggleGitWorkDockCollapsed = useCallback(() => {
-        setGitWorkDockCollapsed((v) => {
-            try {
-                localStorage.setItem(GIT_WORK_DOCK_COLLAPSED_KEY, v ? '0' : '1')
-            } catch {
-                // sin almacenamiento: vuelve a desplegado la próxima vez
-            }
-            return !v
-        })
-    }, [])
-    const [gitWorkSplit, setGitWorkSplit] = useState(() => {
-        try {
-            const raw = parseFloat(localStorage.getItem(GIT_WORK_DOCK_SPLIT_KEY) ?? '')
-            return Number.isFinite(raw) ? clampGitWorkSplit(raw) : GIT_WORK_DOCK_SPLIT_DEFAULT
-        } catch {
-            return GIT_WORK_DOCK_SPLIT_DEFAULT
-        }
-    })
-    const gitWorkBodyRef = useRef<HTMLDivElement>(null)
-    function saveGitWorkSplit(v: number) {
-        try {
-            if (v === GIT_WORK_DOCK_SPLIT_DEFAULT) localStorage.removeItem(GIT_WORK_DOCK_SPLIT_KEY)
-            else localStorage.setItem(GIT_WORK_DOCK_SPLIT_KEY, String(v))
-        } catch {
-            // sin almacenamiento: queda solo para esta sesión
-        }
-    }
-    // Misma mecánica que startSidebarResize: listeners en window para que el
-    // arrastre siga aunque el puntero salga del divisor, y selección de texto
-    // apagada mientras dura.
-    function startGitWorkSplitResize(e: ReactMouseEvent) {
-        e.preventDefault()
-        const body = gitWorkBodyRef.current
-        const total = body?.getBoundingClientRect().height ?? 0
-        if (total <= 0) return
-        const startY = e.clientY
-        const startSplit = gitWorkSplit
-        const at = (y: number) => clampGitWorkSplit(startSplit + (y - startY) / total)
-        const prevCursor = document.body.style.cursor
-        const prevSelect = document.body.style.userSelect
-        document.body.style.cursor = 'row-resize'
-        document.body.style.userSelect = 'none'
-        function onMove(ev: MouseEvent) {
-            setGitWorkSplit(at(ev.clientY))
-        }
-        function onUp(ev: MouseEvent) {
-            window.removeEventListener('mousemove', onMove)
-            window.removeEventListener('mouseup', onUp)
-            document.body.style.cursor = prevCursor
-            document.body.style.userSelect = prevSelect
-            const v = at(ev.clientY)
-            setGitWorkSplit(v)
-            saveGitWorkSplit(v)
-        }
-        window.addEventListener('mousemove', onMove)
-        window.addEventListener('mouseup', onUp)
-    }
-    function resetGitWorkSplit() {
-        setGitWorkSplit(GIT_WORK_DOCK_SPLIT_DEFAULT)
-        saveGitWorkSplit(GIT_WORK_DOCK_SPLIT_DEFAULT)
-    }
-    // Pasar a la pestaña de un repositorio muestra el módulo Git de la barra:
-    // es donde ahora vive su columna de trabajo. No se guarda como módulo
-    // elegido —eso lo decide el menú master—, y elegir otro a mano sigue
-    // funcionando: la columna vuelve a la pestaña.
     const activeIsGitRepo = activeTabData?.kind === 'git-repo'
+    // Un repo activo lleva la barra lateral al módulo Git, salvo que el usuario
+    // lo haya ocultado: elegirlo igual dejaba la barra mostrando otro módulo
+    // (el primero visible) como si fuera el de Git.
+    const gitModuleVisible = isSidebarModuleVisible('git')
     useEffect(() => {
-        if (activeIsGitRepo && gitWorkInSidebar) setActiveModule('git')
-    }, [activeTabId, activeIsGitRepo, gitWorkInSidebar])
-    const gitWorkDocked = activeIsGitRepo && gitWorkInSidebar && activeModule === 'git' && !sidebarCollapsed
+        if (activeIsGitRepo && gitModuleVisible) setActiveModule('git')
+    }, [activeTabId, activeIsGitRepo, gitModuleVisible])
     // Ancho arrastrado de la barra, mismo trato que el alto del editor: se
     // persiste una vez al soltar, no en cada movimiento del puntero.
     const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
@@ -3603,17 +3543,38 @@ export default function Workspace({
 
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
-            // Estos atajos son del editor SQL. Ese editor queda montado detrás
-            // de cualquier otra pestaña, así que sin esta guarda un Ctrl+S en
-            // una petición HTTP o una nota abría «Guardar .sql», y un
-            // Ctrl+Enter corría la línea del editor escondido. Las otras
-            // pestañas tienen sus propios atajos.
+            // ⌘K / Ctrl+K: paleta de comandos global del ADE. Con Ctrl y el
+            // foco en una terminal (xterm) no se toma: ahí Ctrl+K es de la
+            // shell («borrar hasta el final de la línea» en bash/zsh) y la
+            // paleta se llevaba la tecla y el foco.
+            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+                const inTerminal = e.target instanceof Element && e.target.closest('.xterm') !== null
+                if (!(e.ctrlKey && !e.metaKey && inTerminal)) {
+                    e.preventDefault()
+                    togglePalette()
+                    return
+                }
+            }
+            // ⌃⌘1–4 (macOS) / Ctrl+Mayús+1–4: cambiar modo ADE (Trabajo | Pareja | Chat | Terminales).
+            if (onChangeAdeMode) {
+                const targetMode = adeModeFromKeyEvent(e)
+                if (targetMode) {
+                    e.preventDefault()
+                    onChangeAdeMode(targetMode)
+                    return
+                }
+            }
             // Cmd/Ctrl+Mayús+N: otra ventana de Chat de IA, desde donde sea.
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
                 e.preventDefault()
                 openAiChatRef.current({newWindow: true})
                 return
             }
+            // Estos atajos son del editor SQL. Ese editor queda montado detrás
+            // de cualquier otra pestaña, así que sin esta guarda un Ctrl+S en
+            // una petición HTTP o una nota abría «Guardar .sql», y un
+            // Ctrl+Enter corría la línea del editor escondido. Las otras
+            // pestañas tienen sus propios atajos.
             const kind = tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.kind
             const onEditor = kind === 'editor' || kind === 'remote-file'
             if ((e.metaKey || e.ctrlKey) && !e.altKey && ['enter', 's', 'i'].includes(e.key.toLowerCase())) {
@@ -3748,10 +3709,200 @@ export default function Workspace({
         !isHttpTabActive &&
         !isUtilityTabActive
 
+    // Reporta el contexto activo a la Top Bar ADE (Fase 1).
+    useEffect(() => {
+        if (!onTopBarContextChange) return
+        const kind = activeTabData?.kind
+        const icon =
+            kind === 'git-repo'
+                ? 'account_tree'
+                : kind === 'note'
+                  ? 'description'
+                  : kind === 'http-request'
+                    ? 'http'
+                    : kind === 'ssh-terminal' || kind === 'local-terminal' || kind === 'ssh-hybrid'
+                      ? 'terminal'
+                      : kind === 'sftp'
+                        ? 'folder_shared'
+                        : activeTabConnection
+                          ? 'storage'
+                          : 'workspaces'
+        const label = activeTabConnection?.name || activeTabData?.title || ''
+        onTopBarContextChange({
+            label,
+            icon,
+            hasGitContext: kind === 'git-repo',
+            activeRepoId: kind === 'git-repo' ? (activeTabData?.repoId ?? null) : null,
+        })
+    }, [activeTabData?.kind, activeTabData?.title, activeTabData?.repoId, activeTabConnection?.name, onTopBarContextChange])
+
+    // Abre un proyecto elegido desde el selector `Proyectos ▾` de la Top Bar (Fase 9.1).
+    useEffect(() => {
+        if (!openRepoRequest?.repo) return
+        setGitBrowseAllRepos(false)
+        if (gitModuleVisible) selectSidebarModule('git')
+        openGitRepo(openRepoRequest.repo)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openRepoRequest?.token])
+
+    // Indexa los archivos del proyecto activo al abrir la paleta ⌘K (Fase 9.3).
+    // Se guarda la lista COMPLETA: la paleta filtra sobre todos los archivos y
+    // recién después corta cuántos muestra. Cortar antes de filtrar dejaba sin
+    // resultados cualquier archivo más allá de los primeros 400 de un repo grande.
+    useEffect(() => {
+        const rid = activeTabData?.kind === 'git-repo' ? activeTabData.repoId : null
+        if (!isPaletteOpen || !rid) {
+            setPaletteRepoFiles([])
+            return
+        }
+        let alive = true
+        GitListWorkTree(rid)
+            .then((wt) => {
+                if (alive) setPaletteRepoFiles(wt?.files ?? [])
+            })
+            .catch(() => {
+                if (alive) setPaletteRepoFiles([])
+            })
+        return () => {
+            alive = false
+        }
+    }, [isPaletteOpen, activeTabData?.kind, activeTabData?.repoId])
+
+    const paletteItems = useMemo<CommandPaletteItem[]>(() => {
+        if (!isPaletteOpen) return []
+        const list: CommandPaletteItem[] = []
+        const activeRepoId = activeTabData?.kind === 'git-repo' ? activeTabData.repoId : null
+        if (activeRepoId && paletteRepoFiles.length > 0) {
+            for (const f of paletteRepoFiles) {
+                const name = f.split('/').pop() || f
+                list.push({
+                    id: `file:${f}`,
+                    group: 'files',
+                    label: name,
+                    subtitle: f,
+                    icon: 'code',
+                    onSelect: () => setGitOpenFileReq({repoId: activeRepoId, path: f, token: Date.now()}),
+                })
+            }
+        }
+        if (onChangeAdeMode) {
+            const modeDefs: {id: AdeMode; label: string; subtitle: string; icon: string; shortcut: string}[] = [
+                {id: 'work', label: t.shell.ade.modes.work, subtitle: t.shell.ade.modes.workTitle, icon: 'code', shortcut: adeModeShortcut('work')},
+                {id: 'pair', label: t.shell.ade.modes.pair, subtitle: t.shell.ade.modes.pairTitle, icon: 'vertical_split', shortcut: adeModeShortcut('pair')},
+                {id: 'chat', label: t.shell.ade.modes.chat, subtitle: t.shell.ade.modes.chatTitle, icon: 'forum', shortcut: adeModeShortcut('chat')},
+                {id: 'terminals', label: t.shell.ade.modes.terminals, subtitle: t.shell.ade.modes.terminalsTitle, icon: 'grid_view', shortcut: adeModeShortcut('terminals')},
+            ]
+            for (const m of modeDefs) {
+                list.push({
+                    id: `mode:${m.id}`,
+                    group: 'modes',
+                    label: m.label,
+                    subtitle: m.subtitle,
+                    icon: m.icon,
+                    shortcut: m.shortcut,
+                    active: adeMode === m.id,
+                    onSelect: () => onChangeAdeMode(m.id),
+                })
+            }
+        }
+        for (const tab of tabs) {
+            list.push({
+                id: `tab:${tab.id}`,
+                group: 'tabs',
+                label: tab.title,
+                subtitle: tab.path ?? tab.language,
+                icon:
+                    tab.kind === 'git-repo'
+                        ? 'account_tree'
+                        : tab.kind === 'note'
+                          ? 'description'
+                          : tab.kind === 'http-request'
+                            ? 'http'
+                            : tab.kind === 'local-terminal' || tab.kind === 'ssh-terminal'
+                              ? 'terminal'
+                              : 'code',
+                active: tab.id === activeTabId,
+                onSelect: () => setActiveTabId(tab.id),
+            })
+        }
+        for (const conn of connections) {
+            list.push({
+                id: `conn:${conn.id}`,
+                group: 'connections',
+                label: conn.name,
+                subtitle: conn.dbType,
+                icon: conn.dbType === 'ssh' ? 'terminal' : 'storage',
+                active: activeTabConnection?.id === conn.id,
+                onSelect: () => {
+                    selectSidebarModule(conn.dbType === 'ssh' ? 'ssh' : 'connections')
+                    setSelected(conn)
+                },
+            })
+        }
+        list.push(
+            {
+                id: 'act:new-sql',
+                group: 'actions',
+                label: t.shell.ade.palette.actions.newSqlTab,
+                icon: 'add',
+                onSelect: () => {
+                    const tab = newScratchTab()
+                    setTabs((prev) => [...prev, tab])
+                    setActiveTabId(tab.id)
+                },
+            },
+            {
+                id: 'act:new-ai',
+                group: 'actions',
+                label: t.shell.ade.palette.actions.newAiChat,
+                icon: 'smart_toy',
+                shortcut: aiChatShortcuts().newTab,
+                onSelect: () => openAiChatRef.current({newWindow: true}),
+            },
+            {
+                id: 'act:toggle-sidebar',
+                group: 'actions',
+                label: t.shell.ade.palette.actions.toggleSidebar,
+                icon: 'dock_to_left',
+                onSelect: toggleSidebarCollapsed,
+            },
+            {
+                id: 'act:toggle-theme',
+                group: 'actions',
+                label: t.shell.ade.palette.actions.toggleTheme,
+                icon: theme === 'dark' ? 'light_mode' : 'dark_mode',
+                onSelect: onToggleTheme,
+            },
+            {
+                id: 'act:settings',
+                group: 'actions',
+                label: t.shell.ade.palette.actions.openSettings,
+                icon: 'settings',
+                onSelect: () => setShowSettingsDialog(true),
+            },
+        )
+        return list
+    }, [
+        isPaletteOpen,
+        adeMode,
+        onChangeAdeMode,
+        tabs,
+        activeTabId,
+        connections,
+        activeTabConnection?.id,
+        activeTabData?.kind,
+        activeTabData?.repoId,
+        paletteRepoFiles,
+        theme,
+        onToggleTheme,
+        t,
+    ])
+
     return (
-        <div className="flex h-full w-full overflow-hidden bg-background font-sans text-on-background">
+        <div className="flex h-full w-full flex-col overflow-hidden bg-background font-sans text-on-background">
+            <div className="flex min-h-0 flex-1 gap-1.5 overflow-hidden p-1.5">
             <Sidebar
-                modules={sidebarModules}
+                modules={sidebarModules.filter((m) => isSidebarModuleVisible(m.id))}
                 activeModule={activeModule}
                 onSelectModule={selectSidebarModule}
                 collapsed={sidebarCollapsed}
@@ -3760,6 +3911,20 @@ export default function Workspace({
                 onFilterChange={setSidebarFilter}
                 width={sidebarWidth}
                 onStartResize={startSidebarResize}
+                onResizeWidth={(px) => {
+                    setSidebarAutoWidth(false)
+                    setSidebarWidth(px)
+                }}
+                onCommitWidth={(px) => {
+                    setSidebarAutoWidth(false)
+                    void SetSidebarWidth(px)
+                }}
+                isAutoWidth={sidebarAutoWidth}
+                onResetAutoWidth={() => {
+                    setSidebarAutoWidth(true)
+                    setSidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+                    void SetSidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+                }}
                 updateAvailable={updateInfo?.available ? updateInfo.latest : null}
                 updateDownloadName={updateInfo?.available ? updateInfo.assetName || null : null}
                 onOpenRepo={openRepo}
@@ -3866,16 +4031,39 @@ export default function Workspace({
                     ),
                     git: (
                         <GitErrorBoundary label={t.workspace.gitSidebarLabel}>
-                            <div ref={gitWorkBodyRef} className="flex min-h-0 flex-1 flex-col">
-                            {/* Acoplado y desplegado, el árbol toma su fracción del alto
-                                (flex-basis en %: resuelve contra el alto del cuerpo, que
-                                es definido); plegado o sin acoplar, todo el que sobra. */}
-                            <div
-                                className={gitWorkDocked && !gitWorkDockCollapsed ? 'flex min-h-16 shrink-0 grow-0 flex-col' : 'flex min-h-0 flex-1 flex-col'}
-                                style={gitWorkDocked && !gitWorkDockCollapsed ? {flexBasis: `${gitWorkSplit * 100}%`} : undefined}
-                            >
+                            <div className="flex min-h-0 flex-1 flex-col">
+                            {activeTabData?.kind === 'git-repo' && activeTabData.repoId && !gitBrowseAllRepos ? (
+                                <ProjectExplorer
+                                    repoId={activeTabData.repoId}
+                                    repoName={activeTabData.title.replace(/^Git — /, '')}
+                                    gridTiles={gridTiles}
+                                    externalFilter={sidebarFilter}
+                                    gitWorkHostRef={setGitWorkHost}
+                                    onBackToRepos={() => setGitBrowseAllRepos(true)}
+                                    onOpenFile={(path) =>
+                                        setGitOpenFileReq({repoId: activeTabData.repoId as string, path, token: Date.now()})
+                                    }
+                                    onOpenInTerminals={(opts) => {
+                                        setTerminalGridMounted(true)
+                                        setGridLaunchReq({token: Date.now(), ...opts})
+                                        onChangeAdeMode?.('terminals')
+                                    }}
+                                    onFocusGridTile={(tileId) => {
+                                        setGridFocusTileId(tileId)
+                                        onChangeAdeMode?.('terminals')
+                                    }}
+                                    onOpenSession={(sess) => openAiChat({chatId: sess.chatId})}
+                                    onNewAgentChat={() => openAiChat({newWindow: true})}
+                                    onAskAgent={() => {
+                                        onChangeAdeMode?.('pair')
+                                    }}
+                                />
+                            ) : (
                             <GitRepoTree
-                        onOpenRepo={openGitRepo}
+                        onOpenRepo={(repo) => {
+                            setGitBrowseAllRepos(false)
+                            openGitRepo(repo)
+                        }}
                         activeTabRepoId={activeTabData?.repoId ?? null}
                         reloadToken={reloadToken}
                         syncToken={gitSyncToken}
@@ -3889,29 +4077,6 @@ export default function Workspace({
                         filter={sidebarFilter}
                         onMatchCount={setGitMatches}
                     />
-                            </div>
-                            {/* Divisor: alto cero con la zona de agarre superpuesta, para
-                                que los 6 px no corran el layout (mismo truco que el tirador
-                                de ancho de la barra). */}
-                            {gitWorkDocked && !gitWorkDockCollapsed && (
-                                <div className="relative z-10 h-0 shrink-0">
-                                    <div
-                                        role="separator"
-                                        aria-orientation="horizontal"
-                                        onMouseDown={startGitWorkSplitResize}
-                                        onDoubleClick={resetGitWorkSplit}
-                                        title={t.git.workbench.panel.splitResize}
-                                        className="absolute inset-x-0 -top-[3px] h-1.5 cursor-row-resize hover:bg-primary/30"
-                                    />
-                                </div>
-                            )}
-                            {/* Plegado el host sigue montado (el portal de GitRepoTab
-                                cuelga de él) pero sin flex-1: solo mide su encabezado. */}
-                            {gitWorkDocked && (
-                                <div
-                                    ref={setGitWorkHost}
-                                    className={`flex min-h-0 flex-col border-t border-outline-variant ${gitWorkDockCollapsed ? 'shrink-0' : 'flex-1'}`}
-                                />
                             )}
                             </div>
                         </GitErrorBoundary>
@@ -4011,6 +4176,10 @@ export default function Workspace({
                 SSH o un repositorio. Los children son exactamente lo que antes
                 era la columna principal — el anfitrión aporta su mismo
                 contenedor flex. */}
+            <div
+                key="ade-main-host"
+                className={`ade-pane-sunken flex min-h-0 min-w-0 flex-1 overflow-hidden ${adeMode === 'terminals' ? 'hidden' : ''}`}
+            >
             <AgentChatHost
                 context={agentContext}
                 // La consulta que estás editando viaja como contexto adjunto:
@@ -4029,6 +4198,9 @@ export default function Workspace({
                 dock={agentDock}
                 size={agentSize}
                 onLayoutChange={changeAgentLayout}
+                adeMode={adeMode}
+                isAutoSize={agentSize === 420}
+                onResetAutoSize={() => changeAgentLayout(agentDock, 420)}
                 // Mandar un bloque de código de la respuesta a donde estás
                 // trabajando. Solo si hay dónde: en una terminal o un browser
                 // de Redis el botón no aparece, en vez de aparecer y no hacer
@@ -4724,11 +4896,9 @@ export default function Workspace({
                                     syncToken={gitSyncToken}
                                     onChanged={notifyGitChanged}
                                     active={activeTabId === t.id}
-                                    workHost={activeTabId === t.id && gitWorkDocked ? gitWorkHost : null}
-                                    workInSidebar={gitWorkInSidebar}
-                                    onToggleWorkInSidebar={toggleGitWorkInSidebar}
-                                    dockCollapsed={gitWorkDockCollapsed}
-                                    onToggleDockCollapsed={toggleGitWorkDockCollapsed}
+                                    workHost={activeTabId === t.id ? gitWorkHost : null}
+                                    adeMode={adeMode}
+                                    openFileRequest={gitOpenFileReq?.repoId === t.repoId ? gitOpenFileReq : null}
                                 />
                             </GitErrorBoundary>
                         </div>
@@ -5190,6 +5360,48 @@ export default function Workspace({
                     </>
                 )}
             </AgentChatHost>
+            </div>
+            {terminalGridMounted && (
+                <div
+                    key="ade-terminal-grid"
+                    className={`ade-pane-sunken flex min-h-0 min-w-0 flex-1 overflow-hidden ${adeMode === 'terminals' ? '' : 'hidden'}`}
+                >
+                    <TerminalGridHost
+                        visible={adeMode === 'terminals'}
+                        activeRepoId={activeTabData?.kind === 'git-repo' ? (activeTabData.repoId ?? null) : null}
+                        shellId={localShellId}
+                        theme={theme}
+                        terminalThemeId={terminalThemeId}
+                        terminalFontSize={terminalFontSize}
+                        launchRequest={gridLaunchReq}
+                        focusTileId={gridFocusTileId}
+                        closeTileReq={gridCloseTileReq}
+                        onTilesChange={setGridTiles}
+                    />
+                </div>
+            )}
+            </div>
+            <StatusBar
+                connectionName={activeTabConnection?.name ?? null}
+                connectionDbType={activeTabConnection?.dbType ?? null}
+                connectionLive={Boolean(activeTabConnection && liveDbConnIds.has(activeTabConnection.id))}
+                repoName={activeTabData?.kind === 'git-repo' ? activeTabData.title : null}
+                liveAgentsCount={agentSessions.filter((s) => isLive(s)).length}
+                pendingApprovalsCount={agentSessions.filter((s) => s.status === 'awaiting_approval').length}
+                onClickAgents={() => {
+                    // Los agentes viven en el explorador de Git; con Git oculto se abre el mosaico de terminales.
+                    if (!gitModuleVisible) {
+                        onChangeAdeMode?.('terminals')
+                        return
+                    }
+                    selectSidebarModule('git')
+                    if (sidebarCollapsed) toggleSidebarCollapsed()
+                }}
+                uiFontScale={uiFontScale}
+                onChangeUIFontScale={onChangeUIFontScale}
+                updateAvailable={updateInfo?.available ? updateInfo.latest : null}
+                onOpenSettings={() => setShowSettingsDialog(true)}
+            />
 
             {/* Permisos y avisos de las sesiones de IA, de TODAS las conversaciones:
                 el permiso de un agente que trabaja en una pestaña cerrada o en
@@ -5414,6 +5626,7 @@ export default function Workspace({
                     }}
                 />
             )}
+            <CommandPalette open={isPaletteOpen} onClose={closePalette} items={paletteItems} />
         </div>
     )
 }

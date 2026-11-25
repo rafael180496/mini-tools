@@ -301,7 +301,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
   <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.10.7. Everything here exists in that binary.">2.10.7 · Help</span>
+  <span class="ver" title="This documentation describes version 2.10.8. Everything here exists in that binary.">2.10.8 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -595,8 +595,29 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <li><strong>Tabs</strong> are labeled by type (SQL, REDIS, HTTP, note, terminal, repository, utility) and each SQL tab is bound to a connection from its own selector — never as a side effect of browsing the sidebar. Drag them to reorder, and close them with the ✕ or with a <strong>middle-click</strong>, like in VS Code.</li>
     <li>The <strong>bottom panel</strong> has Results and Console (plus DBMS_OUTPUT and the execution plan when there's something to show); drag it to change its height.</li>
     <li>The <strong>editor bar</strong> is a single row of icons: on the left what you press (save, run, explain, refresh), on the right what the tab runs against (schema and connection) and the chat. What each button does —and its shortcut— is in its tooltip.</li>
-    <li>Drag the <strong>sidebar</strong> to change its width, or hide it entirely, leaving a column of icons. Width, open module and editor height are saved between sessions.</li>
+    <li>Drag the <strong>sidebar</strong> or chat panel handle to set a custom width, or <strong>double-click</strong> the handle (or press <kbd>Enter</kbd> when focused) to return to <strong>auto size</strong>. Width, open module and layout mode are saved between sessions.</li>
+    <li>Long dropdown selectors (connections, schemas, models, terminal spaces) include a built-in <strong>search box</strong> with keyboard navigation (<kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>/<kbd>Esc</kbd>).</li>
     <li>The five sidebar trees (connections, SSH, Git, notes and HTTP) all behave the same: an <strong>icon per type</strong> —folder, database engine, server, repository, branch, note, HTTP method—, <strong>guide lines</strong> per level and a button in the header to <strong>collapse or expand everything</strong>. <strong>Right-clicking</strong> any row, or the empty space, opens its menu with every action (rename, duplicate, move to another folder, copy, delete…); the <strong>⋯</strong> button that appears on hover opens the same one. It also works from the keyboard: arrows, Enter and Esc.</li>
+  </ul>
+
+  <h2 id="la-ventana--modos-ade">ADE Top Bar, Projects, Command Palette and 4 modes</h2>
+  <p>Once the vault is unlocked, the window header becomes the <strong>ADE Top Bar</strong>: on the left the redesigned macaw mark and searchable <strong>Projects (N) ▾</strong> switcher (including <strong>+ Open folder…</strong> to register any folder or repository), in the center the <strong>Command Palette</strong> (<kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd>) to jump between project files, modes, open tabs, connections and quick actions, and on the right the four layout modes (<kbd>⌃⌘1</kbd>–<kbd>⌃⌘4</kbd> on macOS, <kbd>Ctrl+Shift+1</kbd>–<kbd>4</kbd> on Windows and Linux):</p>
+  <div class="tablewrap"><table>
+    <tr><th>Mode</th><th>What it shows</th></tr>
+    <tr><td><strong>Work</strong></td><td>Focused workspace for SQL/Mongo/Redis, Git, SSH/SFTP, Notes, HTTP and Utilities without the chat panel taking width.</td></tr>
+    <tr><td><strong>Pair</strong></td><td>Workspace and <strong>Chat Harness</strong> side by side with a resizable handle (<code>auto</code> / <code>custom</code> size). In SQL/SSH/Notes/HTTP the chat acts as a query, EXPLAIN and diagnostics assistant; Git-only controls stay hidden.</td></tr>
+    <tr><td><strong>Chat</strong></td><td>Full-canvas <strong>Chat Harness</strong> without unmounting open editors or cutting active streams.</td></tr>
+    <tr><td><strong>Terminals</strong></td><td>Multi-agent PTY <strong>Terminal Harness</strong> grid to run several CLI agents and shells in parallel.</td></tr>
+  </table></div>
+
+  <h2 id="la-ventana--terminales-grid">Multi-agent terminal grid (Terminals mode)</h2>
+  <p><strong>Terminals</strong> mode opens a real PTY grid (<code>xterm.js</code> + <code>go-pty</code>) where you can launch installed CLI agents (Claude Code, Codex, Antigravity, OpenCode) and local shells side by side in any repository or <code>~</code>. Pick <strong>Auto</strong> (1–3 columns) or a fixed column count (<code>1×</code>, <code>2×</code>, <code>3×</code>), duplicate or maximize any tile without stopping the others, and switch back to Work/Pair/Chat while every PTY stays alive in the background. It includes a live <strong>MCP</strong> status chip linked to AI Access (CLIs spawned in PTY inherit the environment and connect to <code>mini-tools --mcp</code> when enabled). Dedicated SSH/SFTP and Git terminals remain unchanged in their own modules.</p>
+
+  <h2 id="la-ventana--rails-status">Unified Project Explorer, customizable Activity Rail and Status Bar</h2>
+  <ul>
+    <li>The <strong>left Activity Rail</strong> stays visible with circular buttons for all six modules. Under <strong>Settings → Appearance → Visible sidebar modules</strong> you can hide modules you don't use daily (persisted in SQLite inside your vault).</li>
+    <li>When a project/repository is open, the main sidebar renders the <strong>Unified Project Explorer</strong> with three sub-tabs: <strong>Files</strong> (language-colored icons, Git status badges and ranked fuzzy search from the top search bar), <strong>Git</strong> (History with filters &amp; quick branches, Changes with staging/commit and Stashes unified with no duplicate panes) and <strong>Agents</strong> (live Chat/PTY sessions, repo instructions, Skills, Commands, MCP servers, usage/limits and one-click CLI launcher).</li>
+    <li>The <strong>bottom Status Bar</strong> displays the active repository or database connection, active agent count, app version, and a quick <strong>UI Scale</strong> selector (<code>90%</code>–<code>150%</code> presets or custom <code>80–200%</code>) synced with Settings.</li>
   </ul>
 </article>
 
@@ -3268,6 +3289,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p class="lead">The ones that work across the whole app. Each module adds its own in its tooltips.</p>
   <div class="tablewrap"><table>
     <tr><th>Shortcut</th><th>What it does</th></tr>
+    <tr><td><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd></td><td>Open the command palette to jump to any file of the open project, ADE modes, open tabs, connections and quick actions. With the focus in a terminal, Ctrl+K stays with the shell</td></tr>
+    <tr><td><kbd>⌃⌘1</kbd>–<kbd>⌃⌘4</kbd> / <kbd>Ctrl+Shift+1</kbd>–<kbd>4</kbd></td><td>Switch ADE mode: Work, Pair, Chat or Terminals (on macOS it is ⌃⌘ because ⇧⌘3 and ⇧⌘4 are the system screenshot shortcuts)</td></tr>
     <tr><td><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd></td><td>Run the query, or send the grid's pending changes</td></tr>
     <tr><td><kbd>Ctrl+Shift+↵</kbd></td><td>Run the PL/SQL block under the cursor</td></tr>
     <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Query assistant: ask for a query or fix the one that failed</td></tr>
@@ -3362,7 +3385,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.10.7; this page doesn't make a single external request.
+  v2.10.8; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·

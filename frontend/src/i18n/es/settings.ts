@@ -40,6 +40,15 @@ export default {
             'Agranda o achica el texto y los íconos de la app entera: barra lateral, menús, listas, diálogos y etiquetas. No cambia el editor de código ni las terminales, que tienen su propio cuerpo acá abajo y en Terminal.',
         uiScaleNote:
             'Se aplica al instante y se recuerda entre sesiones — también en la pantalla de desbloqueo. El editor de código y las terminales conservan su propio cuerpo, que se ajusta por separado.',
+        sidebarModules: 'Módulos visibles en la barra lateral',
+        sidebarModulesHint: 'Oculta los módulos que no usás en tu día a día para dejar el espacio más limpio.',
+        sidebarModulesNote: 'No borra datos ni conexiones: solo oculta el ícono del rail lateral. Al menos un módulo debe quedar visible.',
+        sidebarModulesReset: 'Mostrar todos',
+        sidebarModulesSaveError: (p: {error: string}) => `No se pudo guardar el cambio; la barra lateral quedó como estaba. ${p.error}`,
+        sidebarModulesResetTitle: 'Volver a mostrar los seis módulos en el rail lateral',
+        sidebarModuleToggleTitle: (p: {label: string; visible: boolean}) =>
+            p.visible ? `Ocultar ${p.label} del rail lateral` : `Mostrar ${p.label} en el rail lateral`,
+        sidebarModuleLastTitle: 'Debe quedar al menos un módulo visible en la barra lateral',
         typography: 'Tipografía',
         typographyHint: 'Fuente y cuerpo del editor SQL y del de archivos de Git.',
         fontLabel: 'Fuente del editor',

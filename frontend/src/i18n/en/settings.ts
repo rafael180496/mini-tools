@@ -41,6 +41,15 @@ const en: Messages<typeof es> = {
             'Makes the text and icons of the whole app bigger or smaller: sidebar, menus, lists, dialogs and labels. It does not change the code editor or the terminals, which have their own size below and under Terminal.',
         uiScaleNote:
             'Applies instantly and is remembered between sessions — on the unlock screen too. The code editor and the terminals keep their own size, adjusted separately.',
+        sidebarModules: 'Visible sidebar modules',
+        sidebarModulesHint: 'Hide the modules you do not use day to day to keep the workspace minimal.',
+        sidebarModulesNote: 'Does not delete any data or connections — it only hides the icon from the left rail. At least one module must remain visible.',
+        sidebarModulesReset: 'Show all',
+        sidebarModulesSaveError: (p: {error: string}) => `Could not save the change; the sidebar was left as it was. ${p.error}`,
+        sidebarModulesResetTitle: 'Show all six modules in the left rail again',
+        sidebarModuleToggleTitle: (p) =>
+            p.visible ? `Hide ${p.label} from the left rail` : `Show ${p.label} in the left rail`,
+        sidebarModuleLastTitle: 'At least one module must remain visible in the sidebar',
         typography: 'Typography',
         typographyHint: 'Font and size of the SQL editor and the Git file editor.',
         fontLabel: 'Editor font',

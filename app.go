@@ -1135,6 +1135,15 @@ func (a *App) SetSidebarModule(id string) error {
 	return a.vault.SetSidebarModule(id)
 }
 
+// SetHiddenSidebarModules persiste qué módulos del rail lateral están ocultos
+// en vault.db (migración 66).
+func (a *App) SetHiddenSidebarModules(ids []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetHiddenSidebarModules(ids)
+}
+
 // DeleteConnection closes any open pool for id and removes it from the
 // vault.
 func (a *App) DeleteConnection(id string) error {

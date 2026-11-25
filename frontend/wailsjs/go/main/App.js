@@ -1790,6 +1790,10 @@ export function SetGitPanelSessions(arg1) {
   return window['go']['main']['App']['SetGitPanelSessions'](arg1);
 }
 
+export function SetHiddenSidebarModules(arg1) {
+  return window['go']['main']['App']['SetHiddenSidebarModules'](arg1);
+}
+
 export function SetLanguage(arg1) {
   return window['go']['main']['App']['SetLanguage'](arg1);
 }

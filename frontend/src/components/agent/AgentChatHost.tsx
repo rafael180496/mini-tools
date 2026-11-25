@@ -25,7 +25,9 @@ import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import {chatTitleFromMessage, MAX_CHAT_TITLE} from '../../lib/chatTitle'
 import {renameChat} from '../../lib/chatRename'
 import Icon from '../Icon'
+import ResizeHandle from '../ResizeHandle'
 import Select from '../Select'
+import type {AdeMode} from '../../hooks/useLayoutMode'
 import ModelServerDialog from '../ModelServerDialog'
 import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
@@ -165,6 +167,12 @@ interface Props {
     insertLabel?: string
     // 'terminal' cuando lo insertado cae en una shell. Ver ChatCodeBlock.
     insertTarget?: 'editor' | 'terminal'
+    // Modo ADE (Fase 3): 'pair' abre el panel acoplado a la derecha, 'chat'
+    // expande el mismo panel montado al 100% sin cortar streams ni desmontar
+    // los children. Opcional para mantener compatibilidad con uishot.tsx.
+    adeMode?: AdeMode
+    isAutoSize?: boolean
+    onResetAutoSize?: () => void
     children: ReactNode
 }
 
@@ -201,9 +209,24 @@ export default function AgentChatHost({
     onInsertText,
     insertLabel,
     insertTarget,
+    adeMode = 'work',
+    isAutoSize,
+    onResetAutoSize,
     children,
 }: Props) {
     const [open, setOpen] = useState(false)
+    const prevAdeModeRef = useRef<AdeMode>(adeMode)
+
+    useEffect(() => {
+        const prev = prevAdeModeRef.current
+        prevAdeModeRef.current = adeMode
+        if (prev === adeMode) return
+        if (adeMode === 'pair' || adeMode === 'chat') {
+            setOpen(true)
+        } else if (adeMode === 'work' || adeMode === 'terminals') {
+            setOpen(false)
+        }
+    }, [adeMode])
     // Una sesión POR contexto de trabajo, indexadas por su clave. El hilo de
     // una conexión sobrevive a irse a otra pestaña y volver.
     const [sessions, setSessions] = useState<Record<string, Session>>({})
@@ -714,75 +737,66 @@ export default function AgentChatHost({
     // repositorio, donde el anfitrión se cierra solo porque ahí el agente lo
     // tiene el módulo Git. El tooltip del botón de cerrar ya prometía que
     // "la conversación queda como está"; ahora es cierto.
-    const docked = dock !== 'float'
-    const atLeft = docked && dock === 'left'
-    const atBottom = docked && dock === 'bottom'
-    const atRight = docked && dock === 'right'
+    const isFullChat = adeMode === 'chat'
+    const docked = isFullChat || dock !== 'float'
+    const atLeft = !isFullChat && docked && dock === 'left'
+    const atBottom = !isFullChat && docked && dock === 'bottom'
+    const atRight = !isFullChat && docked && dock === 'right'
+    const showPanel = isFullChat || open
 
-    const onResize = (e: React.MouseEvent) => {
-        e.preventDefault()
-        const horizontal = dock !== 'bottom'
-        const start = horizontal ? e.clientX : e.clientY
-        const initial = size
-        const move = (ev: MouseEvent) => {
-            const delta = horizontal ? (dock === 'right' ? start - ev.clientX : ev.clientX - start) : start - ev.clientY
-            const next = Math.min(1200, Math.max(240, initial + delta))
-            onLayoutChange(dock, next)
-        }
-        const up = () => {
-            window.removeEventListener('mousemove', move)
-            window.removeEventListener('mouseup', up)
-        }
-        window.addEventListener('mousemove', move)
-        window.addEventListener('mouseup', up)
-    }
+    const panelContainerClass = isFullChat
+        ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-container-lowest'
+        : atLeft
+          ? 'relative order-first min-h-0 shrink-0'
+          : atBottom || atRight
+            ? 'relative min-h-0 shrink-0'
+            : 'fixed bottom-4 right-4 z-20 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-lg'
 
-    const handle = (
-        <div
-            onMouseDown={onResize}
-            title={t.agent.host.resizeTitle}
-            className={`group flex shrink-0 items-center justify-center bg-surface-container-low hover:bg-primary/30 ${
-                dock === 'bottom' ? 'h-1.5 w-full cursor-row-resize' : 'h-full w-1.5 cursor-col-resize'
-            }`}
-        >
-            <div
-                className={`rounded-full bg-outline-variant group-hover:bg-primary ${
-                    dock === 'bottom' ? 'h-0.5 w-8' : 'h-8 w-0.5'
-                }`}
-            />
-        </div>
-    )
+    const panelContainerStyle = isFullChat
+        ? undefined
+        : atBottom
+          ? {height: size}
+          : docked
+            ? {width: size}
+            : {width: size, height: '70vh'}
 
     return (
         <AgentChatContext.Provider value={api}>
-            <div className={`flex min-h-0 min-w-0 flex-1 ${dock === 'bottom' ? 'flex-col' : 'flex-row'}`}>
-                {atLeft && (
-                    <>
-                        <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
-                            {panel}
-                        </div>
-                        {open && handle}
-                    </>
-                )}
+            <div className={`flex min-h-0 min-w-0 flex-1 ${atBottom ? 'flex-col' : 'flex-row'}`}>
+                <div
+                    key="ade-chat-children"
+                    className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${isFullChat ? 'hidden' : ''}`}
+                >
+                    {children}
+                </div>
 
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
-
-                {atBottom && (
-                    <>
-                        {open && handle}
-                        <div className="min-h-0 shrink-0" style={{height: size}} hidden={!open}>
-                            {panel}
-                        </div>
-                    </>
-                )}
-                {atRight && (
-                    <>
-                        {open && handle}
-                        <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
-                            {panel}
-                        </div>
-                    </>
-                )}
+                {/* Un ÚNICO nodo montado para el panel en todos los modos
+                    (Trabajo/Pareja/Chat/Flotante) para nunca desmontar
+                    AgentChat ni cortar streams al cambiar de modo. */}
+                <div
+                    key="ade-chat-panel"
+                    className={panelContainerClass}
+                    style={panelContainerStyle}
+                    hidden={!showPanel}
+                >
+                    {showPanel && !isFullChat && docked && (
+                        <ResizeHandle
+                            value={size}
+                            min={atBottom ? 200 : 260}
+                            max={atBottom ? 720 : 1000}
+                            defaultValue={atBottom ? 320 : 420}
+                            orientation={atBottom ? 'horizontal' : 'vertical'}
+                            edge={atBottom ? 'top' : atLeft ? 'right' : 'left'}
+                            isAuto={isAutoSize}
+                            onResetAuto={onResetAutoSize}
+                            onChange={(px) => onLayoutChange(dock, px)}
+                            onCommit={(px) => onLayoutChange(dock, px)}
+                            label={t.agent.host.resizeTitle}
+                            title={t.agent.host.resizeTitle}
+                        />
+                    )}
+                    {panel}
+                </div>
             </div>
 
             {serverDialog && (
@@ -812,16 +826,6 @@ export default function AgentChatHost({
                     }}
                     onClose={() => setRenaming(null)}
                 />
-            )}
-
-            {!docked && (
-                <div
-                    hidden={!open}
-                    className="fixed bottom-4 right-4 z-20 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-lg"
-                    style={{width: size, height: '70vh'}}
-                >
-                    {panel}
-                </div>
             )}
         </AgentChatContext.Provider>
     )

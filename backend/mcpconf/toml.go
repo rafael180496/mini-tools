@@ -50,7 +50,7 @@ func readCodexTOML(path string) ([]Server, File) {
 		if s, ok := found[name]; ok {
 			return s
 		}
-		s := &Server{Name: name, Agent: "codex", Scope: ScopeUser, Transport: TransportStdio, Args: []string{}, Source: path}
+		s := &Server{Name: name, Agent: "codex", Scope: ScopeUser, Transport: TransportStdio, Args: []string{}, EnvKeys: []string{}, Source: path}
 		found[name] = s
 		order = append(order, name)
 		return s

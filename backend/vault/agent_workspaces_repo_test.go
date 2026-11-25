@@ -92,8 +92,5 @@ func TestMigration61CreatesAgentWorkspaces(t *testing.T) {
 	if err := applyMigrations(s.db); err != nil {
 		t.Errorf("segunda pasada: %v", err)
 	}
-	var max int
-	if err := s.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 65 {
-		t.Errorf("versión = %d, %v", max, err)
-	}
+	assertSchemaAtLatest(t, s)
 }

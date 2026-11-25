@@ -43,4 +43,28 @@ export default {
             `Cierra esta sesión y abre una nueva en la raíz del repositorio, con ${p.agent} de nuevo — se pierde el directorio en el que estabas y todo lo que esté corriendo`,
         reopenTooltip: 'Abre una sesión nueva: la anterior terminó (con exit, o porque el proceso murió)',
     },
+    // Mosaico multi-agente de terminales PTY (Fase 4 ADE — modo Terminales).
+    grid: {
+        title: 'Mosaico de terminales',
+        spaceLabel: 'Espacio',
+        spaceHome: 'Carpeta personal (~)',
+        spaceTitle: 'Directorio/repositorio donde se abrirán las nuevas terminales y agentes',
+        launchAgent: (p: {name: string}) => `Abrir una terminal nueva corriendo ${p.name}`,
+        newShell: 'Shell',
+        newShellTitle: 'Abrir una terminal local nueva en el espacio elegido',
+        layoutAuto: 'Auto',
+        layoutAutoTitle: 'Distribución automática según la cantidad de terminales abiertas',
+        layoutColsTitle: (p: {cols: number}) => `Fijar el mosaico a ${p.cols} ${p.cols === 1 ? 'columna' : 'columnas'}`,
+        maximizeTile: 'Maximizar esta terminal a pantalla completa (las demás siguen vivas)',
+        restoreTile: 'Volver a la vista en mosaico con todas las terminales',
+        duplicateTile: 'Abrir otra terminal igual al lado',
+        closeTile: 'Cerrar esta terminal y terminar su proceso',
+        confirmCloseAgentTitle: '¿Cerrar el agente?',
+        confirmCloseAgent: (p: {name: string}) =>
+            `Se termina el proceso de ${p.name}. Si está a mitad de una tarea, la corta: lo que no haya guardado se pierde.`,
+        confirmCloseAgentButton: 'Cerrar y terminar',
+        emptyTitle: 'Lanza uno o varios agentes CLI en paralelo',
+        emptyHint: 'Cada celda corre su propia terminal PTY real y sobrevive aunque cambies de modo.',
+        activeCount: (p: {count: number}) => `${p.count} ${p.count === 1 ? 'sesión' : 'sesiones'}`,
+    },
 }

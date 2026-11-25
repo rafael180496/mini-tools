@@ -4,7 +4,8 @@ import logo from '../../assets/logo.png'
 import {AppVersion} from '../../../wailsjs/go/main/App'
 import {BrowserOpenURL} from '../../../wailsjs/runtime'
 import Icon from '../Icon'
-import SidebarMasterMenu, {type SidebarModuleDef, type SidebarModuleId} from './SidebarMasterMenu'
+import ResizeHandle from '../ResizeHandle'
+import ActivityRail, {type SidebarModuleDef, type SidebarModuleId} from './ActivityRail'
 import type {Theme} from '../../hooks/useTheme'
 import {useLang, useT, type Lang} from '../../i18n'
 
@@ -43,6 +44,11 @@ interface SidebarProps {
     // tirador, no el estado.
     width: number
     onStartResize: (e: ReactMouseEvent) => void
+    // API moderna de ResizeHandle (Fase 2 ADE): soporta teclado y reset a auto size.
+    onResizeWidth?: (px: number) => void
+    onCommitWidth?: (px: number) => void
+    isAutoWidth?: boolean
+    onResetAutoWidth?: () => void
     // Versión nueva disponible, si la hay. El pie de la barra es donde se
     // avisa: es el lugar donde ya está escrita la versión que se está
     // usando, así que es donde la comparación tiene sentido.
@@ -167,98 +173,6 @@ function SettingsButton({onOpen, updateAvailable}: {onOpen: () => void; updateAv
     )
 }
 
-// Pie de la barra: quién es esta app y qué versión es.
-//
-// La identidad estaba arriba, en un encabezado propio, y se fue a la barra
-// de título de la ventana cuando esa apareció. El pie es el otro lugar
-// clásico —y el mejor para la versión, que es un dato que se consulta una
-// vez cada tanto y nunca se busca arriba de todo—, además de darle un final
-// a una columna que si no termina en el vacío.
-function SidebarFooter({
-    updateAvailable,
-    updateDownloadName,
-    onOpenRepo,
-    theme,
-    onToggleTheme,
-    onOpenSettings,
-}: {
-    updateAvailable: string | null
-    updateDownloadName: string | null
-    onOpenRepo: () => void
-    theme: Theme
-    onToggleTheme: () => void
-    onOpenSettings: () => void
-}) {
-    const t = useT()
-    const [version, setVersion] = useState('')
-
-    useEffect(() => {
-        AppVersion()
-            .then(setVersion)
-            // Sin versión el pie muestra solo el nombre: es información
-            // secundaria y no vale interrumpir nada por ella.
-            .catch(() => {})
-    }, [])
-
-    const label = version ? `v${version}` : '—'
-
-    // La fila de ajustes de la app. Es la misma en los dos estados del pie
-    // (con y sin actualización disponible), así que se arma una vez.
-    const actions = (
-        <div className="flex shrink-0 items-center gap-0.5">
-            <ThemeButton theme={theme} onToggle={onToggleTheme} />
-            <HelpButton />
-            <SettingsButton onOpen={onOpenSettings} updateAvailable={updateAvailable} />
-        </div>
-    )
-
-    if (updateAvailable) {
-        // Dos botones hermanos y no uno adentro del otro: un <button> anidado
-        // no es HTML válido y el clic de adentro dispara también el de afuera.
-        return (
-            <div className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5">
-                <button
-                    onClick={onOpenRepo}
-                    title={
-                        updateDownloadName
-                            ? t.shell.sidebar.updateDownload({current: version || '—', latest: updateAvailable, file: updateDownloadName})
-                            : t.shell.sidebar.updatePage({current: version || '—', latest: updateAvailable})
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-surface-variant"
-                >
-                    <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                    <span className="flex min-w-0 shrink items-center gap-1 truncate font-mono text-ui-10 text-primary">
-                        <Icon name="new_releases" size={12} className="shrink-0" />
-                        v{updateAvailable}
-                    </span>
-                </button>
-                {actions}
-            </div>
-        )
-    }
-
-    return (
-        <div className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5">
-            {/* Identidad y versión, en un solo bloque con un solo tooltip: son
-                el mismo dato leído junto ("qué programa es esto y cuál tengo
-                instalado"), y separarlos en dos tooltips obligaba a apuntar dos
-                veces para responder una pregunta. El nombre se achica antes que
-                la versión al angostar la barra — el nombre está también en la
-                barra de título de la ventana, la versión no está en ningún
-                otro lado. */}
-            <span
-                title={t.shell.sidebar.versionTitle({version: label})}
-                className="flex min-w-0 flex-1 items-center gap-1.5 px-1"
-            >
-                <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                <span className="min-w-0 shrink truncate text-ui-11 font-medium text-on-surface-variant">mini-tools</span>
-                <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{label}</span>
-            </span>
-            {actions}
-        </div>
-    )
-}
-
 // La versión colapsada del pie: solo el logo, con todo lo demás en el
 // tooltip. Mismo dato, mismo comportamiento al haber actualización.
 function SidebarFooterMark({
@@ -299,134 +213,127 @@ function SidebarFooterMark({
     )
 }
 
-export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, updateDownloadName, onOpenRepo, theme, onToggleTheme, onOpenSettings}: SidebarProps) {
+export default function Sidebar({
+    modules,
+    activeModule,
+    onSelectModule,
+    collapsed,
+    onToggleCollapsed,
+    filter,
+    onFilterChange,
+    bodies,
+    width,
+    onStartResize,
+    onResizeWidth,
+    onCommitWidth,
+    isAutoWidth,
+    onResetAutoWidth,
+    updateAvailable,
+    updateDownloadName,
+    onOpenRepo,
+    theme,
+    onToggleTheme,
+    onOpenSettings,
+}: SidebarProps) {
     const t = useT()
     const active = modules.find((m) => m.id === activeModule) ?? modules[0]
 
-    if (collapsed) {
-        return (
-            <aside className="flex h-full w-11 shrink-0 flex-col items-center border-r border-outline-variant bg-surface-container-low py-2 text-on-surface">
-                <button
-                    onClick={onToggleCollapsed}
-                    title={t.shell.sidebar.expand}
-                    className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                >
-                    <Icon name="left_panel_open" size={18} />
-                </button>
-                <div className="mt-1 w-full border-t border-outline-variant pt-1">
-                    {/* Vertical y sin rótulos, pero es el MISMO menú: clickear
-                        un módulo acá abre la barra directamente en ese módulo,
-                        en vez de obligar a expandir primero y buscar después. */}
-                    <SidebarMasterMenu
-                        modules={modules}
-                        active={activeModule}
-                        orientation="vertical"
-                        onSelect={(id) => {
-                            onSelectModule(id)
-                            onToggleCollapsed()
-                        }}
-                    />
-                </div>
-
-                {/* Colapsada no entra ni el nombre ni la versión, pero sí el
-                    logo: le da pie a la columna y su tooltip dice las dos
-                    cosas, que es lo mismo que se consulta al leerlas. */}
-                <div className="mt-auto flex flex-col items-center gap-0.5 pt-2">
-                    {/* Los tres ajustes de la app también acá, apilados:
-                        colapsada es cuando menos pistas hay en pantalla, que es
-                        justo cuando más se buscan. Y son los únicos accesos que
-                        quedan — la barra de contexto del editor ya no los
-                        tiene. */}
-                    <ThemeButton theme={theme} onToggle={onToggleTheme} />
-                    <HelpButton />
-                    <SettingsButton onOpen={onOpenSettings} updateAvailable={updateAvailable} />
-                    <SidebarFooterMark updateAvailable={updateAvailable} updateDownloadName={updateDownloadName} onOpenRepo={onOpenRepo} />
-                </div>
-            </aside>
-        )
+    function handleRailSelectModule(id: SidebarModuleId) {
+        onSelectModule(id)
+        if (collapsed) onToggleCollapsed()
     }
 
     return (
-        <aside className="relative flex h-full shrink-0 flex-col border-r border-outline-variant bg-surface-container-low text-on-surface" style={{width}}>
-            {/* El logo y el nombre de la app vivían acá, en un encabezado
-                propio. Se fueron a la barra de título de la ventana
-                (components/TitleBar.tsx), que es donde va la identidad de una
-                app de escritorio — y tenerlos en los dos lados era decir dos
-                veces lo mismo a 40px de distancia. Lo único que quedaba de
-                ese encabezado, el botón de ocultar, se mudó al final de esta
-                fila. */}
-            <SidebarMasterMenu
+        <div className="flex h-full shrink-0 gap-1.5">
+            <ActivityRail
                 modules={modules}
-                active={activeModule}
-                onSelect={onSelectModule}
-                trailing={
+                activeModule={activeModule}
+                collapsed={collapsed}
+                onToggleCollapsed={onToggleCollapsed}
+                onSelectModule={handleRailSelectModule}
+                footer={
                     <>
-                        <div className="mx-1 h-5 w-px shrink-0 bg-outline-variant" />
-                        <button
-                            onClick={onToggleCollapsed}
-                            title={t.shell.sidebar.collapse}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
-                        >
-                            <Icon name="left_panel_close" size={18} />
-                        </button>
+                        <ThemeButton theme={theme} onToggle={onToggleTheme} />
+                        <HelpButton />
+                        <SettingsButton onOpen={onOpenSettings} updateAvailable={updateAvailable} />
+                        <SidebarFooterMark
+                            updateAvailable={updateAvailable}
+                            updateDownloadName={updateDownloadName}
+                            onOpenRepo={onOpenRepo}
+                        />
                     </>
                 }
             />
 
-            {/* Un solo buscador para los cuatro módulos, y sigue siendo global
-                aunque se vea uno solo: la razón por la que existe es no tener
-                que decidir de antemano en cuál está lo que uno recuerda nada
-                más que por el nombre. Los contadores del menú master son la
-                otra mitad — dicen dónde cayeron las coincidencias que este
-                módulo no está mostrando. */}
-            <div className="shrink-0 px-3 pt-2">
-                <div className="flex items-center gap-1.5 rounded-lg bg-surface-container-highest px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-primary">
-                    <Icon name="search" size={14} className="shrink-0 text-on-surface-variant/60" />
-                    <input
-                        value={filter}
-                        onChange={(e) => onFilterChange(e.target.value)}
-                        placeholder={t.shell.sidebar.searchPlaceholder}
-                        title={t.shell.sidebar.searchTitle}
-                        className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
-                    />
-                    {filter && (
-                        <button
-                            onClick={() => onFilterChange('')}
-                            title={t.shell.sidebar.clearSearch}
-                            className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
+            {!collapsed && (
+                <aside
+                    className="ade-pane relative flex h-full shrink-0 flex-col overflow-hidden text-on-surface"
+                    style={{width}}
+                >
+                    {/* Encabezado limpio del panel Explorador */}
+                    <div className="flex h-9 shrink-0 items-center justify-between border-b border-outline-variant/70 px-3">
+                        <span className="truncate text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant">
+                            {active.label}
+                        </span>
+                    </div>
+
+                    <div className="shrink-0 px-3 pt-2">
+                        <div className="flex items-center gap-1.5 rounded-lg bg-surface-container-highest px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-primary">
+                            <Icon name="search" size={14} className="shrink-0 text-on-surface-variant/60" />
+                            <input
+                                value={filter}
+                                onChange={(e) => onFilterChange(e.target.value)}
+                                placeholder={t.shell.sidebar.searchPlaceholder}
+                                title={t.shell.sidebar.searchTitle}
+                                className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                            />
+                            {filter && (
+                                <button
+                                    onClick={() => onFilterChange('')}
+                                    title={t.shell.sidebar.clearSearch}
+                                    className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
+                                >
+                                    <Icon name="close" size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Los seis módulos siguen montados para no perder estado al alternar */}
+                    {modules.map((m) => (
+                        <div
+                            key={m.id}
+                            className="flex min-h-0 flex-1 flex-col"
+                            style={{display: m.id === active.id ? undefined : 'none'}}
                         >
-                            <Icon name="close" size={14} />
-                        </button>
+                            {bodies[m.id]}
+                        </div>
+                    ))}
+
+                    {onResizeWidth ? (
+                        <ResizeHandle
+                            value={width}
+                            min={180}
+                            max={520}
+                            defaultValue={256}
+                            orientation="vertical"
+                            edge="right"
+                            isAuto={isAutoWidth}
+                            onResetAuto={onResetAutoWidth}
+                            onChange={onResizeWidth}
+                            onCommit={onCommitWidth}
+                            label={t.shell.sidebar.resize}
+                            title={t.shell.ade.rail.resizeTitle}
+                        />
+                    ) : (
+                        <div
+                            onMouseDown={onStartResize}
+                            title={t.shell.sidebar.resize}
+                            className="absolute inset-y-0 -right-0.5 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
+                        />
                     )}
-                </div>
-            </div>
-
-            {/* Los cuatro montados, uno visible — ver el comentario de arriba
-                sobre por qué no se desmontan. */}
-            {modules.map((m) => (
-                <div key={m.id} className="flex min-h-0 flex-1 flex-col" style={{display: m.id === active.id ? undefined : 'none'}}>
-                    {bodies[m.id]}
-                </div>
-            ))}
-
-            <SidebarFooter
-                updateAvailable={updateAvailable}
-                updateDownloadName={updateDownloadName}
-                onOpenRepo={onOpenRepo}
-                theme={theme}
-                onToggleTheme={onToggleTheme}
-                onOpenSettings={onOpenSettings}
-            />
-
-            {/* Tirador de ancho. Va superpuesto sobre el borde derecho y no
-                como una columna más del flex: una columna propia correría el
-                contenido y dejaría una franja visible al lado del borde, que
-                es exactamente el pixel que uno intenta agarrar. */}
-            <div
-                onMouseDown={onStartResize}
-                title={t.shell.sidebar.resize}
-                className="absolute inset-y-0 -right-0.5 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
-            />
-        </aside>
+                </aside>
+            )}
+        </div>
     )
 }

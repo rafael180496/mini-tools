@@ -140,8 +140,8 @@ export default function ToolCallCard({tool}: {tool: ToolCall}) {
           : undefined
 
     return (
-        <details className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
+        <details className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant/70 bg-surface-container/75 transition-colors hover:border-outline-variant">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-ui-11 hover:bg-surface-variant/40">
                 <Icon name={toolIcon(tool.name)} size={12} className={`shrink-0 ${changing ? 'text-tertiary' : 'text-primary'}`} />
                 <span className="shrink-0 font-mono font-medium text-on-surface" title={toolHint}>
                     {canonical}

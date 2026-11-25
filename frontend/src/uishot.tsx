@@ -1106,7 +1106,7 @@ const fixtures: Record<string, unknown> = {
         {id: 'r2', name: 'ISGL_WEB', path: '/repos/ISGL_WEB', folderId: 'f-git-trabajo', sortOrder: 1, createdAt: 0, pinnedBranches: []},
         {id: 'r3', name: 'ISGL_BATCH', path: '/repos/ISGL_BATCH', folderId: 'f-git-trabajo', sortOrder: 2, createdAt: 0, pinnedBranches: []},
         {id: 'r4', name: 'mini-tools', path: '/repos/mini-tools', folderId: '', sortOrder: 3, createdAt: 0, pinnedBranches: []},
-        {id: 'r5', name: 'support-lab', path: '/repos/support-lab', folderId: '', sortOrder: 4, createdAt: 0, pinnedBranches: []},
+        {id: 'r5', name: 'sample-api', path: '/repos/sample-api', folderId: '', sortOrder: 4, createdAt: 0, pinnedBranches: []},
     ],
     ListRecentFiles: [],
     ListSchemas: ['SGCPRO', 'PUBLIC'],
@@ -1883,10 +1883,6 @@ const views_repo = (
         onChanged={() => {}}
         active
         workHost={null}
-        workInSidebar={false}
-        onToggleWorkInSidebar={() => {}}
-        dockCollapsed={false}
-        onToggleDockCollapsed={() => {}}
     />
 )
 
