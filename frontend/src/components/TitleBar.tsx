@@ -29,13 +29,8 @@ export interface TitleBarAdeProps {
     contextLabel?: string
     contextIcon?: string
     activeRepoId?: string | null
-    hasGitContext?: boolean
     onSelectRepo?: (repo: vault.GitRepo) => void
     onOpenPalette: () => void
-    gridFilesOpen?: boolean
-    gridChangesOpen?: boolean
-    onToggleGridFiles?: () => void
-    onToggleGridChanges?: () => void
 }
 
 async function wailsRuntime() {
@@ -212,37 +207,6 @@ export default function TitleBar({ade}: {ade?: TitleBarAdeProps}) {
                         style={NO_DRAG}
                         onDoubleClick={(e) => e.stopPropagation()}
                     >
-                        {ade.mode === 'terminals' && ade.hasGitContext && ade.onToggleGridFiles && ade.onToggleGridChanges && (
-                            <div className="hidden items-center gap-1 lg:flex">
-                                <button
-                                    type="button"
-                                    onClick={ade.onToggleGridFiles}
-                                    title={t.shell.ade.gridControls.filesTitle}
-                                    className={`flex h-6 items-center gap-1 rounded-lg border px-2 text-ui-11 font-medium transition-colors ${
-                                        ade.gridFilesOpen
-                                            ? 'border-primary/50 bg-primary-container/25 text-primary'
-                                            : 'border-outline-variant/70 bg-surface-container text-on-surface-variant hover:text-on-surface'
-                                    }`}
-                                >
-                                    <Icon name="folder" size={13} />
-                                    <span>{t.shell.ade.gridControls.files}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={ade.onToggleGridChanges}
-                                    title={t.shell.ade.gridControls.changesTitle}
-                                    className={`flex h-6 items-center gap-1 rounded-lg border px-2 text-ui-11 font-medium transition-colors ${
-                                        ade.gridChangesOpen
-                                            ? 'border-primary/50 bg-primary-container/25 text-primary'
-                                            : 'border-outline-variant/70 bg-surface-container text-on-surface-variant hover:text-on-surface'
-                                    }`}
-                                >
-                                    <Icon name="difference" size={13} />
-                                    <span>{t.shell.ade.gridControls.changes}</span>
-                                </button>
-                            </div>
-                        )}
-
                         <div
                             role="tablist"
                             aria-label={t.shell.ade.palette.groups.modes}

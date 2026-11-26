@@ -189,6 +189,7 @@ interface GitRepoTabProps {
     // Modo ADE y petición externa de abrir un archivo en el editor (Fase 9).
     adeMode?: AdeMode
     openFileRequest?: {path: string; token: number} | null
+    onRevealWorkspace?: () => void
 }
 
 // Which of the two center views is showing. "commits" is the history graph;
@@ -324,6 +325,7 @@ export default function GitRepoTab({
     workHost,
     adeMode,
     openFileRequest,
+    onRevealWorkspace,
 }: GitRepoTabProps) {
     const t = useT()
     const g = t.git.tab
@@ -2716,7 +2718,10 @@ export default function GitRepoTab({
     const workPanel = (
         <GitWorkPanel
             view={view === 'conflicts' ? 'conflicts' : view}
-            onView={(v) => setView(v)}
+            onView={(v) => {
+                setView(v)
+                onRevealWorkspace?.()
+            }}
             changesCount={status?.files.length ?? 0}
             stashCount={stashes.length}
             width={sideWidth}
@@ -2738,12 +2743,22 @@ export default function GitRepoTab({
                     commitCount={commits.length}
                     loading={loadingLog}
                     quickRefs={quickRefs}
+                    branches={branches}
+                    tags={tags}
+                    stashCount={stashes.length}
                     pinned={pinned}
                     selectedBranch={selectedBranch}
                     busy={!!busy}
                     onRevealBranch={(b) => void selectBranch(b)}
                     onCheckout={checkoutBranch}
                     onTogglePin={(name) => void togglePinned(name)}
+                    onBranchMenu={(b, e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
+                    onRevealTag={(tg) => void revealCommit(tg.hash)}
+                    onTagMenu={(tg, e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(tg)})}
+                    onCreateBranch={() => promptCreateBranch('')}
+                    onCreateTag={promptCreateTag}
+                    onManageRemotes={() => openSettings('remotes')}
+                    onOpenStashes={() => setView('stash')}
                 />
             ) : view === 'stash' ? (
                 <StashPanel

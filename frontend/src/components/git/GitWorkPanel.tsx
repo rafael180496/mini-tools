@@ -65,7 +65,7 @@ export default function GitWorkPanel({view, onView, changesCount, stashCount, wi
         const gitTabs = tabs.filter((t) => t.id !== 'files')
         return (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div role="tablist" className="@container flex shrink-0 items-center gap-0.5 border-b border-outline-variant/60 px-2 py-1.5">
+                <div role="tablist" className="@container flex shrink-0 items-center gap-0.5 border-b border-outline-variant/60 px-1.5 py-1.5">
                     {gitTabs.map((tab) => (
                         <button
                             key={tab.id}
@@ -74,14 +74,16 @@ export default function GitWorkPanel({view, onView, changesCount, stashCount, wi
                             title={tab.title}
                             aria-label={tab.label}
                             aria-selected={view === tab.id}
-                            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-ui-11 transition-colors ${
+                            className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 text-ui-11 transition-colors ${
+                                tab.badge && tab.badge > 0 ? 'flex-[1.2] min-w-0' : 'flex-1 min-w-0'
+                            } ${
                                 view === tab.id ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                             }`}
                         >
-                            <Icon name={tab.icon} size={14} className="shrink-0" />
-                            <span className="hidden min-w-0 truncate @[220px]:inline">{tab.label}</span>
+                            <Icon name={tab.icon} size={13} className="shrink-0" />
+                            <span className="hidden min-w-0 truncate @[245px]:inline">{tab.label}</span>
                             {!!tab.badge && tab.badge > 0 && (
-                                <span className="shrink-0 rounded-full bg-secondary px-1 text-ui-10 font-medium leading-4 text-on-secondary">{tab.badge > 99 ? '99+' : tab.badge}</span>
+                                <span className="shrink-0 rounded-full bg-secondary px-1 text-ui-9 font-medium leading-4 text-on-secondary">{tab.badge > 99 ? '99+' : tab.badge}</span>
                             )}
                         </button>
                     ))}

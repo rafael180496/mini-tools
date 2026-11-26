@@ -3742,6 +3742,7 @@ export default function Workspace({
         setGitBrowseAllRepos(false)
         if (gitModuleVisible) selectSidebarModule('git')
         openGitRepo(openRepoRequest.repo)
+        if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [openRepoRequest?.token])
 
@@ -3781,7 +3782,10 @@ export default function Workspace({
                     label: name,
                     subtitle: f,
                     icon: 'code',
-                    onSelect: () => setGitOpenFileReq({repoId: activeRepoId, path: f, token: Date.now()}),
+                    onSelect: () => {
+                        setGitOpenFileReq({repoId: activeRepoId, path: f, token: Date.now()})
+                        if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
+                    },
                 })
             }
         }
@@ -4040,9 +4044,10 @@ export default function Workspace({
                                     externalFilter={sidebarFilter}
                                     gitWorkHostRef={setGitWorkHost}
                                     onBackToRepos={() => setGitBrowseAllRepos(true)}
-                                    onOpenFile={(path) =>
+                                    onOpenFile={(path) => {
                                         setGitOpenFileReq({repoId: activeTabData.repoId as string, path, token: Date.now()})
-                                    }
+                                        if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
+                                    }}
                                     onOpenInTerminals={(opts) => {
                                         setTerminalGridMounted(true)
                                         setGridLaunchReq({token: Date.now(), ...opts})
@@ -4899,6 +4904,9 @@ export default function Workspace({
                                     workHost={activeTabId === t.id ? gitWorkHost : null}
                                     adeMode={adeMode}
                                     openFileRequest={gitOpenFileReq?.repoId === t.repoId ? gitOpenFileReq : null}
+                                    onRevealWorkspace={() => {
+                                        if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
+                                    }}
                                 />
                             </GitErrorBoundary>
                         </div>

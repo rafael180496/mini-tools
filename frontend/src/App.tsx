@@ -16,22 +16,20 @@ function App() {
     const [updateInfo, setUpdateInfo] = useState<updatecheck.Info | null>(null)
     const {theme, toggleTheme} = useTheme()
     const {uiFontScale, changeUIFontScale} = useUIFontScale()
-    const {layout, setMode, toggleGridFiles, toggleGridChanges} = useLayoutMode()
+    const {layout, setMode} = useLayoutMode()
     const [paletteOpen, setPaletteOpen] = useState(false)
-    const [topBarContext, setTopBarContext] = useState<{label: string; icon: string; hasGitContext?: boolean; activeRepoId?: string | null}>({
+    const [topBarContext, setTopBarContext] = useState<{label: string; icon: string; activeRepoId?: string | null}>({
         label: '',
         icon: 'workspaces',
-        hasGitContext: false,
         activeRepoId: null,
     })
     const [pendingOpenRepo, setPendingOpenRepo] = useState<{repo: vault.GitRepo; token: number} | null>(null)
     const t = useT()
 
-    const handleTopBarContext = useCallback((ctx: {label: string; icon: string; hasGitContext?: boolean; activeRepoId?: string | null}) => {
+    const handleTopBarContext = useCallback((ctx: {label: string; icon: string; activeRepoId?: string | null}) => {
         setTopBarContext((prev) =>
             prev.label === ctx.label &&
             prev.icon === ctx.icon &&
-            prev.hasGitContext === ctx.hasGitContext &&
             prev.activeRepoId === ctx.activeRepoId
                 ? prev
                 : ctx,
@@ -76,13 +74,8 @@ function App() {
               contextLabel: topBarContext.label,
               contextIcon: topBarContext.icon,
               activeRepoId: topBarContext.activeRepoId,
-              hasGitContext: topBarContext.hasGitContext,
               onSelectRepo: (repo) => setPendingOpenRepo({repo, token: Date.now()}),
               onOpenPalette: () => setPaletteOpen((o) => !o),
-              gridFilesOpen: layout.gridFilesOpen,
-              gridChangesOpen: layout.gridChangesOpen,
-              onToggleGridFiles: toggleGridFiles,
-              onToggleGridChanges: toggleGridChanges,
           }
         : undefined
 
