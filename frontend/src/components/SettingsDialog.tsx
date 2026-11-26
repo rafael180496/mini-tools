@@ -1,4 +1,5 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
+import {createPortal} from 'react-dom'
 import {AppVersion, DefaultShellID, ListShells} from '../../wailsjs/go/main/App'
 import {localterm, updatecheck} from '../../wailsjs/go/models'
 import Icon from './Icon'
@@ -171,6 +172,20 @@ export default function SettingsDialog({
     // una decisión vieja.
     const [section, setSection] = useState<SettingsSectionId>(initialSection ?? 'general')
     const isSection = (id: SettingsSectionId) => section === id
+    const panelScrollRef = useRef<HTMLDivElement>(null)
+    const activeSectionMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]
+
+    useEffect(() => {
+        panelScrollRef.current?.scrollTo({top: 0})
+    }, [section])
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [onClose])
     const [version, setVersion] = useState('')
     useEffect(() => {
         AppVersion()
@@ -221,75 +236,84 @@ export default function SettingsDialog({
 
     const selectedShell = shells.find((s) => s.id === localShellId)
 
-    return (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    return createPortal(
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={st.title}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onClose()
+            }}
+        >
             <div
                 onClick={(e) => e.stopPropagation()}
-                // Alto por contenido, con piso y techo, en vez de un alto fijo: tres de
-                // las cuatro secciones son cortas, y un alto fijo que le entre a la
-                // más larga las dejaba con media pantalla en blanco abajo. El piso
-                // evita que cambiar de sección haga saltar el modal entre tamaños
-                // muy distintos; el techo es lo que hace scrollear a la sección de
-                // IA, que es la única larga de verdad.
-                className="flex min-h-[26rem] max-h-[88vh] w-[58rem] max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
+                // Tamaño estable (alto fijo relativo al viewport) para que el
+                // contenedor nunca salte ni se retraiga al cambiar de sección.
+                className="flex h-[min(680px,86vh)] w-[58rem] max-w-[94vw] flex-col overflow-hidden rounded-2xl border border-outline-variant/80 bg-surface-container-low text-on-surface shadow-2xl"
             >
                 {/* Header */}
-                <div className="flex items-center gap-3 border-b border-outline-variant px-5 py-3.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                        <Icon name="settings" size={20} />
+                <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant/60 bg-surface-container-lowest/50 px-5 py-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                        <Icon name="settings" size={18} />
                     </span>
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-semibold leading-tight">{st.title}</h2>
-                        <p className="text-xs text-on-surface-variant">{st.subtitle}</p>
+                        <h2 className="text-sm font-semibold leading-tight">{st.title}</h2>
+                        <p className="text-ui-11 text-on-surface-variant">{st.subtitle}</p>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
                         title={st.close}
-                        className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
                     >
-                        <Icon name="close" size={20} />
+                        <Icon name="close" size={18} />
                     </button>
                 </div>
 
-                {/* Navegación por secciones + cuerpo de la sección abierta.
-                    Antes era un solo scroll con las cinco secciones apiladas:
-                    para llegar al tamaño de fuente de la terminal había que
-                    pasar por el servidor MCP, el backup del vault y cuatro
-                    preferencias, y ninguna de esas se estaba buscando. El
-                    modal ancho existe para esto — la columna de la izquierda
-                    dice qué hay y el ancho que sobra lo aprovecha el
-                    contenido, no un margen. */}
-                <div className="flex min-h-0 flex-1">
+                {/* Navegación por secciones + cuerpo de la sección abierta */}
+                <div className="flex min-h-0 flex-1 overflow-hidden">
                     <nav
                         role="tablist"
                         aria-orientation="vertical"
                         aria-label={st.sectionsLabel}
-                        className="flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-outline-variant p-2"
+                        className="flex w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-outline-variant/60 bg-surface-container-lowest/35 p-2.5"
                     >
                         {SECTIONS.map((sec) => {
                             const isActive = sec.id === section
                             return (
                                 <button
                                     key={sec.id}
+                                    type="button"
                                     role="tab"
                                     data-section={sec.id}
                                     aria-selected={isActive}
                                     onClick={() => setSection(sec.id)}
                                     title={st.sectionTitle({label: st.sections[sec.id].label, hint: st.sections[sec.id].hint})}
-                                    className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+                                    className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
                                         isActive
                                             ? 'bg-primary-container text-on-primary-container'
-                                            : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                                            : 'text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface'
                                     }`}
                                 >
-                                    <Icon name={sec.icon} size={18} className="shrink-0" />
+                                    <Icon name={sec.icon} size={17} className="shrink-0" />
                                     <span className="min-w-0 flex-1 truncate">{st.sections[sec.id].label}</span>
                                 </button>
                             )
                         })}
                     </nav>
 
-                    <div role="tabpanel" className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 py-4">
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                        {/* Cabecera fija de la sección activa */}
+                        <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant/50 px-6 py-2.5">
+                            <Icon name={activeSectionMeta.icon} size={16} className="shrink-0 text-primary" />
+                            <span className="text-xs font-semibold text-on-surface">{st.sections[section].label}</span>
+                            <span className="min-w-0 flex-1 truncate text-ui-11 text-on-surface-variant/80">
+                                — {st.sections[section].hint}
+                            </span>
+                        </div>
+
+                        <div ref={panelScrollRef} role="tabpanel" className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-6 py-4">
                         {isSection('general') && (
                             <>
                                 {/* Idioma. Primero de todo: cambia TODA la
@@ -298,7 +322,7 @@ export default function SettingsDialog({
                                     leer el resto. El nombre de cada idioma va
                                     en su propio idioma ("English", "Español")
                                     por el mismo motivo. */}
-                                <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                         <Icon name="translate" size={18} />
                                     </span>
@@ -317,7 +341,7 @@ export default function SettingsDialog({
                                 </div>
 
                                 {/* Tema del editor */}
-                                                    <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                             <Icon name="palette" size={18} />
                                                         </span>
@@ -343,7 +367,7 @@ export default function SettingsDialog({
                                     porque no llega a leer la app tiene que
                                     encontrarlo antes que una preferencia del
                                     editor SQL. */}
-                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <div className="flex items-center gap-3">
                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                             <Icon name="format_size" size={18} />
@@ -376,7 +400,7 @@ export default function SettingsDialog({
                                 </div>
 
                                 {/* Módulos visibles en el Activity Rail izquierdo */}
-                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <div className="flex items-center gap-3">
                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                             <Icon name="view_sidebar" size={18} />
@@ -454,7 +478,7 @@ export default function SettingsDialog({
                                     monoespaciada y numeración de línea sería
                                     deshacer una decisión, no aplicar una
                                     preferencia. */}
-                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <div className="flex items-center gap-3">
                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                             <Icon name="text_fields" size={18} />
@@ -496,7 +520,7 @@ export default function SettingsDialog({
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <div className="flex items-center gap-3">
                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                             <Icon name="format_align_left" size={18} />
@@ -552,7 +576,7 @@ export default function SettingsDialog({
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                         <Icon name="toolbar" size={18} />
                                     </span>
@@ -573,7 +597,7 @@ export default function SettingsDialog({
                                 </div>
 
                                 {/* Auto-guardar editores */}
-                                                    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <div className="flex items-center gap-3">
                                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                                 <Icon name="save" size={18} />
@@ -617,7 +641,7 @@ export default function SettingsDialog({
                         {isSection('vault') && (
                             <>
                                 {/* Recordar clave — toggle */}
-                                                    <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                             <Icon name="key" size={18} />
                                                         </span>
@@ -640,7 +664,7 @@ export default function SettingsDialog({
                                 <button
                                                         onClick={onBackupVault}
                                                         title={st.vault.backupTitle}
-                                                        className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3 text-left transition-colors hover:border-secondary/60 hover:bg-surface-variant"
+                                                        className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3 text-left transition-colors hover:border-secondary/60 hover:bg-surface-variant"
                                                     >
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary/15 text-secondary">
                                                             <Icon name="backup" size={18} />
@@ -679,7 +703,7 @@ export default function SettingsDialog({
                                                     <button
                                                         onClick={onRestoreVault}
                                                         title={st.vault.restoreTitle}
-                                                        className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3 text-left transition-colors hover:border-error/60 hover:bg-error-container/30"
+                                                        className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3 text-left transition-colors hover:border-error/60 hover:bg-error-container/30"
                                                     >
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error/15 text-error">
                                                             <Icon name="restore" size={18} />
@@ -693,7 +717,7 @@ export default function SettingsDialog({
                                                         <Icon name="chevron_right" size={20} className="shrink-0 text-error/70" />
                                                     </button>
                                 {/* Backup automático */}
-                                                    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <div className="flex items-center gap-3">
                                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                                 <Icon name="schedule" size={18} />
@@ -755,7 +779,7 @@ export default function SettingsDialog({
                         {isSection('terminal') && (
                             <>
                                 {/* Shell */}
-                                                    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <div className="flex items-center gap-3">
                                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                                 <Icon name="terminal" size={18} />
@@ -788,7 +812,7 @@ export default function SettingsDialog({
                                                     </div>
 
                                                     {/* Tamaño de fuente */}
-                                                    <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                             <Icon name="format_size" size={18} />
                                                         </span>
@@ -830,7 +854,7 @@ export default function SettingsDialog({
                                                     </div>
 
                                                     {/* Tema de terminal */}
-                                                    <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                                    <div className="flex items-center gap-3 rounded-xl border border-outline-variant/65 bg-surface-container/75 p-3">
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                                                             <Icon name="palette" size={18} />
                                                         </span>
@@ -860,11 +884,12 @@ export default function SettingsDialog({
                                 <AgentSettings />
                             </>
                         )}
+                        </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-center gap-1.5 border-t border-outline-variant px-5 py-2.5 text-xs text-on-surface-variant">
+                <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-outline-variant/60 bg-surface-container-lowest/40 px-5 py-2 text-ui-11 text-on-surface-variant">
                     {updateInfo?.available ? (
                         <button
                             onClick={onOpenRepo}
@@ -922,6 +947,7 @@ export default function SettingsDialog({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     )
 }
