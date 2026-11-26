@@ -61,7 +61,7 @@ func StartApp(ctx context.Context) error {
 		} else {
 			cmd = exec.Command(l.path)
 		}
-		hidewin.Hide(cmd)
+		hidewin.NoConsole(cmd)
 		if runtime.GOOS == "darwin" {
 			return cmd.Run()
 		}

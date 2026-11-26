@@ -46,7 +46,7 @@ trap cleanup EXIT
 sed -i '' "s/\"productVersion\": \"[^\"]*\"/\"productVersion\": \"$VERSION\"/" wails.json
 
 echo "==> Compilando (wails build -platform windows/amd64)"
-wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=$VERSION"
+wails build -clean -platform windows/amd64 -ldflags "-H windowsgui -X main.appVersion=$VERSION"
 
 EXE_PATH="build/bin/mini-tools.exe"
 if [[ ! -f "$EXE_PATH" ]]; then

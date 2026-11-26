@@ -125,7 +125,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
         pointerFiles.includes(file) ? ctx.instructions.find((i) => i.present && i.file !== file && pointerFiles.includes(i.file))?.file : undefined
 
     return (
-        <div className={embedded ? 'px-1 pt-2 text-xs' : 'h-full overflow-y-auto p-2 text-xs'}>
+        <div className={embedded ? 'overflow-x-hidden px-1 pt-2 text-xs' : 'h-full overflow-y-auto overflow-x-hidden p-2 text-xs'}>
             <div className="mb-2 flex items-center gap-2">
                 <Icon name="smart_toy" size={14} className="shrink-0 text-primary" />
                 <span className="font-semibold text-on-surface">{t.git.agent.heading}</span>
@@ -141,14 +141,14 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             {/* Agente por defecto. Vacío = preguntar cada vez, que es el
                 default correcto: elegir por el usuario un asistente que
                 consume su cuota no es algo que nadie haya pedido. */}
-            <div className="mb-2 flex items-center gap-2 px-1.5 text-ui-11 text-on-surface-variant">
+            <div className={`mb-2 flex px-1.5 text-ui-11 text-on-surface-variant ${embedded ? 'flex-col gap-1' : 'items-center gap-2'}`}>
                 <span className="shrink-0">{t.git.agent.defaultAgent}</span>
                 <Select
                     size="sm"
                     value={defaultAgent}
                     onChange={onSetDefaultAgent}
                     title={t.git.agent.defaultAgentTitle}
-                    className="min-w-0 flex-1"
+                    className={embedded ? 'w-full' : 'min-w-0 flex-1'}
                     options={[
                         {value: '', label: t.git.agent.askEachTime},
                         ...installed
@@ -341,10 +341,10 @@ function UsageSection({
             {/* Consumo y límites se leen de lo que un CLI deja en disco: un
                 servidor de modelos no tiene ni lo uno ni lo otro. */}
             {usage.agents.filter((a) => !isModelServerAgent(a.agent)).map((a) => (
-                <div key={a.agent} className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
-                    <div className="flex items-center gap-1.5">
+                <div key={a.agent} className="mb-2 overflow-hidden rounded-xl border border-outline-variant/70 bg-surface-container/50 px-2.5 py-2">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                         <Icon name={agentIconName(a.agent)} size={13} className="shrink-0 text-on-surface-variant" />
-                        <span className="font-medium text-on-surface">{agentLabel(a.agent)}</span>
+                        <span className="min-w-0 truncate font-medium text-on-surface">{agentLabel(a.agent)}</span>
                         {/* El plan al lado del consumo: sin él, un total de
                             tokens es un número sin escala. */}
                         {(() => {
@@ -367,7 +367,7 @@ function UsageSection({
                             )
                         })()}
                         {a.available && (
-                            <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant" title={t.git.agent.usage.tokensDetail({total: formatNumber(a.all.total), messages: formatNumber(a.all.messages)})}>
+                            <span className="ml-auto shrink-0 font-mono text-ui-10 text-on-surface-variant" title={t.git.agent.usage.tokensDetail({total: formatNumber(a.all.total), messages: formatNumber(a.all.messages)})}>
                                 {t.git.agent.usage.tokens({n: compact(a.all.total)})}
                             </span>
                         )}

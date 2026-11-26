@@ -1373,7 +1373,10 @@ export default function Workspace({
     // (el primero visible) como si fuera el de Git.
     const gitModuleVisible = isSidebarModuleVisible('git')
     useEffect(() => {
-        if (activeIsGitRepo && gitModuleVisible) setActiveModule('git')
+        if (activeIsGitRepo && gitModuleVisible) {
+            setActiveModule('git')
+            setGitBrowseAllRepos(false)
+        }
     }, [activeTabId, activeIsGitRepo, gitModuleVisible])
     // Ancho arrastrado de la barra, mismo trato que el alto del editor: se
     // persiste una vez al soltar, no en cada movimiento del puntero.
@@ -4278,7 +4281,14 @@ export default function Workspace({
                     tabs={tabs}
                     activeId={activeTabId}
                     connections={connections}
-                    onSelect={setActiveTabId}
+                    onSelect={(id) => {
+                        setActiveTabId(id)
+                        const picked = tabs.find((tb) => tb.id === id)
+                        if (picked?.kind === 'git-repo' && gitModuleVisible) {
+                            setActiveModule('git')
+                            setGitBrowseAllRepos(false)
+                        }
+                    }}
                     onClose={closeTab}
                     onCloseAiChatForReal={requestCloseAiTabForReal}
                     onRenameAiChatTab={(id, title) => requestRenameAiChatTab({tabId: id, title})}

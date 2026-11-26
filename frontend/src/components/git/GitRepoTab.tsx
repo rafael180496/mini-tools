@@ -1821,6 +1821,69 @@ export default function GitRepoTab({
     function commitMenuItems(c: git.CommitInfo): (DropdownItem | 'separator')[] {
         const short = c.shortHash
         const m = i18n().git.tab.commitMenu
+        const bm = i18n().git.tab.branchMenu
+
+        // Acciones directas sobre las ramas que apuntan a este commit:
+        // - rama local: Checkout, Merge en la actual y Rebase sobre ella
+        // - rama remota (ej. origin/mainTest): Crear rama local, Checkout, Merge y Rebase
+        const branchActions: DropdownItem[] = []
+        const seenLocal = new Set<string>()
+        const seenMerge = new Set<string>()
+        const pushMergeAndRebase = (target: git.Branch) => {
+            if (target.isCurrent || seenMerge.has(target.name)) return
+            seenMerge.add(target.name)
+            branchActions.push({
+                label: bm.mergeInto({name: target.name, into: current?.name ?? bm.theCurrentShort}),
+                icon: 'merge',
+                onSelect: () => run(`merge ${target.name}`, () => GitMerge(repoId, target.name, false)),
+            })
+            branchActions.push(rebaseOntoItem(target))
+        }
+        for (const refName of c.branches) {
+            if (refName.endsWith('/HEAD')) continue
+            const found = branches.find((x) => x.name === refName)
+            if (!found) continue
+            if (!found.isRemote) {
+                if (found.isCurrent || seenLocal.has(found.name)) continue
+                seenLocal.add(found.name)
+                branchActions.push({
+                    label: bm.checkout({name: found.name}),
+                    icon: 'check',
+                    onSelect: () => checkoutBranch(found),
+                })
+                pushMergeAndRebase(found)
+            } else {
+                const slash = found.name.indexOf('/')
+                const localName = slash > 0 ? found.name.slice(slash + 1) : found.name
+                const localExists = branches.find((x) => !x.isRemote && x.name === localName)
+                if (localExists) {
+                    if (!localExists.isCurrent && !seenLocal.has(localExists.name)) {
+                        seenLocal.add(localExists.name)
+                        branchActions.push({
+                            label: bm.checkout({name: localExists.name}),
+                            icon: 'check',
+                            onSelect: () => checkoutBranch(localExists),
+                        })
+                        pushMergeAndRebase(localExists)
+                    }
+                } else {
+                    branchActions.push({
+                        label: bm.createLocal({name: localName}),
+                        icon: 'account_tree',
+                        hint: found.name,
+                        onSelect: () => run(`checkout -b ${localName}`, () => GitCreateBranch(repoId, localName, found.name, true)),
+                    })
+                    branchActions.push({
+                        label: bm.checkout({name: found.name}),
+                        icon: 'check',
+                        hint: bm.checkoutRemoteHint,
+                        onSelect: () => checkoutBranch(found),
+                    })
+                    pushMergeAndRebase(found)
+                }
+            }
+        }
+
         return [
             // Va primero porque es de solo lectura y sin consecuencias, a
             // diferencia de todo lo que sigue.
@@ -1834,6 +1897,7 @@ export default function GitRepoTab({
                         `commit ${short}`,
                     ),
             },
+            ...(branchActions.length > 0 ? (['separator', ...branchActions] as (DropdownItem | 'separator')[]) : []),
             'separator',
             {
                 label: m.rebaseFromHere,

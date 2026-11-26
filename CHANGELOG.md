@@ -4,6 +4,24 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Buscador instantáneo de ramas y tags en `ProjectExplorer → Git → Historial`.** Filtra en vivo ramas locales, remotas y tags (multi-palabra y sin acentos) auto-desplegando las secciones con coincidencias.
+- **Acciones directas de rama en el menú contextual del grafo de commits.** Al hacer clic derecho sobre un commit que tenga ramas locales o remotas (p. ej. `origin/mainTest`), ahora ofrece directamente **Checkout**, **Crear rama local**, **Merge en la rama actual** y **Rebase sobre la rama**, además de las acciones del commit.
+- **`Makefile` en la raíz del repositorio.** Centraliza todos los scripts de `scripts/` (`dev`, `rebuild`, `build`, `check`, `bindings`, `help-shots`, `bump-*`, `package`, etc.) con menú de ayuda en `make`.
+- **Soporte de firma local estable en macOS (`MACOS_SIGN_IDENTITY`) en `scripts/build.sh`.** Permite firmar `build/bin/mini-tools.app` con un certificado local del Llavero para que macOS recuerde los permisos de carpetas entre rebuilds.
+
+### Mejorado
+
+- **Sincronización automática del sidebar al tocar cualquier pestaña Git.** Al cambiar entre pestañas Git abiertas o volver a tocar la pestaña Git activa, el sidebar se ubica automáticamente en el `ProjectExplorer` de ese repositorio.
+- **Iconos adicionales de archivos.** Agregados íconos dedicados para `.gradle`, `gradlew` y `.properties`.
+- **Mensajes de permisos de carpetas en macOS (`Info.plist`) y subsistema GUI explícito en Windows.** Actualizadas las descripciones TCC para reflejar proyectos/Git además de SFTP, añadido `-H windowsgui` explícito en `scripts/package-windows.sh` y cambiado `dockerctl/launch.go` a `hidewin.NoConsole`.
+
+### Corregido
+
+- **Superposición de «N commits cargados» sobre las ramas en el sidebar Git.** El pie del conteo de commits queda fijo fuera del área scrollable de `HistoryPanel`.
+- **Desborde horizontal en la sub-pestaña `Agentes` del sidebar.** Las tarjetas de consumo de tokens envuelven su cabecera con `flex-wrap` y el selector «Agente por defecto» usa ancho completo en modo embebido.
+
 ## [2.10.8] - 2026-11-25
 
 ### Corregido

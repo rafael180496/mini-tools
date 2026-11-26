@@ -29,17 +29,17 @@
           dice para QUÉ lo necesita esta app y no una frase genérica.
         -->
         <key>NSDownloadsFolderUsageDescription</key>
-        <string>Para poder listar y transferir archivos de tu carpeta Descargas desde el explorador SFTP.</string>
+        <string>Para poder abrir proyectos, repositorios Git y archivos locales, y transferir archivos desde el explorador SFTP.</string>
         <key>NSDesktopFolderUsageDescription</key>
-        <string>Para poder listar y transferir archivos de tu Escritorio desde el explorador SFTP.</string>
+        <string>Para poder abrir proyectos, repositorios Git y archivos de tu Escritorio, y transferir archivos desde el explorador SFTP.</string>
         <key>NSDocumentsFolderUsageDescription</key>
-        <string>Para poder listar y transferir archivos de tu carpeta Documentos desde el explorador SFTP.</string>
+        <string>Para poder abrir tus proyectos, repositorios Git y archivos de Documentos, y transferir archivos desde el explorador SFTP.</string>
         <key>NSRemovableVolumesUsageDescription</key>
-        <string>Para poder listar y transferir archivos de discos externos y pendrives desde el explorador SFTP.</string>
+        <string>Para poder abrir proyectos y transferir archivos de discos externos y pendrives.</string>
         <key>NSNetworkVolumesUsageDescription</key>
-        <string>Para poder listar y transferir archivos de unidades de red montadas desde el explorador SFTP.</string>
+        <string>Para poder abrir proyectos y transferir archivos de unidades de red montadas.</string>
         <key>NSFileProviderDomainUsageDescription</key>
-        <string>Para poder listar y transferir archivos sincronizados por iCloud u otros proveedores desde el explorador SFTP.</string>
+        <string>Para poder abrir proyectos y transferir archivos sincronizados por iCloud u otros proveedores.</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
         <key>NSHumanReadableCopyright</key>

@@ -70,13 +70,35 @@ export default function HistoryPanel({
     const sw = t.git.workbench.switcher
     const gt = t.sidebar.git
     const [showHelp, setShowHelp] = useState(false)
+    const [refFilter, setRefFilter] = useState('')
     const [branchesOpen, setBranchesOpen] = useState(true)
     const [remotesOpen, setRemotesOpen] = useState(false)
     const [openRemote, setOpenRemote] = useState<Record<string, boolean>>({})
     const [tagsOpen, setTagsOpen] = useState(false)
 
+    const refTokens = useMemo(
+        () =>
+            refFilter
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean),
+        [refFilter],
+    )
+    const isFilteringRefs = refTokens.length > 0
+    const matchesRef = (name: string) => {
+        if (!isFilteringRefs) return true
+        const n = name
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+        return refTokens.every((tok) => n.includes(tok))
+    }
+
     const localBranches = useMemo(() => {
-        const locals = branches.filter((b) => !b.isRemote)
+        const locals = branches.filter((b) => !b.isRemote && matchesRef(b.name))
         const pinnedSet = new Set(pinned)
         return [...locals].sort((a, b) => {
             if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
@@ -85,12 +107,12 @@ export default function HistoryPanel({
             if (ap !== bp) return ap ? -1 : 1
             return a.name.localeCompare(b.name)
         })
-    }, [branches, pinned])
+    }, [branches, pinned, refTokens])
 
     const remoteGroups = useMemo(() => {
         const groups = new Map<string, git.Branch[]>()
         for (const b of branches) {
-            if (!b.isRemote) continue
+            if (!b.isRemote || !matchesRef(b.name)) continue
             const slash = b.name.indexOf('/')
             const remote = slash > 0 ? b.name.slice(0, slash) : 'origin'
             const list = groups.get(remote) ?? []
@@ -98,7 +120,13 @@ export default function HistoryPanel({
             groups.set(remote, list)
         }
         return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    }, [branches])
+    }, [branches, refTokens])
+
+    const filteredTags = useMemo(() => tags.filter((tg) => matchesRef(tg.name)), [tags, refTokens])
+    const showBranches = isFilteringRefs ? localBranches.length > 0 : branchesOpen
+    const showRemotes = isFilteringRefs ? remoteGroups.length > 0 : remotesOpen
+    const showTags = isFilteringRefs ? filteredTags.length > 0 : tagsOpen
+    const noRefMatches = isFilteringRefs && localBranches.length === 0 && remoteGroups.length === 0 && filteredTags.length === 0
 
     const clear = () => {
         onSearchText('')
@@ -121,7 +149,8 @@ export default function HistoryPanel({
     const prefixes = [w.prefixAuthor, w.prefixMessage, w.prefixFile, w.prefixSince, w.prefixUntil]
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto">
             {/* --- búsqueda ----------------------------------------------------
                 Distinta de cualquier filtro de ramas: ésta va a git y acota el
                 HISTORIAL. Confundirlas es concluir que un commit no existe
@@ -215,7 +244,34 @@ export default function HistoryPanel({
             </div>
 
             {/* --- árbol Git completo: Ramas / Remotos / Tags / Stashes ------- */}
-            <div className="min-h-0 flex-1 border-t border-outline-variant py-1">
+            <div className="border-t border-outline-variant py-1">
+                {/* Buscador instantáneo de ramas locales, remotas y tags */}
+                <div className="px-2 pb-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 rounded-lg bg-surface-container px-2 py-1 focus-within:ring-1 focus-within:ring-primary">
+                        <Icon name="search" size={13} className="shrink-0 text-on-surface-variant/70" />
+                        <input
+                            type="text"
+                            value={refFilter}
+                            onChange={(e) => setRefFilter(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') setRefFilter('')
+                            }}
+                            placeholder={t.sidebar.gitRefs.filterPlaceholder}
+                            className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                        />
+                        {refFilter && (
+                            <button
+                                type="button"
+                                onClick={() => setRefFilter('')}
+                                title={t.shell.sidebar.clearSearch}
+                                className="shrink-0 text-on-surface-variant hover:text-on-surface"
+                            >
+                                <Icon name="close" size={12} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 {/* Ramas locales */}
                 <div className="group flex items-center gap-1 px-1.5 py-1 hover:bg-surface-variant/40">
                     <button
@@ -223,7 +279,7 @@ export default function HistoryPanel({
                         onClick={() => setBranchesOpen((v) => !v)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-on-surface"
                     >
-                        <Icon name={branchesOpen ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
+                        <Icon name={showBranches ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
                         <Icon name="account_tree" size={14} className="shrink-0 text-primary" />
                         <span className="truncate">{gt.branches}</span>
                         <span className="ml-auto font-mono text-ui-10 text-on-surface-variant/75">{localBranches.length}</span>
@@ -240,7 +296,7 @@ export default function HistoryPanel({
                     </button>
                 </div>
 
-                {branchesOpen && (
+                {showBranches && (
                     <div className="pb-1">
                         {localBranches.length === 0 && (
                             <p className="px-6 py-1 text-ui-11 text-on-surface-variant/60">{w.noQuickRefs}</p>
@@ -316,7 +372,7 @@ export default function HistoryPanel({
                         onClick={() => setRemotesOpen((v) => !v)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-on-surface"
                     >
-                        <Icon name={remotesOpen ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
+                        <Icon name={showRemotes ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
                         <Icon name="cloud" size={14} className="shrink-0 text-on-surface-variant" />
                         <span className="truncate">{gt.remotes}</span>
                         <span className="ml-auto font-mono text-ui-10 text-on-surface-variant/75">{remoteGroups.length}</span>
@@ -332,10 +388,10 @@ export default function HistoryPanel({
                     </button>
                 </div>
 
-                {remotesOpen && (
+                {showRemotes && (
                     <div className="pb-1">
                         {remoteGroups.map(([remote, list]) => {
-                            const isOpen = openRemote[remote] ?? remoteGroups.length === 1
+                            const isOpen = isFilteringRefs || (openRemote[remote] ?? remoteGroups.length === 1)
                             return (
                                 <div key={remote}>
                                     <button
@@ -398,10 +454,10 @@ export default function HistoryPanel({
                         onClick={() => setTagsOpen((v) => !v)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-on-surface"
                     >
-                        <Icon name={tagsOpen ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
+                        <Icon name={showTags ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0 text-on-surface-variant" />
                         <Icon name="sell" size={14} className="shrink-0 text-on-surface-variant" />
                         <span className="truncate">{gt.tags}</span>
-                        <span className="ml-auto font-mono text-ui-10 text-on-surface-variant/75">{tags.length}</span>
+                        <span className="ml-auto font-mono text-ui-10 text-on-surface-variant/75">{filteredTags.length}</span>
                     </button>
                     <button
                         type="button"
@@ -415,9 +471,9 @@ export default function HistoryPanel({
                     </button>
                 </div>
 
-                {tagsOpen && (
+                {showTags && (
                     <div className="pb-1">
-                        {tags.map((tg) => (
+                        {filteredTags.map((tg) => (
                             <div
                                 key={tg.name}
                                 onContextMenu={(e) => {
@@ -452,6 +508,10 @@ export default function HistoryPanel({
                     </div>
                 )}
 
+                {noRefMatches && (
+                    <p className="px-3 py-2 text-ui-11 text-on-surface-variant/70">{sw.noMatch({query: refFilter.trim()})}</p>
+                )}
+
                 {/* Acceso directo a Stashes */}
                 <button
                     type="button"
@@ -463,8 +523,9 @@ export default function HistoryPanel({
                     <span className="ml-auto font-mono text-ui-10 text-on-surface-variant/75">{stashCount}</span>
                 </button>
             </div>
+            </div>
 
-            <div className="mt-auto shrink-0 border-t border-outline-variant px-3 py-1.5 text-ui-10 text-on-surface-variant/70">
+            <div className="shrink-0 border-t border-outline-variant/60 bg-surface-container-low/60 px-3 py-1.5 text-ui-10 text-on-surface-variant/75">
                 {loading ? w.loading : w.loaded({n: commitCount})}
             </div>
         </div>

@@ -15,5 +15,14 @@ source "$ROOT_DIR/scripts/ensure-pnpm.sh"
 VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
 wails build -clean -ldflags "-X main.appVersion=$VERSION" "$@"
 
+# En macOS, un build sin firmar (o ad-hoc) cambia de CDHash en cada compilación
+# y hace que TCC vuelva a pedir permiso de Documentos/Escritorio/Descargas.
+# Si existe un certificado local de firma de código (export MACOS_SIGN_IDENTITY="mini-tools-dev"),
+# firmamos el .app con esa identidad estable para que macOS recuerde el permiso entre rebuilds.
+if [[ "$(uname -s)" == "Darwin" && -n "${MACOS_SIGN_IDENTITY:-}" && -d "build/bin/mini-tools.app" ]]; then
+  echo "==> Firmando build/bin/mini-tools.app con '$MACOS_SIGN_IDENTITY' (evita re-prompts TCC)"
+  codesign --force --deep --sign "$MACOS_SIGN_IDENTITY" "build/bin/mini-tools.app"
+fi
+
 echo "==> Build listo:"
 ls -lh build/bin/ 2>/dev/null || true
