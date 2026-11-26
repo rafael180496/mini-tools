@@ -1,4 +1,5 @@
 import {useEffect, useId, useMemo, useRef, useState} from 'react'
+import {createPortal} from 'react-dom'
 import Icon from './Icon'
 import {useT} from '../i18n'
 
@@ -37,12 +38,14 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
     const [selectedIdx, setSelectedIdx] = useState(0)
     const inputRef = useRef<HTMLInputElement>(null)
     const listRef = useRef<HTMLDivElement>(null)
+    const navByKeyboardRef = useRef(false)
     const listId = useId()
 
     useEffect(() => {
         if (!open) return
         setQuery('')
         setSelectedIdx(0)
+        navByKeyboardRef.current = false
         // Enfocar en el siguiente frame para asegurar que el nodo esté montado.
         const id = window.requestAnimationFrame(() => inputRef.current?.focus())
         return () => window.cancelAnimationFrame(id)
@@ -58,7 +61,11 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
     const filtered = useMemo(() => {
         const q = normalizeText(query.trim())
         if (!q) return items
-        return items.filter((_, i) => haystacks[i].includes(q))
+        const tokens = q.split(/\s+/).filter(Boolean)
+        return items.filter((_, i) => {
+            const h = haystacks[i]
+            return tokens.every((tok) => h.includes(tok))
+        })
     }, [items, haystacks, query])
 
     useEffect(() => {
@@ -66,8 +73,11 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
     }, [query])
 
     // La opción resaltada con las flechas siempre queda a la vista.
+    // Solo cuando se navega por teclado (nunca en mouseover, para no mover
+    // el botón debajo del cursor antes de que se dispare el clic).
     useEffect(() => {
-        if (!open) return
+        if (!open || !navByKeyboardRef.current) return
+        navByKeyboardRef.current = false
         listRef.current?.querySelector(`[data-idx="${selectedIdx}"]`)?.scrollIntoView({block: 'nearest'})
     }, [open, selectedIdx])
 
@@ -87,8 +97,8 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
 
     function runItem(item: CommandPaletteItem | undefined) {
         if (!item) return
-        onClose()
         item.onSelect()
+        onClose()
     }
 
     function onKeyDown(e: React.KeyboardEvent) {
@@ -102,9 +112,11 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
             inputRef.current?.focus()
         } else if (e.key === 'ArrowDown') {
             e.preventDefault()
+            navByKeyboardRef.current = true
             if (flatList.length > 0) setSelectedIdx((i) => (i + 1) % flatList.length)
         } else if (e.key === 'ArrowUp') {
             e.preventDefault()
+            navByKeyboardRef.current = true
             if (flatList.length > 0) setSelectedIdx((i) => (i - 1 + flatList.length) % flatList.length)
         } else if (e.key === 'Enter') {
             e.preventDefault()
@@ -114,7 +126,7 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
 
     let runningIndex = -1
 
-    return (
+    return createPortal(
         <div
             role="dialog"
             aria-modal="true"
@@ -172,6 +184,10 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
                                             tabIndex={-1}
                                             type="button"
                                             onMouseEnter={() => setSelectedIdx(currentIdx)}
+                                            onMouseDown={(e) => {
+                                                // Evita que el blur del input o un re-render se coman el clic en WebKit/Wails.
+                                                e.preventDefault()
+                                            }}
                                             onClick={() => runItem(item)}
                                             className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
                                                 isSelected
@@ -231,6 +247,7 @@ export default function CommandPalette({open, onClose, items}: CommandPalettePro
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     )
 }

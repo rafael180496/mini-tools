@@ -3826,7 +3826,10 @@ export default function Workspace({
                               ? 'terminal'
                               : 'code',
                 active: tab.id === activeTabId,
-                onSelect: () => setActiveTabId(tab.id),
+                onSelect: () => {
+                    setActiveTabId(tab.id)
+                    if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
+                },
             })
         }
         for (const conn of connections) {
@@ -3838,8 +3841,30 @@ export default function Workspace({
                 icon: conn.dbType === 'ssh' ? 'terminal' : 'storage',
                 active: activeTabConnection?.id === conn.id,
                 onSelect: () => {
-                    selectSidebarModule(conn.dbType === 'ssh' ? 'ssh' : 'connections')
+                    if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
+                    if (conn.dbType === 'ssh') {
+                        selectSidebarModule('ssh')
+                        openSshTerminal(conn)
+                        return
+                    }
+                    selectSidebarModule('connections')
                     setSelected(conn)
+                    if (conn.dbType === 'redis') {
+                        openRedisBrowser(conn)
+                        return
+                    }
+                    if (conn.dbType === 'mongodb') {
+                        openMongoBrowser(conn)
+                        return
+                    }
+                    const existing = tabs.find((tb) => tb.kind === 'editor' && tb.connId === conn.id)
+                    if (existing) {
+                        setActiveTabId(existing.id)
+                    } else {
+                        const tab = {...newScratchTab(), connId: conn.id}
+                        setTabs((prev) => [...prev, tab])
+                        setActiveTabId(tab.id)
+                    }
                 },
             })
         }
@@ -3853,6 +3878,7 @@ export default function Workspace({
                     const tab = newScratchTab()
                     setTabs((prev) => [...prev, tab])
                     setActiveTabId(tab.id)
+                    if (adeMode === 'terminals' || adeMode === 'chat') onChangeAdeMode?.('work')
                 },
             },
             {
